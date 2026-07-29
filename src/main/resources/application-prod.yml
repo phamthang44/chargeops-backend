@@ -1,0 +1,24 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# application-prod.yml — chỉ chứa phần KHÁC với application.yml ở môi trường prod.
+# Mọi secret/host đều BẮT BUỘC qua biến môi trường (không có default localhost).
+# ─────────────────────────────────────────────────────────────────────────────
+
+spring:
+  config:
+    activate:
+      on-profile: prod
+
+  jpa:
+    show-sql: false               # prod: tắt log SQL (bảo mật + hiệu năng)
+
+logging:
+  level:
+    root: WARN
+    com.thang.chargeops: INFO
+
+# Swagger: TẮT ở prod (không lộ API surface ra ngoài)
+springdoc:
+  api-docs:
+    enabled: false
+  swagger-ui:
+    enabled: false

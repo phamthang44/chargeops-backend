@@ -1,6 +1,8 @@
 services:
   postgres:
     image: postgis/postgis:16-3.4      # PostGIS cho proximity; pgvector bật qua init
+    ports:
+      - "5432:5432"
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
@@ -18,6 +20,8 @@ services:
 
   redis:
     image: redis:7-alpine
+    ports:
+      - "6379:6379"
     restart: unless-stopped
     # KHÔNG bật appendonly: Redis ở đây chỉ là cache + lock tạm thời,
     # mất khi restart không sao (Postgres mới là nguồn sự thật).
@@ -29,6 +33,9 @@ services:
 
   keycloak:
     image: quay.io/keycloak/keycloak:26.0
+    command: start-dev
+    ports:
+      - "8080:8080"
     restart: unless-stopped
     environment:
       KC_BOOTSTRAP_ADMIN_USERNAME: ${KC_ADMIN_USER}
@@ -37,6 +44,20 @@ services:
       KC_DB_URL: jdbc:postgresql://postgres:5432/${KC_DB_NAME}
       KC_DB_USERNAME: ${POSTGRES_USER}
       KC_DB_PASSWORD: ${POSTGRES_PASSWORD}
+      KC_HOSTNAME_STRICT: "false"
     depends_on:
       postgres:
         condition: service_healthy
+    healthcheck:
+      test: [ "CMD-SHELL", "curl -f http://localhost:8080/health/ready || exit 1" ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+volumes:
+  chargeops_postgres_data:
+
+networks:
+  chargeops_network:
+    driver: bridge

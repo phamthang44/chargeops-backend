@@ -1,0 +1,25 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# application-dev.yml — chỉ chứa phần KHÁC với application.yml ở môi trường dev.
+# KHÔNG lặp lại datasource/flyway/jackson... — chúng đã nằm ở base.
+# ─────────────────────────────────────────────────────────────────────────────
+
+spring:
+  config:
+    activate:
+      on-profile: dev
+
+  jpa:
+    show-sql: true                # dev: in SQL để debug
+
+logging:
+  level:
+    root: INFO
+    com.thang.chargeops: DEBUG
+    org.springframework.security: DEBUG   # xem chi tiết quá trình verify token
+
+# Swagger: bật ở dev
+springdoc:
+  api-docs:
+    enabled: true
+  swagger-ui:
+    enabled: true
