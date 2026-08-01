@@ -1,0 +1,568 @@
+// =====================================================================
+// ChargeOps ERD (dbdiagram.io) - revised on 2026-07-31
+// =====================================================================
+// Key design choices:
+// - No materialized slot table. Availability is computed from connector
+//   operating periods + bookings on a connector time range.
+// - Booking attaches to connector_id, not charge_point_id.
+// - Station media is a gallery, so stations.image_url is replaced by
+//   station_assets.
+// - Station operating hours are structured in station_operating_periods.
+// - STATION_STAFF scope is stored in station_staff_assignments.
+// - Support tickets are aligned to the SRS categories and include a
+//   human-readable ticket_number.
+
+Table user_profile {
+  id           uuid [pk, default: `gen_random_uuid()`, note: 'Internal user profile keyed to Keycloak subject']
+  keycloak_id  varchar [unique, not null, note: 'sub claim from Keycloak JWT']
+  email        varchar [not null, note: 'Denormalized from IdP']
+  display_name varchar
+  phone        varchar [note: 'Contact only']
+  status       varchar [not null, note: 'ACTIVE / SUSPENDED']
+  created_at   timestamptz [not null, default: `now()`]
+  updated_at   timestamptz [not null, default: `now()`]
+  created_by   uuid
+  updated_by   uuid
+  deleted_at   timestamptz
+
+  Indexes {
+    email
+  }
+
+  Note: 'Authentication and role membership live in Keycloak. This table stores profile data and anchors business relationships.'
+}
+
+Table stations {
+  id            uuid [pk, default: `gen_random_uuid()`]
+  owner_id      uuid [not null, note: 'FK > user_profile.id']
+  name          varchar [not null]
+  description   text
+  address       varchar [not null]
+  location      geography [not null, note: 'PostGIS point for distance search']
+  contact_phone varchar
+  status        varchar [not null, note: 'PENDING_APPROVAL / ACTIVE / REJECTED / SUSPENDED']
+  created_at    timestamptz [not null, default: `now()`]
+  updated_at    timestamptz [not null, default: `now()`]
+  created_by    uuid
+  updated_by    uuid
+  deleted_at    timestamptz
+
+  Indexes {
+    owner_id
+    location [type: gist]
+    status
+  }
+
+  Note: 'Station master record. Media gallery is stored in station_assets. Operating hours are stored in station_operating_periods.'
+}
+
+Enum station_asset_type {
+  IMAGE
+  VIDEO
+  DOCUMENT
+  OTHER
+}
+
+Table station_assets {
+  id            uuid [pk, default: `gen_random_uuid()`]
+  station_id    uuid [not null]
+  asset_type    station_asset_type [not null]
+  asset_url     varchar [not null]
+  storage_key   varchar
+  alt_text      varchar
+  display_order int [not null, default: 0]
+  is_primary    boolean [not null, default: false]
+  created_at    timestamptz [not null, default: `now()`]
+  updated_at    timestamptz [not null, default: `now()`]
+  created_by    uuid
+  updated_by    uuid
+  deleted_at    timestamptz
+
+  Indexes {
+    station_id
+    (station_id, display_order)
+  }
+
+  Note: 'Station gallery / attachments. Replaces the old single image_url design.'
+}
+
+Enum station_day_of_week {
+  MONDAY
+  TUESDAY
+  WEDNESDAY
+  THURSDAY
+  FRIDAY
+  SATURDAY
+  SUNDAY
+}
+
+Table station_operating_periods {
+  id             uuid [pk, default: `gen_random_uuid()`]
+  station_id     uuid [not null]
+  day_of_week    station_day_of_week [not null]
+  open_time      time [not null]
+  close_time     time [not null]
+  effective_from timestamptz [not null]
+  effective_to   timestamptz
+  created_at     timestamptz [not null, default: `now()`]
+  updated_at     timestamptz [not null, default: `now()`]
+  created_by     uuid
+  updated_by     uuid
+  deleted_at     timestamptz
+
+  Indexes {
+    station_id
+    (station_id, day_of_week, effective_from)
+  }
+
+  Note: 'Structured station opening hours. Bookable time is computed from this table plus existing bookings.'
+}
+
+Table station_staff_assignments {
+  id          uuid [pk, default: `gen_random_uuid()`]
+  station_id  uuid [not null]
+  user_id     uuid [not null, note: 'User who is allowed to act as station staff on this station']
+  assigned_by uuid [not null, note: 'Owner or admin who granted the assignment']
+  assigned_at timestamptz [not null, default: `now()`]
+  revoked_at  timestamptz
+  note        varchar
+
+  Indexes {
+    station_id
+    user_id
+    (station_id, user_id)
+  }
+
+  Note: 'Resource-scoped authorization for STATION_STAFF. The role itself lives in Keycloak; this table answers which stations the user may touch.'
+}
+
+Table station_status_history {
+  id          uuid [pk, default: `gen_random_uuid()`]
+  station_id  uuid [not null]
+  from_status varchar
+  to_status   varchar [not null]
+  changed_at  timestamptz [not null, default: `now()`]
+  changed_by  uuid
+  reason      varchar
+
+  Indexes {
+    station_id
+  }
+
+  Note: 'Append-only audit log for station lifecycle changes.'
+}
+
+Table charge_points {
+  id                  uuid [pk, default: `gen_random_uuid()`]
+  station_id          uuid [not null]
+  charge_point_code   varchar [not null, note: 'Human-readable device code']
+  name                varchar
+  zone_label          varchar [note: 'Location hint inside the station']
+  max_power_kw        numeric
+  provisioning_status varchar [not null, note: 'UNCLAIMED / ACTIVE / OFFLINE / SUSPENDED']
+  created_at          timestamptz [not null, default: `now()`]
+  updated_at          timestamptz [not null, default: `now()`]
+  created_by          uuid
+  updated_by          uuid
+  deleted_at          timestamptz
+
+  Indexes {
+    station_id
+  }
+
+  Note: 'Physical charging device. QR does not live here; each connector gets its own QR.'
+}
+
+Table connectors {
+  id              uuid [pk, default: `gen_random_uuid()`]
+  charge_point_id uuid [not null]
+  connector_code  varchar [not null]
+  qr_token        uuid [unique, not null, default: `gen_random_uuid()`]
+  connector_type  varchar [not null, note: 'CCS2 / CHADEMO / TYPE2 / GBT']
+  power_kw        numeric [not null]
+  charger_type    varchar [not null, note: 'AC / DC']
+  slot_minutes    int [not null, default: 30]
+  runtime_status  varchar [not null, note: 'AVAILABLE / IN_USE / OFFLINE']
+  created_at      timestamptz [not null, default: `now()`]
+  updated_at      timestamptz [not null, default: `now()`]
+  created_by      uuid
+  updated_by      uuid
+  deleted_at      timestamptz
+
+  Indexes {
+    charge_point_id
+  }
+
+  Note: 'Bookable unit. Booking and check-in are matched against connector_id via qr_token.'
+}
+
+Table bookings {
+  id                          uuid [pk, default: `gen_random_uuid()`]
+  driver_id                   uuid [not null]
+  connector_id                uuid [not null]
+  start_at                    timestamptz [not null]
+  end_at                      timestamptz [not null]
+  status                      varchar [not null, default: 'PENDING', note: 'PENDING / CONFIRMED / CHECKED_IN / CHARGING / COMPLETED / EXPIRED / CANCELLED / NO_SHOW']
+  total_amount                "numeric(15,2)" [not null]
+  station_name_snapshot       varchar [not null]
+  station_address_snapshot    varchar [not null]
+  charge_point_code_snapshot  varchar [not null]
+  connector_code_snapshot     varchar [not null]
+  expires_at                  timestamptz
+  checked_in_at               timestamptz
+  cancelled_at                timestamptz
+  created_at                  timestamptz [not null, default: `now()`]
+  updated_at                  timestamptz [not null, default: `now()`]
+  created_by                  uuid
+  updated_by                  uuid
+
+  Indexes {
+    driver_id
+    connector_id
+    status
+    (connector_id, start_at, end_at)
+  }
+
+  Note: 'One booking = one continuous reserved time range on one connector. Hard overlap protection must be enforced in Postgres with an EXCLUDE constraint in migrations.'
+}
+
+Table booking_price_lines {
+  id            uuid [pk, default: `gen_random_uuid()`]
+  booking_id    uuid [not null]
+  segment_start timestamptz [not null]
+  segment_end   timestamptz [not null]
+  tou_rate_id   uuid [not null]
+  amount        "numeric(15,2)" [not null]
+  created_at    timestamptz [not null, default: `now()`]
+
+  Indexes {
+    booking_id
+  }
+
+  Note: 'Immutable price snapshot lines. Sum(amount) = bookings.total_amount.'
+}
+
+Table booking_status_history {
+  id          uuid [pk, default: `gen_random_uuid()`]
+  booking_id  uuid [not null]
+  from_status varchar
+  to_status   varchar [not null]
+  changed_at  timestamptz [not null, default: `now()`]
+  changed_by  uuid
+  reason      varchar
+
+  Indexes {
+    booking_id
+  }
+}
+
+Table charging_sessions {
+  id         uuid [pk, default: `gen_random_uuid()`]
+  booking_id uuid [unique, not null]
+  started_at timestamptz [not null]
+  ended_at   timestamptz
+  status     varchar [not null, note: 'IN_PROGRESS / COMPLETED / INTERRUPTED']
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+  created_by uuid
+  updated_by uuid
+
+  Note: 'No IoT metrics are stored; this table records the logical charging session lifecycle.'
+}
+
+Table payments {
+  id              uuid [pk, default: `gen_random_uuid()`]
+  booking_id      uuid [unique, not null]
+  amount          "numeric(15,2)" [not null]
+  status          varchar [not null, default: 'PENDING', note: 'PENDING / PAID / FAILED / REFUNDED']
+  method          varchar [note: 'VNPAY / MOMO / ZALOPAY']
+  gateway_txn_ref varchar [note: 'Should be unique in migration to reject duplicate callbacks']
+  refund_amount   "numeric(15,2)"
+  paid_at         timestamptz
+  created_at      timestamptz [not null, default: `now()`]
+  updated_at      timestamptz [not null, default: `now()`]
+  created_by      uuid
+  updated_by      uuid
+
+  Indexes {
+    status
+  }
+}
+
+Table transactions {
+  id           uuid [pk, default: `gen_random_uuid()`]
+  type         varchar [not null, note: 'SLOT_PAYMENT / REFUND / LICENSE_FEE']
+  amount       "numeric(15,2)" [not null]
+  payer_id     uuid
+  payee_id     uuid
+  station_id   uuid
+  booking_id   uuid
+  license_id   uuid
+  provider     varchar
+  provider_ref varchar
+  status       varchar [not null, note: 'PENDING / SUCCESS / FAILED']
+  occurred_at  timestamptz [not null, default: `now()`]
+  created_at   timestamptz [not null, default: `now()`]
+  created_by   uuid
+
+  Indexes {
+    payer_id
+    payee_id
+    station_id
+    occurred_at
+  }
+
+  Note: 'Append-only ledger for slot payments, refunds, and license fees.'
+}
+
+Table licenses {
+  id         uuid [pk, default: `gen_random_uuid()`]
+  station_id uuid [not null]
+  owner_id   uuid [not null]
+  plan       varchar [not null, note: 'MONTHLY / YEARLY']
+  fee_amount "numeric(15,2)" [not null]
+  start_at   timestamptz [not null]
+  expires_at timestamptz [not null]
+  status     varchar [not null, note: 'PENDING / ACTIVE / EXPIRED / CANCELLED / SUSPENDED']
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+  created_by uuid
+  updated_by uuid
+
+  Indexes {
+    station_id
+    owner_id
+  }
+
+  Note: 'One station can only have one ACTIVE license at a time. Enforce in migration/code.'
+}
+
+Table license_status_history {
+  id          uuid [pk, default: `gen_random_uuid()`]
+  license_id  uuid [not null]
+  from_status varchar
+  to_status   varchar [not null]
+  changed_at  timestamptz [not null, default: `now()`]
+  changed_by  uuid
+  reason      varchar
+
+  Indexes {
+    license_id
+  }
+}
+
+Table system_config {
+  id           uuid [pk, default: `gen_random_uuid()`]
+  config_key   varchar [unique, not null]
+  config_value varchar [not null]
+  value_type   varchar [note: 'STRING / NUMBER / BOOLEAN']
+  description  varchar
+  updated_at   timestamptz [not null, default: `now()`]
+  updated_by   uuid
+}
+
+Table tou_rates {
+  id             uuid [pk, default: `gen_random_uuid()`]
+  station_id     uuid [note: 'NULL = platform default rate; non-NULL = station override']
+  name           varchar [not null]
+  period_code    varchar [not null, note: 'NORMAL / PEAK / OFF_PEAK']
+  start_time     time [not null]
+  end_time       time [not null]
+  day_type       varchar [not null, note: 'WEEKDAY / SATURDAY / SUNDAY']
+  multiplier     "numeric(4,3)" [not null]
+  base_price     "numeric(15,2)" [not null]
+  effective_from timestamptz [not null]
+  effective_to   timestamptz
+  created_at     timestamptz [not null, default: `now()`]
+  created_by     uuid
+
+  Indexes {
+    (day_type, start_time, end_time)
+    (station_id, effective_from)
+  }
+
+  Note: 'Versioned TOU rate table. Changes apply only to new bookings; old bookings keep booking_price_lines snapshots.'
+}
+
+Table legal_documents {
+  id             uuid [pk, default: `gen_random_uuid()`]
+  doc_type       varchar [not null, note: 'TERMS_OF_SERVICE / PRIVACY_POLICY / LICENSE_AGREEMENT']
+  title          varchar [not null]
+  content        text [not null]
+  version        varchar [not null]
+  is_active      boolean [not null, default: true]
+  effective_from timestamptz [not null]
+  created_at     timestamptz [not null, default: `now()`]
+  updated_at     timestamptz [not null, default: `now()`]
+  created_by     uuid
+  updated_by     uuid
+  deleted_at     timestamptz
+}
+
+Table policy_chunks {
+  id         uuid [pk, default: `gen_random_uuid()`]
+  title      varchar [not null]
+  content    text [not null]
+  embedding  vector
+  category   varchar [note: 'REFUND / BOOKING / PAYMENT / CHECKIN / SUPPORT']
+  is_active  boolean [not null, default: true]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+  created_by uuid
+  updated_by uuid
+  deleted_at timestamptz
+
+  Note: 'Chunked policy knowledge base for RAG. Informational only; never state-changing.'
+}
+
+Table notifications {
+  id         uuid [pk, default: `gen_random_uuid()`]
+  user_id    uuid [not null]
+  type       varchar [not null, note: 'BOOKING_CONFIRMED / BOOKING_REMINDER / BOOKING_CANCELLED / LICENSE_EXPIRING / ...']
+  title      varchar [not null]
+  body       text [not null]
+  ref_type   varchar [note: 'BOOKING / TRANSACTION / LICENSE / STATION / TICKET']
+  ref_id     uuid
+  is_read    boolean [not null, default: false]
+  read_at    timestamptz
+  created_at timestamptz [not null, default: `now()`]
+
+  Indexes {
+    (user_id, is_read, created_at)
+  }
+
+  Note: 'User-facing notification inbox. Email delivery logging can be modeled separately if needed later.'
+}
+
+Enum ticket_status {
+  OPEN
+  IN_PROGRESS
+  RESOLVED
+  CLOSED
+}
+
+Enum ticket_priority {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+Enum ticket_category {
+  CHARGING_ISSUE
+  BOOKING
+  PAYMENT
+  ACCOUNT
+  OTHER
+}
+
+Enum ticket_message_type {
+  TEXT
+  SYSTEM
+}
+
+Table support_tickets {
+  id            uuid [pk, default: `gen_random_uuid()`]
+  ticket_number varchar [unique, not null, note: 'Human-readable number, e.g. TKT-20260731-0001']
+  category      ticket_category [not null]
+  station_id    uuid [note: 'NULL for platform-level tickets']
+  booking_id    uuid [note: 'Optional context']
+  created_by    uuid [not null]
+  assigned_to   uuid
+  title         varchar(255) [not null]
+  description   text [not null]
+  status        ticket_status [not null, default: `'OPEN'`]
+  priority      ticket_priority [not null, default: `'MEDIUM'`]
+  created_at    timestamptz [not null, default: `now()`]
+  updated_at    timestamptz [not null, default: `now()`]
+
+  Indexes {
+    ticket_number
+    (station_id, status)
+    (assigned_to, status)
+    (category, status)
+  }
+
+  Note: 'Station-scoped CHARGING_ISSUE and station-linked BOOKING tickets route to owner/staff. PAYMENT, ACCOUNT, and OTHER route to admin. Admin can view and reassign all tickets.'
+}
+
+Table ticket_messages {
+  id           uuid [pk, default: `gen_random_uuid()`]
+  ticket_id    uuid [not null]
+  sender_id    uuid [not null]
+  message_type ticket_message_type [not null, default: `'TEXT'`]
+  content      text [not null]
+  created_at   timestamptz [not null, default: `now()`]
+
+  Indexes {
+    (ticket_id, created_at)
+  }
+
+  Note: 'Append-only conversation thread.'
+}
+
+Table ticket_attachments {
+  id         uuid [pk, default: `gen_random_uuid()`]
+  message_id uuid [not null]
+  file_name  varchar(255) [not null]
+  file_url   text [not null]
+  mime_type  varchar(100) [not null]
+  file_size  bigint [not null]
+  created_at timestamptz [not null, default: `now()`]
+}
+
+Table ticket_status_histories {
+  id         uuid [pk, default: `gen_random_uuid()`]
+  ticket_id  uuid [not null]
+  old_status ticket_status
+  new_status ticket_status [not null]
+  changed_by uuid [not null]
+  reason     text
+  created_at timestamptz [not null, default: `now()`]
+
+  Indexes {
+    ticket_id
+  }
+}
+
+// ===================== RELATIONSHIPS =====================
+Ref: stations.owner_id > user_profile.id
+Ref: station_assets.station_id > stations.id
+Ref: station_operating_periods.station_id > stations.id
+Ref: station_staff_assignments.station_id > stations.id
+Ref: station_staff_assignments.user_id > user_profile.id
+Ref: station_staff_assignments.assigned_by > user_profile.id
+Ref: station_status_history.station_id > stations.id
+Ref: station_status_history.changed_by > user_profile.id
+Ref: charge_points.station_id > stations.id
+Ref: connectors.charge_point_id > charge_points.id
+Ref: bookings.driver_id > user_profile.id
+Ref: bookings.connector_id > connectors.id
+Ref: booking_price_lines.booking_id > bookings.id
+Ref: booking_price_lines.tou_rate_id > tou_rates.id
+Ref: booking_status_history.booking_id > bookings.id
+Ref: booking_status_history.changed_by > user_profile.id
+Ref: charging_sessions.booking_id > bookings.id
+Ref: payments.booking_id > bookings.id
+Ref: transactions.payer_id > user_profile.id
+Ref: transactions.payee_id > user_profile.id
+Ref: transactions.station_id > stations.id
+Ref: transactions.booking_id > bookings.id
+Ref: transactions.license_id > licenses.id
+Ref: licenses.station_id > stations.id
+Ref: licenses.owner_id > user_profile.id
+Ref: license_status_history.license_id > licenses.id
+Ref: license_status_history.changed_by > user_profile.id
+Ref: tou_rates.station_id > stations.id
+Ref: tou_rates.created_by > user_profile.id
+Ref: legal_documents.created_by > user_profile.id
+Ref: policy_chunks.created_by > user_profile.id
+Ref: notifications.user_id > user_profile.id
+Ref: support_tickets.station_id > stations.id
+Ref: support_tickets.booking_id > bookings.id
+Ref: support_tickets.created_by > user_profile.id
+Ref: support_tickets.assigned_to > user_profile.id
+Ref: ticket_messages.ticket_id > support_tickets.id
+Ref: ticket_messages.sender_id > user_profile.id
+Ref: ticket_attachments.message_id > ticket_messages.id
+Ref: ticket_status_histories.ticket_id > support_tickets.id
+Ref: ticket_status_histories.changed_by > user_profile.id

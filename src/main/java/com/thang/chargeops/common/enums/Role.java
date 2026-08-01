@@ -8,5 +8,5 @@ public enum Role {
     DRIVER,
     OWNER,
     ADMIN,
-    STAFF
+    STATION_STAFF
 }

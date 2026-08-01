@@ -18,4 +18,8 @@ public abstract class SoftDeletableEntity extends AuditableEntity {
     public boolean isDeleted() {
         return deletedAt != null;
     }
+
+    public void markDeleted() {
+        this.deletedAt = Instant.now();
+    }
 }

@@ -6,36 +6,34 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.oauth2.jwt.Jwt;
 
-import java.util.Objects;
 import java.util.Optional;
+import java.util.UUID;
 
-
-/**
- * Supplies the current user id for JPA auditing ({@code @CreatedBy} /
- * {@code @LastModifiedBy} on {@code BaseAuditEntity}).
- *
- * <p>As a Keycloak resource server, the authenticated principal is a {@link Jwt},
- * so we read the user from the token ({@code preferred_username}, falling back to
- * the subject {@code sub}). Outside a request — scheduled jobs, async tasks,
- * startup data — there is no authentication, so we record {@code "system"}.
- */
-public class AuditorAwareImpl implements AuditorAware<String> {
-
-    private static final String SYSTEM = "system";
+public class AuditorAwareImpl implements AuditorAware<UUID> {
 
     @Override
-    public Optional<String> getCurrentAuditor() {
+    public Optional<UUID> getCurrentAuditor() {
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
 
         if (authentication == null || !authentication.isAuthenticated()
-            ||  authentication instanceof AnonymousAuthenticationToken) {
-            return Optional.of(SYSTEM);
+            || authentication instanceof AnonymousAuthenticationToken) {
+            return Optional.empty();
         }
 
         if (authentication.getPrincipal() instanceof Jwt jwt) {
-            String username = jwt.getClaim("preferred_username");
-            return Optional.of(username != null ? username : Objects.requireNonNull(jwt.getSubject()));
+            return parseUuid(jwt.getSubject());
         }
-        return Optional.of(authentication.getName());
+        return parseUuid(authentication.getName());
+    }
+
+    private Optional<UUID> parseUuid(String value) {
+        if (value == null || value.isBlank()) {
+            return Optional.empty();
+        }
+        try {
+            return Optional.of(UUID.fromString(value));
+        } catch (IllegalArgumentException ex) {
+            return Optional.empty();
+        }
     }
 }

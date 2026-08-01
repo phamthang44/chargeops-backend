@@ -4,6 +4,7 @@ import jakarta.persistence.Column;
 import jakarta.persistence.EntityListeners;
 import jakarta.persistence.MappedSuperclass;
 import jakarta.persistence.PrePersist;
+import jakarta.persistence.PreUpdate;
 import lombok.Getter;
 import lombok.Setter;
 import org.springframework.data.annotation.CreatedBy;
@@ -11,6 +12,7 @@ import org.springframework.data.annotation.LastModifiedBy;
 import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
 import java.time.Instant;
+import java.util.UUID;
 
 @Getter
 @Setter
@@ -21,16 +23,16 @@ public abstract class AuditableEntity extends BaseEntity{
     @Column(nullable = false, updatable = false)
     private Instant createdAt;
 
-    @Column(nullable = false, updatable = true)
+    @Column(nullable = false)
     private Instant updatedAt;
 
     @CreatedBy
     @Column(name = "created_by", updatable = false)
-    private String createdBy;
+    private UUID createdBy;
 
     @LastModifiedBy
     @Column(name = "updated_by")
-    private String updatedBy;
+    private UUID updatedBy;
 
     protected void onPrePersist() {
         // Hook for subclasses, ko làm gì ở đây ai cần thì override
@@ -43,5 +45,10 @@ public abstract class AuditableEntity extends BaseEntity{
         this.updatedAt = now;
 
         this.onPrePersist();
+    }
+
+    @PreUpdate
+    public void preUpdateAudit() {
+        this.updatedAt = Instant.now();
     }
 }
