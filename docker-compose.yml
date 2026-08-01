@@ -33,7 +33,7 @@ services:
 
   keycloak:
     image: quay.io/keycloak/keycloak:26.0
-    command: start-dev
+    command: start-dev --spi-theme-cache-themes=false --spi-theme-cache-templates=false --spi-theme-static-max-age=-1
     ports:
       - "8080:8080"
     restart: unless-stopped
@@ -45,6 +45,8 @@ services:
       KC_DB_USERNAME: ${POSTGRES_USER}
       KC_DB_PASSWORD: ${POSTGRES_PASSWORD}
       KC_HOSTNAME_STRICT: "false"
+    volumes:
+      - ../../chargeops-frontend/keycloak-themes/chargeops-driver:/opt/keycloak/themes/chargeops-driver:ro
     depends_on:
       postgres:
         condition: service_healthy
@@ -55,6 +57,11 @@ services:
       retries: 10
       start_period: 30s
 
+  mailpit:
+    image: axllent/mailpit:latest
+    ports:
+      - "1025:1025"
+      - "8025:8025"
 volumes:
   chargeops_postgres_data:
 
