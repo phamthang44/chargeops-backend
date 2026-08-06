@@ -1,5 +1,6 @@
 package com.thang.chargeops.common.validator;
 
+import com.thang.chargeops.exception.errormessage.ErrorMessage;
 import jakarta.validation.Constraint;
 import jakarta.validation.Payload;
 
@@ -16,7 +17,7 @@ import static java.lang.annotation.RetentionPolicy.RUNTIME;
 @Constraint(validatedBy = EnumValueValidator.class)
 public @interface EnumValue {
     String name();
-    String message() default "{name} must be any of enum {enumClass}";
+    String message() default ErrorMessage.Validation.ENUM_VALUE_INVALID_KEY;
     Class<? extends Enum<?>> enumClass();
     Class<?>[] groups() default {};
     Class<? extends Payload>[] payload() default {};

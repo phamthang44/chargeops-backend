@@ -3,7 +3,7 @@ package com.thang.chargeops.station.entity;
 import com.thang.chargeops.common.entity.AuditableEntity;
 import com.thang.chargeops.common.enums.LicenseStatus;
 import com.thang.chargeops.common.enums.Plan;
-import com.thang.chargeops.profile.UserProfile;
+import com.thang.chargeops.profile.entity.UserProfile;
 import jakarta.persistence.*;
 import lombok.*;
 

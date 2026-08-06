@@ -2,6 +2,7 @@ package com.thang.chargeops.common.response;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 
+import com.thang.chargeops.exception.errormessage.ErrorMessage;
 import com.thang.chargeops.exception.errorcode.BaseErrorCode;
 import lombok.Builder;
 import lombok.Getter;
@@ -104,6 +105,8 @@ public class ApiResult<T> {
     public static class ErrorDetail {
         /** Stable, machine-readable error code (e.g. {@code BOOKING_001}). */
         private String code;
+        /** Stable frontend i18n key (e.g. {@code error.auth.accessDenied}). */
+        private String messageKey;
         /** English default message — for logs/debugging; clients localize by {@code code}. */
         private String message;
         /** Correlation id, mirrored in logs for support. */
@@ -275,9 +278,14 @@ public class ApiResult<T> {
      * @param traceId correlation id
      */
     public static ApiResult<?> error(String code, String message, String traceId) {
+        return error(code, null, message, traceId);
+    }
+
+    public static ApiResult<?> error(String code, String messageKey, String message, String traceId) {
         return ApiResult.builder()
                 .error(ErrorDetail.builder()
                         .code(code)
+                        .messageKey(messageKey)
                         .message(message)
                         .traceId(traceId)
                         .build())
@@ -295,9 +303,14 @@ public class ApiResult<T> {
      * @param details structured extras (validation map, params, ...)
      */
     public static ApiResult<?> error(String code, String message, String traceId, Object details) {
+        return error(code, null, message, traceId, details);
+    }
+
+    public static ApiResult<?> error(String code, String messageKey, String message, String traceId, Object details) {
         return ApiResult.builder()
                 .error(ErrorDetail.builder()
                         .code(code)
+                        .messageKey(messageKey)
                         .message(message)
                         .traceId(traceId)
                         .details(details)
@@ -314,12 +327,14 @@ public class ApiResult<T> {
      * @param args      optional values substituted into the message's {@code {0}, {1}, ...} placeholders
      */
     public static ApiResult<?> error(BaseErrorCode errorCode, Object... args) {
-        String message = errorCode != null ? errorCode.format(args) : "Unknown error";
+        String message = errorCode != null ? errorCode.format(args) : ErrorMessage.Common.UNKNOWN_ERROR.defaultMessage();
         String code = errorCode != null ? errorCode.getCode() : "UNKNOWN_ERROR";
+        String messageKey = errorCode != null ? errorCode.getMessageKey() : null;
         String traceId = java.util.UUID.randomUUID().toString();
         return ApiResult.builder()
                 .error(ErrorDetail.builder()
                         .code(code)
+                        .messageKey(messageKey)
                         .message(message)
                         .traceId(traceId)
                         .build())

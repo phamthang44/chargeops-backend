@@ -1,4 +1,4 @@
-package com.thang.chargeops.profile;
+package com.thang.chargeops.profile.entity;
 
 import com.thang.chargeops.common.entity.SoftDeletableEntity;
 import com.thang.chargeops.common.enums.UserStatus;
@@ -27,7 +27,7 @@ public class UserProfile extends SoftDeletableEntity {
     @Column(name = "display_name")
     private String displayName;
 
-    @Column(name = "phone", length = 20, nullable = false)
+    @Column(name = "phone", length = 20)
     private String phone;
 
     @Enumerated(EnumType.STRING)

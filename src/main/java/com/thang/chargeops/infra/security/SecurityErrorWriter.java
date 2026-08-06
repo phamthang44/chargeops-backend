@@ -24,7 +24,12 @@ final class SecurityErrorWriter {
                       HttpServletResponse response, BaseErrorCode errorCode) throws IOException {
         response.setStatus(errorCode.getHttpStatus().value());
         response.setContentType(MediaType.APPLICATION_JSON_VALUE);
-        ApiResult<?> body = ApiResult.error(errorCode.getCode(), errorCode.format(), UUID.randomUUID().toString());
+        ApiResult<?> body = ApiResult.error(
+                errorCode.getCode(),
+                errorCode.getMessageKey(),
+                errorCode.format(),
+                UUID.randomUUID().toString()
+        );
         objectMapper.writeValue(response.getOutputStream(), body);
     }
 }

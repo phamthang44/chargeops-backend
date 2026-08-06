@@ -1,5 +1,6 @@
 package com.thang.chargeops.common.validator;
 
+import com.thang.chargeops.exception.errormessage.ErrorMessage;
 import jakarta.validation.ConstraintValidator;
 import jakarta.validation.ConstraintValidatorContext;
 
@@ -16,7 +17,7 @@ public class EnumPatternValidator implements ConstraintValidator<EnumPattern, En
         try {
             pattern = Pattern.compile(enumPattern.regexp());
         } catch (PatternSyntaxException e) {
-            throw new IllegalArgumentException("Given regex is invalid", e);
+            throw new IllegalArgumentException(ErrorMessage.Validation.REGEX_INVALID.defaultMessage(), e);
         }
     }
 

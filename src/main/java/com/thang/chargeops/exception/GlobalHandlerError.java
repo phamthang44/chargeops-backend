@@ -2,7 +2,9 @@ package com.thang.chargeops.exception;
 
 import com.thang.chargeops.common.constant.LogConstant;
 import com.thang.chargeops.common.response.ApiResult;
+import com.thang.chargeops.exception.errormessage.ErrorMessage;
 import com.thang.chargeops.exception.errorcode.AuthErrorCode;
+import com.thang.chargeops.exception.errorcode.BaseErrorCode;
 import com.thang.chargeops.exception.errorcode.CommonErrorCode;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.ConstraintViolationException;
@@ -30,32 +32,25 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
-import static org.springframework.http.HttpStatus.*;
+import static org.springframework.http.HttpStatus.BAD_REQUEST;
+import static org.springframework.http.HttpStatus.FORBIDDEN;
+import static org.springframework.http.HttpStatus.INTERNAL_SERVER_ERROR;
+import static org.springframework.http.HttpStatus.METHOD_NOT_ALLOWED;
+import static org.springframework.http.HttpStatus.NOT_FOUND;
 
-
-/**
- * Central exception handler. Translates exceptions into the standard
- * {@link ApiResult} error envelope: a stable {@code code}, a trace id, and a
- * fixed English default message (for logs). Clients localize by {@code code} —
- * the backend does not translate.
- *
- * <p>Domain-specific handlers (e.g. booking-overlap from the {@code EXCLUDE USING gist}
- * constraint) can be added as the corresponding domain error codes are introduced.
- */
 @RestControllerAdvice
 @Slf4j
 public class GlobalHandlerError {
 
-    // --- Business logic errors ---
     @ExceptionHandler(AppException.class)
     public ResponseEntity<ApiResult<?>> handleAppException(AppException e) {
         String traceId = newTraceId();
+        BaseErrorCode errorCode = e.getErrorCode();
         log.warn("Business error [{}]: {} - code={}", traceId, e.getMessage(), e.getErrorCodeStr());
         return ResponseEntity.status(e.getHttpStatus())
-                .body(ApiResult.error(e.getErrorCodeStr(), e.getMessage(), traceId));
+                .body(ApiResult.error(errorCode.getCode(), errorCode.getMessageKey(), e.getMessage(), traceId));
     }
 
-    // --- Validation errors (400) ---
     @ExceptionHandler({
             MethodArgumentNotValidException.class,
             ConstraintViolationException.class,
@@ -64,124 +59,174 @@ public class GlobalHandlerError {
     })
     public ResponseEntity<ApiResult<?>> handleValidationException(Exception e) {
         String traceId = newTraceId();
-        log.warn("Validation error [{}]: {}", traceId, e.getMessage());
-
+        String messageKey = ErrorMessage.Validation.FAILED_KEY;
+        String message = ErrorMessage.Validation.FAILED.defaultMessage();
         Object details = null;
-        String message = "Validation failed";
 
         if (e instanceof MethodArgumentNotValidException ex) {
             BindingResult result = ex.getBindingResult();
-            Map<String, String> errors = new HashMap<>();
-            String first = null;
-            for (FieldError fe : result.getFieldErrors()) {
-                String msg = fe.getDefaultMessage();
-                errors.put(fe.getField(), msg);
-                if (first == null) {
-                    first = msg;
-                }
+            Map<String, ValidationFailure> errors = new HashMap<>();
+            for (FieldError fieldError : result.getFieldErrors()) {
+                errors.put(fieldError.getField(), toValidationFailure(fieldError.getDefaultMessage()));
             }
             details = errors;
-            message = (first != null) ? first : "Invalid input data";
         } else if (e instanceof ConstraintViolationException ex) {
             details = ex.getConstraintViolations().stream()
                     .collect(Collectors.toMap(
-                            v -> v.getPropertyPath().toString(),
-                            v -> v.getMessage(),
-                            (a, b) -> a));
-            message = "Invalid parameters";
+                            violation -> violation.getPropertyPath().toString(),
+                            violation -> toValidationFailure(violation.getMessage()),
+                            (left, right) -> left));
         } else if (e instanceof MissingServletRequestParameterException ex) {
-            message = "Missing required parameter: " + ex.getParameterName();
-        } else if (e instanceof IllegalArgumentException ex && ex.getMessage() != null) {
-            message = ex.getMessage();
+            messageKey = ErrorMessage.Validation.REQUIRED_PARAMETER_KEY;
+            message = ErrorMessage.Validation.REQUIRED_PARAMETER.format(ex.getParameterName());
+            details = Map.of(ex.getParameterName(), new ValidationFailure(messageKey, message));
+        } else if (e instanceof IllegalArgumentException ex) {
+            messageKey = ErrorMessage.Validation.INVALID_INPUT_KEY;
+            message = hasText(ex.getMessage()) ? ex.getMessage() : ErrorMessage.Validation.INVALID_INPUT.defaultMessage();
         }
 
+        log.warn("Validation error [{}]: {}", traceId, e.getMessage());
         return ResponseEntity.status(BAD_REQUEST)
-                .body(ApiResult.error(CommonErrorCode.INVALID_REQUEST.getCode(), message, traceId, details));
+                .body(ApiResult.error(
+                        CommonErrorCode.INVALID_REQUEST.getCode(),
+                        messageKey,
+                        message,
+                        traceId,
+                        details
+                ));
     }
 
-    // --- Access denied (403) ---
     @ExceptionHandler(AccessDeniedException.class)
     public ResponseEntity<ApiResult<?>> handleAccessDenied(AccessDeniedException e) {
         String traceId = newTraceId();
         log.warn("Access denied [{}]: {}", traceId, e.getMessage());
         return ResponseEntity.status(FORBIDDEN)
-                .body(ApiResult.error(AuthErrorCode.ACCESS_DENIED.getCode(),
-                        AuthErrorCode.ACCESS_DENIED.getMessage(), traceId));
+                .body(ApiResult.error(
+                        AuthErrorCode.ACCESS_DENIED.getCode(),
+                        AuthErrorCode.ACCESS_DENIED.getMessageKey(),
+                        AuthErrorCode.ACCESS_DENIED.getMessage(),
+                        traceId
+                ));
     }
 
-    // --- Not found (404) ---
     @ExceptionHandler({NoResourceFoundException.class, NoHandlerFoundException.class})
     public ResponseEntity<ApiResult<?>> handleNotFound(HttpServletRequest request, Exception e) {
         String traceId = newTraceId();
         return ResponseEntity.status(NOT_FOUND)
-                .body(ApiResult.error(CommonErrorCode.RESOURCE_NOT_FOUND.getCode(),
-                        CommonErrorCode.RESOURCE_NOT_FOUND.format(request.getRequestURI()), traceId));
+                .body(ApiResult.error(
+                        CommonErrorCode.RESOURCE_NOT_FOUND.getCode(),
+                        CommonErrorCode.RESOURCE_NOT_FOUND.getMessageKey(),
+                        CommonErrorCode.RESOURCE_NOT_FOUND.format(request.getRequestURI()),
+                        traceId
+                ));
     }
 
-    // --- Method not allowed (405) ---
     @ExceptionHandler(HttpRequestMethodNotSupportedException.class)
     public ResponseEntity<ApiResult<?>> handleMethodNotAllowed(HttpRequestMethodNotSupportedException e) {
         String traceId = newTraceId();
         return ResponseEntity.status(METHOD_NOT_ALLOWED)
-                .body(ApiResult.error(CommonErrorCode.METHOD_NOT_ALLOWED.getCode(), e.getMessage(), traceId));
+                .body(ApiResult.error(
+                        CommonErrorCode.METHOD_NOT_ALLOWED.getCode(),
+                        CommonErrorCode.METHOD_NOT_ALLOWED.getMessageKey(),
+                        CommonErrorCode.METHOD_NOT_ALLOWED.getMessage(),
+                        traceId
+                ));
     }
 
-    // --- Malformed / unreadable request body (400) ---
     @ExceptionHandler(HttpMessageNotReadableException.class)
     public ResponseEntity<ApiResult<?>> handleNotReadable(HttpMessageNotReadableException e) {
         String traceId = newTraceId();
         Throwable root = e.getMostSpecificCause();
-        String message = "invalid.request.format";
+        String messageKey = ErrorMessage.Validation.REQUEST_FORMAT_INVALID_KEY;
+        String message = ErrorMessage.Validation.REQUEST_FORMAT_INVALID.defaultMessage();
+        Object details = null;
 
-        if (root instanceof InvalidFormatException ife) {
-            String field = ife.getPath().stream()
+        if (root instanceof InvalidFormatException invalidFormatException) {
+            String field = invalidFormatException.getPath().stream()
                     .map(JacksonException.Reference::getPropertyName)
                     .collect(Collectors.joining("."));
-            boolean numeric = Number.class.isAssignableFrom(ife.getTargetType()) || ife.getTargetType().isPrimitive();
-            message = numeric
-                    ? "Value out of range for field: " + field
-                    : "Invalid format for field: " + field;
+            boolean numeric = Number.class.isAssignableFrom(invalidFormatException.getTargetType())
+                    || invalidFormatException.getTargetType().isPrimitive();
+            ErrorMessage.Template template = numeric
+                    ? ErrorMessage.Validation.FIELD_RANGE_INVALID
+                    : ErrorMessage.Validation.FIELD_FORMAT_INVALID;
+            messageKey = template.key();
+            message = template.format(field);
+            details = Map.of(field, new ValidationFailure(messageKey, message));
         } else if (root instanceof StreamReadException) {
-            message = "Malformed JSON request";
+            messageKey = ErrorMessage.Validation.JSON_MALFORMED_KEY;
+            message = ErrorMessage.Validation.JSON_MALFORMED.defaultMessage();
         }
 
-        log.warn("Unreadable request [{}]: {}", traceId, root != null ? root.getMessage() : e.getMessage());
+        log.warn("Unreadable request [{}]: {}", traceId, root.getMessage());
         return ResponseEntity.status(BAD_REQUEST)
-                .body(ApiResult.error(CommonErrorCode.INVALID_REQUEST.getCode(), message, traceId));
+                .body(ApiResult.error(
+                        CommonErrorCode.INVALID_REQUEST.getCode(),
+                        messageKey,
+                        message,
+                        traceId,
+                        details
+                ));
     }
 
-    // --- Optimistic locking conflict (409) ---
     @ExceptionHandler(ObjectOptimisticLockingFailureException.class)
     public ResponseEntity<ApiResult<?>> handleOptimisticLocking(ObjectOptimisticLockingFailureException ex) {
         String traceId = newTraceId();
         log.warn("Optimistic locking conflict [{}]: {}", traceId, ex.getMessage());
         return ResponseEntity.status(CommonErrorCode.RESOURCE_CONFLICT.getHttpStatus())
-                .body(ApiResult.error(CommonErrorCode.RESOURCE_CONFLICT.getCode(),
-                        CommonErrorCode.RESOURCE_CONFLICT.getMessage(), traceId));
+                .body(ApiResult.error(
+                        CommonErrorCode.RESOURCE_CONFLICT.getCode(),
+                        CommonErrorCode.RESOURCE_CONFLICT.getMessageKey(),
+                        CommonErrorCode.RESOURCE_CONFLICT.getMessage(),
+                        traceId
+                ));
     }
 
-    // --- Data integrity violation (409) ---
     @ExceptionHandler(DataIntegrityViolationException.class)
     public ResponseEntity<ApiResult<?>> handleDataIntegrity(DataIntegrityViolationException ex) {
         String traceId = newTraceId();
         String rootMsg = ex.getRootCause() != null ? ex.getRootCause().getMessage() : "";
         log.error("{} | Data integrity error [{}]: {}", LogConstant.SYS_ERROR, traceId, rootMsg);
         return ResponseEntity.status(CommonErrorCode.DATA_INTEGRITY_ERROR.getHttpStatus())
-                .body(ApiResult.error(CommonErrorCode.DATA_INTEGRITY_ERROR.getCode(),
-                        CommonErrorCode.DATA_INTEGRITY_ERROR.getMessage(), traceId));
+                .body(ApiResult.error(
+                        CommonErrorCode.DATA_INTEGRITY_ERROR.getCode(),
+                        CommonErrorCode.DATA_INTEGRITY_ERROR.getMessageKey(),
+                        CommonErrorCode.DATA_INTEGRITY_ERROR.getMessage(),
+                        traceId
+                ));
     }
 
-    // --- Catch-all (500) ---
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ApiResult<?>> handleGlobal(Exception e) {
         String traceId = newTraceId();
         log.error("Internal server error [{}]", traceId, e);
         return ResponseEntity.status(INTERNAL_SERVER_ERROR)
-                .body(ApiResult.error(CommonErrorCode.INTERNAL_ERROR.getCode(),
-                        CommonErrorCode.INTERNAL_ERROR.getMessage(), traceId));
+                .body(ApiResult.error(
+                        CommonErrorCode.INTERNAL_ERROR.getCode(),
+                        CommonErrorCode.INTERNAL_ERROR.getMessageKey(),
+                        CommonErrorCode.INTERNAL_ERROR.getMessage(),
+                        traceId
+                ));
+    }
+
+    private ValidationFailure toValidationFailure(String rawMessage) {
+        String messageKey = ErrorMessage.stripBeanValidationBraces(rawMessage);
+        String message = ErrorMessage.defaultMessage(messageKey);
+        if (message.equals(messageKey)) {
+            messageKey = ErrorMessage.Validation.INVALID_INPUT_KEY;
+            message = hasText(rawMessage) ? rawMessage : ErrorMessage.Validation.INVALID_INPUT.defaultMessage();
+        }
+        return new ValidationFailure(messageKey, message);
+    }
+
+    private boolean hasText(String value) {
+        return value != null && !value.isBlank();
     }
 
     private String newTraceId() {
         return UUID.randomUUID().toString();
+    }
+
+    private record ValidationFailure(String messageKey, String message) {
     }
 }

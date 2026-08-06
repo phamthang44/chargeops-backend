@@ -20,7 +20,10 @@ public class TestSecurityConfig {
                 Instant.now(),
                 Instant.now().plusSeconds(300),
                 Map.of("alg", "none"),
-                Map.of("sub", "00000000-0000-0000-0000-000000000000")
+                Map.of(
+                        "sub", "00000000-0000-0000-0000-000000000000",
+                        "email", "test.user@chargeops.local"
+                )
         );
     }
 }

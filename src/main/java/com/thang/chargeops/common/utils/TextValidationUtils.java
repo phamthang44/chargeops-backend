@@ -1,6 +1,7 @@
 package com.thang.chargeops.common.utils;
 
 
+import com.thang.chargeops.exception.errormessage.ErrorMessage;
 import org.springframework.util.StringUtils;
 import java.util.regex.Pattern;
 
@@ -114,33 +115,33 @@ public final class TextValidationUtils {
      */
     public static ValidationResult validateName(String name) {
         if (!StringUtils.hasText(name)) {
-            return ValidationResult.failure("Name cannot be empty");
+            return ValidationResult.failure(ErrorMessage.Validation.NAME_REQUIRED);
         }
 
         String trimmedName = name.trim();
 
         if (trimmedName.length() < 2) {
-            return ValidationResult.failure("Name must be at least 2 characters");
+            return ValidationResult.failure(ErrorMessage.Validation.NAME_MIN_LENGTH);
         }
 
         if (trimmedName.length() > 255) {
-            return ValidationResult.failure("Name cannot exceed 255 characters");
+            return ValidationResult.failure(ErrorMessage.Validation.NAME_MAX_LENGTH);
         }
 
         if (containsHtmlTags(trimmedName)) {
-            return ValidationResult.failure("Name cannot contain HTML tags");
+            return ValidationResult.failure(ErrorMessage.Validation.NAME_HTML_NOT_ALLOWED);
         }
 
         if (containsScriptTags(trimmedName) || containsJavascript(trimmedName)) {
-            return ValidationResult.failure("Name cannot contain script or executable code");
+            return ValidationResult.failure(ErrorMessage.Validation.NAME_SCRIPT_NOT_ALLOWED);
         }
 
         if (containsSqlInjection(trimmedName)) {
-            return ValidationResult.failure("Name contains invalid characters");
+            return ValidationResult.failure(ErrorMessage.Validation.NAME_INVALID_CHARACTERS);
         }
 
         if (!isValidNameFormat(trimmedName)) {
-            return ValidationResult.failure("Name contains invalid characters");
+            return ValidationResult.failure(ErrorMessage.Validation.NAME_INVALID_CHARACTERS);
         }
 
         return ValidationResult.success();
@@ -158,11 +159,11 @@ public final class TextValidationUtils {
         }
 
         if (description.length() > 10000) {
-            return ValidationResult.failure("Description cannot exceed 10000 characters");
+            return ValidationResult.failure(ErrorMessage.Validation.DESCRIPTION_MAX_LENGTH);
         }
 
         if (containsScriptTags(description) || containsJavascript(description)) {
-            return ValidationResult.failure("Description cannot contain script or executable code");
+            return ValidationResult.failure(ErrorMessage.Validation.DESCRIPTION_SCRIPT_NOT_ALLOWED);
         }
 
         return ValidationResult.success();
@@ -208,14 +209,14 @@ public final class TextValidationUtils {
     /**
      * Result class for validation operations.
      */
-    public record ValidationResult(boolean isValid, String errorMessage) {
+    public record ValidationResult(boolean isValid, String messageKey, String errorMessage) {
 
         public static ValidationResult success() {
-            return new ValidationResult(true, null);
+            return new ValidationResult(true, null, null);
         }
 
-        public static ValidationResult failure(String message) {
-            return new ValidationResult(false, message);
+        public static ValidationResult failure(ErrorMessage.Template template) {
+            return new ValidationResult(false, template.key(), template.defaultMessage());
         }
     }
 }

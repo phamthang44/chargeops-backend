@@ -1,8 +1,9 @@
 package com.thang.chargeops.exception.errorcode;
 
+import com.thang.chargeops.exception.errormessage.ErrorMessage;
 import org.springframework.http.HttpStatus;
 
-import java.text.MessageFormat;
+import java.io.Serializable;
 
 /**
  * Contract for application error codes.
@@ -11,9 +12,11 @@ import java.text.MessageFormat;
  * fallback for non-UI consumers. User-facing localization is the <b>frontend's</b>
  * responsibility, keyed by {@link #getCode()} — the backend does not translate.
  */
-public interface BaseErrorCode {
+public interface BaseErrorCode extends Serializable {
 
     String getCode();
+
+    String getMessageKey();
 
     String getMessage();
 
@@ -25,7 +28,7 @@ public interface BaseErrorCode {
             return getMessage();
         }
         try {
-            return MessageFormat.format(getMessage(), args);
+            return ErrorMessage.template(getMessageKey(), getMessage()).format(args);
         } catch (Exception e) {
             return getMessage();
         }

@@ -1,5 +1,6 @@
 package com.thang.chargeops.common.validator;
 
+import com.thang.chargeops.exception.errormessage.ErrorMessage;
 import jakarta.validation.Constraint;
 import jakarta.validation.Payload;
 
@@ -17,7 +18,7 @@ import static java.lang.annotation.RetentionPolicy.RUNTIME;
 public @interface EnumPattern {
     String name();
     String regexp();
-    String message() default "{name} must match {regexp}";
+    String message() default ErrorMessage.Validation.ENUM_PATTERN_INVALID_KEY;
     Class<?>[] groups() default {};
     Class<? extends Payload>[] payload() default {};
 }

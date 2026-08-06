@@ -1,5 +1,7 @@
 package com.thang.chargeops.infra.persistence;
 
+import com.thang.chargeops.profile.entity.UserProfile;
+import com.thang.chargeops.profile.repository.UserProfileRepository;
 import org.springframework.data.domain.AuditorAware;
 import org.springframework.security.authentication.AnonymousAuthenticationToken;
 import org.springframework.security.core.Authentication;
@@ -11,6 +13,12 @@ import java.util.UUID;
 
 public class AuditorAwareImpl implements AuditorAware<UUID> {
 
+    private final UserProfileRepository userProfileRepository;
+
+    public AuditorAwareImpl(UserProfileRepository userProfileRepository) {
+        this.userProfileRepository = userProfileRepository;
+    }
+
     @Override
     public Optional<UUID> getCurrentAuditor() {
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
@@ -21,7 +29,8 @@ public class AuditorAwareImpl implements AuditorAware<UUID> {
         }
 
         if (authentication.getPrincipal() instanceof Jwt jwt) {
-            return parseUuid(jwt.getSubject());
+            return userProfileRepository.findByKeycloakId(jwt.getSubject())
+                    .map(UserProfile::getId);
         }
         return parseUuid(authentication.getName());
     }

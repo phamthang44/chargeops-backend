@@ -2,7 +2,7 @@ package com.thang.chargeops.station.entity;
 
 import com.thang.chargeops.common.entity.SoftDeletableEntity;
 import com.thang.chargeops.common.enums.StationStatus;
-import com.thang.chargeops.profile.UserProfile;
+import com.thang.chargeops.profile.entity.UserProfile;
 import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.SQLDelete;

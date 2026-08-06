@@ -2,7 +2,7 @@ package com.thang.chargeops.booking;
 
 import com.thang.chargeops.common.entity.AuditableEntity;
 import com.thang.chargeops.common.enums.BookingStatus;
-import com.thang.chargeops.profile.UserProfile;
+import com.thang.chargeops.profile.entity.UserProfile;
 import com.thang.chargeops.station.entity.Connector;
 import jakarta.persistence.*;
 import lombok.*;
