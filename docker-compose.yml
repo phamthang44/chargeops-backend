@@ -47,7 +47,7 @@ services:
       KC_HOSTNAME_STRICT: "false"
       KC_PROXY_HEADERS: xforwarded
     volumes:
-      - ../../chargeops-keycloak-theme:/opt/keycloak/themes/chargeops-driver:ro
+      - ../../chargeops-keycloak-theme/themes/chargeops-driver:/opt/keycloak/themes/chargeops-driver:ro
     depends_on:
       postgres:
         condition: service_healthy
