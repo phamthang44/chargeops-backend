@@ -1,0 +1,152 @@
+.co-totp-screen {
+  overflow-y: auto;
+  gap: 0.85rem;
+}
+
+.co-totp-form {
+  gap: 0.85rem;
+  margin-top: 0;
+}
+
+.co-totp-step {
+  padding: 0.9rem;
+  border: 1px solid var(--co-line);
+  border-radius: 14px;
+  background: var(--co-surface);
+}
+
+.co-totp-step-heading {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.7rem;
+}
+
+.co-totp-step-heading h3 {
+  margin: 0;
+  color: var(--co-ink);
+  font-size: 0.9rem;
+  font-weight: 700;
+  line-height: 1.25rem;
+}
+
+.co-totp-step-heading p {
+  margin: 0.2rem 0 0;
+  color: var(--co-muted);
+  font-size: 0.75rem;
+  line-height: 1.05rem;
+}
+
+.co-totp-step-icon {
+  width: 34px;
+  height: 34px;
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+  color: var(--co-primary);
+  background: var(--co-primary-soft);
+}
+
+.co-totp-apps {
+  margin: 0.75rem 0 0 2.9rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.co-totp-apps span {
+  padding: 0.3rem 0.55rem;
+  border-radius: 999px;
+  color: var(--co-body);
+  background: var(--co-surface-alt);
+  font-size: 0.7rem;
+  font-weight: 650;
+}
+
+.co-totp-qr-wrap {
+  width: 172px;
+  height: 172px;
+  margin: 0.85rem auto 0;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--co-line);
+  border-radius: 16px;
+  background: #ffffff;
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.07);
+}
+
+.co-totp-qr {
+  width: 148px;
+  height: 148px;
+  display: block;
+}
+
+.co-totp-mode-link {
+  margin-top: 0.65rem;
+  display: block;
+  text-align: center;
+  font-size: 0.75rem;
+}
+
+.co-totp-secret {
+  margin-top: 0.75rem;
+  padding: 0.75rem;
+  overflow-wrap: anywhere;
+  border: 1px dashed var(--co-primary);
+  border-radius: 10px;
+  color: var(--co-primary-dark);
+  background: var(--co-primary-soft);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.82rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-align: center;
+}
+
+.co-totp-policy {
+  margin: 0.65rem 0 0;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.45rem;
+}
+
+.co-totp-policy div {
+  padding: 0.55rem;
+  border-radius: 9px;
+  background: var(--co-surface-alt);
+}
+
+.co-totp-policy dt {
+  color: var(--co-muted);
+  font-size: 0.65rem;
+}
+
+.co-totp-policy dd {
+  margin: 0.15rem 0 0;
+  color: var(--co-ink);
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.co-totp-step .co-input-group:first-of-type {
+  margin-top: 0.85rem;
+}
+
+.co-totp-step .co-input-group + .co-input-group {
+  margin-top: 0.75rem;
+}
+
+.co-totp-footer {
+  gap: 0.55rem;
+}
+
+@media (max-width: 480px) {
+  .co-totp-apps {
+    margin-left: 0;
+  }
+
+  .co-totp-policy {
+    grid-template-columns: 1fr;
+  }
+}

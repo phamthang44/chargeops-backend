@@ -1,0 +1,34 @@
+{
+  "name": "keycloak-account-console",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@keycloak/keycloak-account-ui": "26.0.8",
+    "@keycloak/keycloak-ui-shared": "26.0.8",
+    "@patternfly/react-core": "^5.4.1",
+    "i18next": "^23.15.1",
+    "i18next-http-backend": "^2.6.1",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-i18next": "^15.0.2",
+    "react-router-dom": "^6.26.2"
+  },
+  "devDependencies": {
+    "@keycloak/keycloak-admin-client": "26.0.8",
+    "@octokit/rest": "^20.1.1",
+    "@types/react": "^18.3.11",
+    "@types/react-dom": "^18.3.0",
+    "@vitejs/plugin-react-swc": "^3.7.0",
+    "gunzip-maybe": "^1.4.2",
+    "tar-fs": "^3.0.6",
+    "typescript": "^5.4.3",
+    "vite": "^5.2.2",
+    "vite-plugin-checker": "^0.6.4"
+  }
+}

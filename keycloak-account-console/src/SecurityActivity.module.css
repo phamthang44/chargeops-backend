@@ -1,0 +1,333 @@
+.activity {
+  margin-top: 58px;
+}
+
+.sectionHeader {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 24px;
+}
+
+.eyebrow {
+  margin-bottom: 9px;
+  color: #0f766e;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+}
+
+.sectionHeader h2 {
+  margin: 0;
+  color: #102a29;
+  font-size: 28px;
+  font-weight: 750;
+  letter-spacing: -0.03em;
+}
+
+.sectionHeader p {
+  max-width: 620px;
+  margin: 8px 0 0;
+  color: #657473;
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+.refreshButton {
+  min-height: 39px;
+  padding: 8px 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  border: 1px solid #c4d4d2;
+  border-radius: 10px;
+  color: #176861;
+  background: #ffffff;
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.refreshButton span {
+  font-size: 18px;
+  line-height: 1;
+}
+
+.notice,
+.error,
+.empty,
+.loading {
+  margin-top: 20px;
+  padding: 14px 16px;
+  border-radius: 12px;
+  font-size: 13px;
+}
+
+.notice {
+  border: 1px solid #b9dfc7;
+  color: #176534;
+  background: #ecfdf3;
+}
+
+.error {
+  border: 1px solid #f0c7c7;
+  color: #8b2727;
+  background: #fff1f1;
+}
+
+.empty,
+.loading {
+  border: 1px solid #dbe5e4;
+  color: #657473;
+  background: rgba(255, 255, 255, 0.8);
+}
+
+.loading {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.loading span {
+  width: 17px;
+  height: 17px;
+  border: 2px solid #c5d7d5;
+  border-top-color: #0f766e;
+  border-radius: 50%;
+  animation: spin 700ms linear infinite;
+}
+
+.sessionList {
+  margin-top: 20px;
+  display: grid;
+  gap: 13px;
+}
+
+.sessionCard {
+  padding: 22px;
+  display: grid;
+  grid-template-columns: 48px minmax(0, 1fr);
+  gap: 17px;
+  border: 1px solid #dbe5e4;
+  border-radius: 17px;
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 10px 35px rgba(30, 57, 55, 0.05);
+}
+
+.deviceIcon {
+  width: 48px;
+  height: 48px;
+  display: grid;
+  place-items: center;
+  border-radius: 14px;
+  color: #0f766e;
+  background: #e6f5f2;
+}
+
+.deviceIcon svg {
+  width: 24px;
+  height: 24px;
+}
+
+.sessionHeading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.sessionHeading h3 {
+  margin: 1px 0 0;
+  color: #213c3a;
+  font-size: 16px;
+  font-weight: 720;
+}
+
+.deviceType {
+  margin-top: 4px;
+  display: block;
+  color: #778482;
+  font-size: 12px;
+}
+
+.currentBadge {
+  padding: 5px 9px;
+  flex: 0 0 auto;
+  border-radius: 999px;
+  color: #166534;
+  background: #dcfce7;
+  font-size: 11px;
+  font-weight: 750;
+}
+
+.signOutButton {
+  padding: 7px 10px;
+  flex: 0 0 auto;
+  border: 1px solid #efc9c9;
+  border-radius: 9px;
+  color: #a33434;
+  background: #ffffff;
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.sessionDetails {
+  margin: 18px 0 0;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px 20px;
+}
+
+.sessionDetails div {
+  min-width: 0;
+}
+
+.sessionDetails dt {
+  color: #82908f;
+  font-size: 10px;
+  font-weight: 750;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.sessionDetails dd {
+  margin: 4px 0 0;
+  overflow-wrap: anywhere;
+  color: #3d5250;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.clientsDetail {
+  grid-column: 1 / -1;
+}
+
+.modalBackdrop {
+  position: fixed;
+  z-index: 1000;
+  inset: 0;
+  padding: 20px;
+  display: grid;
+  place-items: center;
+  background: rgba(8, 26, 25, 0.48);
+  backdrop-filter: blur(4px);
+}
+
+.modal {
+  width: min(420px, 100%);
+  padding: 26px;
+  border-radius: 18px;
+  background: #ffffff;
+  box-shadow: 0 24px 70px rgba(8, 26, 25, 0.26);
+  text-align: center;
+}
+
+.modalIcon {
+  width: 46px;
+  height: 46px;
+  margin: 0 auto;
+  display: grid;
+  place-items: center;
+  border-radius: 14px;
+  color: #a33434;
+  background: #fff0f0;
+  font-size: 22px;
+  font-weight: 800;
+}
+
+.modal h3 {
+  margin: 17px 0 0;
+  color: #1d3533;
+  font-size: 20px;
+}
+
+.modal p {
+  margin: 9px 0 0;
+  color: #687775;
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+.modalActions {
+  margin-top: 22px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.cancelButton,
+.confirmButton {
+  min-height: 42px;
+  border-radius: 10px;
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.cancelButton {
+  border: 1px solid #ccd9d7;
+  color: #425a58;
+  background: #ffffff;
+}
+
+.confirmButton {
+  border: 1px solid #b73b3b;
+  color: #ffffff;
+  background: #b73b3b;
+}
+
+.cancelButton:disabled,
+.confirmButton:disabled {
+  cursor: wait;
+  opacity: 0.6;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+@media (max-width: 760px) {
+  .sectionHeader {
+    align-items: flex-start;
+  }
+
+  .sessionDetails {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 540px) {
+  .activity {
+    margin-top: 44px;
+  }
+
+  .sectionHeader {
+    display: grid;
+  }
+
+  .refreshButton {
+    justify-self: start;
+  }
+
+  .sessionCard {
+    padding: 18px;
+    grid-template-columns: 1fr;
+  }
+
+  .sessionHeading {
+    align-items: center;
+  }
+
+  .sessionDetails {
+    grid-template-columns: 1fr;
+  }
+
+  .clientsDetail {
+    grid-column: auto;
+  }
+}

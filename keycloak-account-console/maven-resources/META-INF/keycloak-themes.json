@@ -1,0 +1,16 @@
+{
+  "themes": [
+    {
+      "name": "chargeops-account",
+      "types": [
+        "account"
+      ]
+    },
+    {
+      "name": "chargeops-security",
+      "types": [
+        "login"
+      ]
+    }
+  ]
+}

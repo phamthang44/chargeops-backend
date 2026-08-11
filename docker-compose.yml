@@ -32,7 +32,10 @@ services:
       retries: 5
 
   keycloak:
-    image: quay.io/keycloak/keycloak:26.0
+    build:
+      context: ./keycloak-account-console
+      dockerfile: Dockerfile
+    image: chargeops/keycloak:26.0.8
     command: start-dev --spi-theme-cache-themes=false --spi-theme-cache-templates=false --spi-theme-static-max-age=-1
     ports:
       - "8080:8080"
@@ -52,7 +55,9 @@ services:
       postgres:
         condition: service_healthy
     healthcheck:
-      test: [ "CMD-SHELL", "curl -f http://localhost:8080/health/ready || exit 1" ]
+      # Keycloak's minimal image does not ship curl. The HTTP listener opens only
+      # after Quarkus has completed startup, so a shell TCP probe is sufficient.
+      test: [ "CMD-SHELL", "exec 3<>/dev/tcp/127.0.0.1/8080" ]
       interval: 10s
       timeout: 5s
       retries: 10
