@@ -1,6 +1,8 @@
 package com.thang.chargeops.infra.security;
 
 import com.thang.chargeops.common.constant.SecurityConstants;
+import com.thang.chargeops.infra.persistence.CurrentActorContext;
+import com.thang.chargeops.profile.repository.UserProfileRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
@@ -15,6 +17,7 @@ import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
+import org.springframework.security.oauth2.server.resource.web.authentication.BearerTokenAuthenticationFilter;
 import org.springframework.security.web.SecurityFilterChain;
 
 /**
@@ -35,6 +38,8 @@ public class SecurityConfig {
     private final JwtRoleConverter jwtRoleConverter;
     private final RestAuthenticationEntryPoint authenticationEntryPoint;
     private final RestAccessDeniedHandler accessDeniedHandler;
+    private final UserProfileRepository userProfileRepository;
+    private final CurrentActorContext currentActorContext;
 
     @Value("${spring.security.oauth2.resourceserver.jwt.issuer-uri}")
     private String issuerUri;
@@ -50,6 +55,10 @@ public class SecurityConfig {
                         .anyRequest().authenticated())
                 .oauth2ResourceServer(oauth -> oauth
                         .jwt(jwt -> jwt.jwtAuthenticationConverter(jwtAuthenticationConverter())))
+                .addFilterAfter(
+                        new CurrentActorFilter(userProfileRepository, currentActorContext),
+                        BearerTokenAuthenticationFilter.class
+                )
                 .exceptionHandling(ex -> ex
                         .authenticationEntryPoint(authenticationEntryPoint)
                         .accessDeniedHandler(accessDeniedHandler));

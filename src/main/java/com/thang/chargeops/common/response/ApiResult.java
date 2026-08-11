@@ -2,7 +2,7 @@ package com.thang.chargeops.common.response;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 
-import com.thang.chargeops.exception.errormessage.ErrorMessage;
+import com.thang.chargeops.exception.errormessage.CommonErrorMessage;
 import com.thang.chargeops.exception.errorcode.BaseErrorCode;
 import lombok.Builder;
 import lombok.Getter;
@@ -327,7 +327,7 @@ public class ApiResult<T> {
      * @param args      optional values substituted into the message's {@code {0}, {1}, ...} placeholders
      */
     public static ApiResult<?> error(BaseErrorCode errorCode, Object... args) {
-        String message = errorCode != null ? errorCode.format(args) : ErrorMessage.Common.UNKNOWN_ERROR.defaultMessage();
+        String message = errorCode != null ? errorCode.format(args) : CommonErrorMessage.UNKNOWN_ERROR.defaultMessage();
         String code = errorCode != null ? errorCode.getCode() : "UNKNOWN_ERROR";
         String messageKey = errorCode != null ? errorCode.getMessageKey() : null;
         String traceId = java.util.UUID.randomUUID().toString();

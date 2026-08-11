@@ -2,6 +2,7 @@ package com.thang.chargeops.common.utils;
 
 
 import com.thang.chargeops.exception.errormessage.ErrorMessage;
+import com.thang.chargeops.exception.errormessage.ValidationErrorMessage;
 import org.springframework.util.StringUtils;
 import java.util.regex.Pattern;
 
@@ -115,33 +116,33 @@ public final class TextValidationUtils {
      */
     public static ValidationResult validateName(String name) {
         if (!StringUtils.hasText(name)) {
-            return ValidationResult.failure(ErrorMessage.Validation.NAME_REQUIRED);
+            return ValidationResult.failure(ValidationErrorMessage.NAME_REQUIRED);
         }
 
         String trimmedName = name.trim();
 
         if (trimmedName.length() < 2) {
-            return ValidationResult.failure(ErrorMessage.Validation.NAME_MIN_LENGTH);
+            return ValidationResult.failure(ValidationErrorMessage.NAME_MIN_LENGTH);
         }
 
         if (trimmedName.length() > 255) {
-            return ValidationResult.failure(ErrorMessage.Validation.NAME_MAX_LENGTH);
+            return ValidationResult.failure(ValidationErrorMessage.NAME_MAX_LENGTH);
         }
 
         if (containsHtmlTags(trimmedName)) {
-            return ValidationResult.failure(ErrorMessage.Validation.NAME_HTML_NOT_ALLOWED);
+            return ValidationResult.failure(ValidationErrorMessage.NAME_HTML_NOT_ALLOWED);
         }
 
         if (containsScriptTags(trimmedName) || containsJavascript(trimmedName)) {
-            return ValidationResult.failure(ErrorMessage.Validation.NAME_SCRIPT_NOT_ALLOWED);
+            return ValidationResult.failure(ValidationErrorMessage.NAME_SCRIPT_NOT_ALLOWED);
         }
 
         if (containsSqlInjection(trimmedName)) {
-            return ValidationResult.failure(ErrorMessage.Validation.NAME_INVALID_CHARACTERS);
+            return ValidationResult.failure(ValidationErrorMessage.NAME_INVALID_CHARACTERS);
         }
 
         if (!isValidNameFormat(trimmedName)) {
-            return ValidationResult.failure(ErrorMessage.Validation.NAME_INVALID_CHARACTERS);
+            return ValidationResult.failure(ValidationErrorMessage.NAME_INVALID_CHARACTERS);
         }
 
         return ValidationResult.success();
@@ -159,11 +160,11 @@ public final class TextValidationUtils {
         }
 
         if (description.length() > 10000) {
-            return ValidationResult.failure(ErrorMessage.Validation.DESCRIPTION_MAX_LENGTH);
+            return ValidationResult.failure(ValidationErrorMessage.DESCRIPTION_MAX_LENGTH);
         }
 
         if (containsScriptTags(description) || containsJavascript(description)) {
-            return ValidationResult.failure(ErrorMessage.Validation.DESCRIPTION_SCRIPT_NOT_ALLOWED);
+            return ValidationResult.failure(ValidationErrorMessage.DESCRIPTION_SCRIPT_NOT_ALLOWED);
         }
 
         return ValidationResult.success();

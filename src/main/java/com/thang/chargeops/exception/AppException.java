@@ -1,6 +1,6 @@
 package com.thang.chargeops.exception;
 
-import com.thang.chargeops.exception.errormessage.ErrorMessage;
+import com.thang.chargeops.exception.errormessage.CommonErrorMessage;
 import com.thang.chargeops.exception.errorcode.BaseErrorCode;
 import com.thang.chargeops.exception.errorcode.CommonErrorCode;
 import lombok.Getter;
@@ -24,7 +24,7 @@ public class AppException extends RuntimeException {
 
     private static String resolveMessage(BaseErrorCode errorCode, Object... args) {
         if (errorCode == null) {
-            return ErrorMessage.Common.UNKNOWN_ERROR.defaultMessage();
+            return CommonErrorMessage.UNKNOWN_ERROR.defaultMessage();
         }
         return errorCode.format(args);
     }

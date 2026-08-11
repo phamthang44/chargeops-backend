@@ -18,7 +18,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 @RequiredArgsConstructor
-@RequestMapping(SystemConstant.API_URL_PATTERN + "/me")
+@RequestMapping(SystemConstant.API_URL_PATTERN + "me/profile")
 public class UserProfileController {
 
     private final UserProfileService userProfileService;

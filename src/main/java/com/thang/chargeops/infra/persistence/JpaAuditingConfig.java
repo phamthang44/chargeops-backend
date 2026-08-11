@@ -1,6 +1,5 @@
 package com.thang.chargeops.infra.persistence;
 
-import com.thang.chargeops.profile.repository.UserProfileRepository;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.data.domain.AuditorAware;
@@ -13,7 +12,7 @@ import java.util.UUID;
 public class JpaAuditingConfig {
 
     @Bean
-    public AuditorAware<UUID> auditorProvider(UserProfileRepository userProfileRepository) {
-        return new AuditorAwareImpl(userProfileRepository);
+    public AuditorAware<UUID> auditorProvider(CurrentActorContext currentActorContext) {
+        return new AuditorAwareImpl(currentActorContext);
     }
 }

@@ -3,6 +3,7 @@ package com.thang.chargeops.exception;
 import com.thang.chargeops.common.constant.LogConstant;
 import com.thang.chargeops.common.response.ApiResult;
 import com.thang.chargeops.exception.errormessage.ErrorMessage;
+import com.thang.chargeops.exception.errormessage.ValidationErrorMessage;
 import com.thang.chargeops.exception.errorcode.AuthErrorCode;
 import com.thang.chargeops.exception.errorcode.BaseErrorCode;
 import com.thang.chargeops.exception.errorcode.CommonErrorCode;
@@ -59,8 +60,8 @@ public class GlobalHandlerError {
     })
     public ResponseEntity<ApiResult<?>> handleValidationException(Exception e) {
         String traceId = newTraceId();
-        String messageKey = ErrorMessage.Validation.FAILED_KEY;
-        String message = ErrorMessage.Validation.FAILED.defaultMessage();
+        String messageKey = ValidationErrorMessage.FAILED_KEY;
+        String message = ValidationErrorMessage.FAILED.defaultMessage();
         Object details = null;
 
         if (e instanceof MethodArgumentNotValidException ex) {
@@ -77,12 +78,12 @@ public class GlobalHandlerError {
                             violation -> toValidationFailure(violation.getMessage()),
                             (left, right) -> left));
         } else if (e instanceof MissingServletRequestParameterException ex) {
-            messageKey = ErrorMessage.Validation.REQUIRED_PARAMETER_KEY;
-            message = ErrorMessage.Validation.REQUIRED_PARAMETER.format(ex.getParameterName());
+            messageKey = ValidationErrorMessage.REQUIRED_PARAMETER_KEY;
+            message = ValidationErrorMessage.REQUIRED_PARAMETER.format(ex.getParameterName());
             details = Map.of(ex.getParameterName(), new ValidationFailure(messageKey, message));
         } else if (e instanceof IllegalArgumentException ex) {
-            messageKey = ErrorMessage.Validation.INVALID_INPUT_KEY;
-            message = hasText(ex.getMessage()) ? ex.getMessage() : ErrorMessage.Validation.INVALID_INPUT.defaultMessage();
+            messageKey = ValidationErrorMessage.INVALID_INPUT_KEY;
+            message = hasText(ex.getMessage()) ? ex.getMessage() : ValidationErrorMessage.INVALID_INPUT.defaultMessage();
         }
 
         log.warn("Validation error [{}]: {}", traceId, e.getMessage());
@@ -137,8 +138,8 @@ public class GlobalHandlerError {
     public ResponseEntity<ApiResult<?>> handleNotReadable(HttpMessageNotReadableException e) {
         String traceId = newTraceId();
         Throwable root = e.getMostSpecificCause();
-        String messageKey = ErrorMessage.Validation.REQUEST_FORMAT_INVALID_KEY;
-        String message = ErrorMessage.Validation.REQUEST_FORMAT_INVALID.defaultMessage();
+        String messageKey = ValidationErrorMessage.REQUEST_FORMAT_INVALID_KEY;
+        String message = ValidationErrorMessage.REQUEST_FORMAT_INVALID.defaultMessage();
         Object details = null;
 
         if (root instanceof InvalidFormatException invalidFormatException) {
@@ -148,14 +149,14 @@ public class GlobalHandlerError {
             boolean numeric = Number.class.isAssignableFrom(invalidFormatException.getTargetType())
                     || invalidFormatException.getTargetType().isPrimitive();
             ErrorMessage.Template template = numeric
-                    ? ErrorMessage.Validation.FIELD_RANGE_INVALID
-                    : ErrorMessage.Validation.FIELD_FORMAT_INVALID;
+                    ? ValidationErrorMessage.FIELD_RANGE_INVALID
+                    : ValidationErrorMessage.FIELD_FORMAT_INVALID;
             messageKey = template.key();
             message = template.format(field);
             details = Map.of(field, new ValidationFailure(messageKey, message));
         } else if (root instanceof StreamReadException) {
-            messageKey = ErrorMessage.Validation.JSON_MALFORMED_KEY;
-            message = ErrorMessage.Validation.JSON_MALFORMED.defaultMessage();
+            messageKey = ValidationErrorMessage.JSON_MALFORMED_KEY;
+            message = ValidationErrorMessage.JSON_MALFORMED.defaultMessage();
         }
 
         log.warn("Unreadable request [{}]: {}", traceId, root.getMessage());
@@ -213,8 +214,8 @@ public class GlobalHandlerError {
         String messageKey = ErrorMessage.stripBeanValidationBraces(rawMessage);
         String message = ErrorMessage.defaultMessage(messageKey);
         if (message.equals(messageKey)) {
-            messageKey = ErrorMessage.Validation.INVALID_INPUT_KEY;
-            message = hasText(rawMessage) ? rawMessage : ErrorMessage.Validation.INVALID_INPUT.defaultMessage();
+            messageKey = ValidationErrorMessage.INVALID_INPUT_KEY;
+            message = hasText(rawMessage) ? rawMessage : ValidationErrorMessage.INVALID_INPUT.defaultMessage();
         }
         return new ValidationFailure(messageKey, message);
     }
