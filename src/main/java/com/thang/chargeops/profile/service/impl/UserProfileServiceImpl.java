@@ -1,8 +1,8 @@
 package com.thang.chargeops.profile.service.impl;
 
 import com.thang.chargeops.exception.AppException;
-import com.thang.chargeops.exception.errorcode.AuthErrorCode;
 import com.thang.chargeops.exception.errorcode.ProfileErrorCode;
+import com.thang.chargeops.infra.security.JwtClaimExtractor;
 import com.thang.chargeops.profile.dto.UserProfileResponse;
 import com.thang.chargeops.profile.dto.UserProfileUpdateRequest;
 import com.thang.chargeops.profile.entity.UserProfile;
@@ -17,19 +17,16 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.sql.SQLException;
-import java.util.regex.Pattern;
+import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
 @Slf4j
 public class UserProfileServiceImpl implements UserProfileService {
 
-    private static final String EMAIL_CLAIM = "email";
-    private static final String NAME_CLAIM = "name";
-    private static final String PREFERRED_USERNAME_CLAIM = "preferred_username";
     private static final String UNIQUE_VIOLATION_SQL_STATE = "23505";
-    private static final Pattern EMAIL_PATTERN = Pattern.compile("^(.+)@(\\S+)$");
 
+    private final JwtClaimExtractor jwtClaimExtractor;
     private final UserProfileRepository userProfileRepository;
     private final UserProfileMapper userProfileMapper;
 
@@ -52,10 +49,17 @@ public class UserProfileServiceImpl implements UserProfileService {
         return userProfileMapper.toResponse(profile);
     }
 
+    @Override
+    public UserProfile getUserProfileById(UUID id) {
+        return userProfileRepository.findById(id).orElseThrow(
+                () -> new AppException(ProfileErrorCode.PROFILE_NOT_FOUND)
+        );
+    }
+
     private UserProfile findOrCreateFromJwt(Jwt jwt) {
-        String keycloakId = getRequiredKeycloakId(jwt);
-        String email = getEmailFromJwt(jwt);
-        String displayName = getDisplayNameFromJwt(jwt);
+        String keycloakId = jwtClaimExtractor.requireSubject(jwt);
+        String email = jwtClaimExtractor.requireEmail(jwt);
+        String displayName = jwtClaimExtractor.getDisplayName(jwt);
 
         return userProfileRepository.findByKeycloakId(keycloakId)
                 .map(profile -> syncProfileFromJwt(profile, email, displayName))
@@ -114,43 +118,6 @@ public class UserProfileServiceImpl implements UserProfileService {
             current = current.getCause();
         }
         return false;
-    }
-
-    private String getRequiredKeycloakId(Jwt jwt) {
-        String keycloakId = jwt.getSubject();
-        if (!hasText(keycloakId)) {
-            throw new AppException(AuthErrorCode.TOKEN_INVALID);
-        }
-        return keycloakId;
-    }
-
-    private String getEmailFromJwt(Jwt jwt) {
-        String email = jwt.getClaimAsString(EMAIL_CLAIM);
-        if (isEmail(email)) {
-            return email;
-        }
-
-        String preferredUsername = jwt.getClaimAsString(PREFERRED_USERNAME_CLAIM);
-        if (isEmail(preferredUsername)) {
-            return preferredUsername;
-        }
-        throw new AppException(AuthErrorCode.EMAIL_CLAIM_MISSING);
-    }
-
-    private String getDisplayNameFromJwt(Jwt jwt) {
-        String name = jwt.getClaimAsString(NAME_CLAIM);
-        if (hasText(name)) {
-            return name;
-        }
-
-        String preferredUsername = jwt.getClaimAsString(PREFERRED_USERNAME_CLAIM);
-        return hasText(preferredUsername) && !isEmail(preferredUsername)
-                ? preferredUsername
-                : null;
-    }
-
-    private boolean isEmail(String value) {
-        return hasText(value) && EMAIL_PATTERN.matcher(value).matches();
     }
 
     private boolean hasText(String value) {

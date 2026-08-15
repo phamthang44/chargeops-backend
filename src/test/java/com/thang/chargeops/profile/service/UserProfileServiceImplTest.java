@@ -4,6 +4,7 @@ import com.thang.chargeops.common.enums.UserStatus;
 import com.thang.chargeops.exception.AppException;
 import com.thang.chargeops.exception.errorcode.AuthErrorCode;
 import com.thang.chargeops.exception.errorcode.ProfileErrorCode;
+import com.thang.chargeops.infra.security.JwtClaimExtractor;
 import com.thang.chargeops.profile.dto.UserProfileResponse;
 import com.thang.chargeops.profile.dto.UserProfileUpdateRequest;
 import com.thang.chargeops.profile.entity.UserProfile;
@@ -45,7 +46,11 @@ class UserProfileServiceImplTest {
 
     @BeforeEach
     void setUp() {
-        userProfileService = new UserProfileServiceImpl(userProfileRepository, userProfileMapper);
+        userProfileService = new UserProfileServiceImpl(
+                new JwtClaimExtractor(),
+                userProfileRepository,
+                userProfileMapper
+        );
     }
 
     @Test
