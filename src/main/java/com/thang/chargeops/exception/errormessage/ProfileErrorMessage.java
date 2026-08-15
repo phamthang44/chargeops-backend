@@ -20,7 +20,12 @@ public final class ProfileErrorMessage {
             template(PHONE_MAX_LENGTH_KEY, "Phone number cannot exceed 20 characters");
     public static final ErrorMessage.Template EMAIL_ALREADY_LINKED =
             template("error.profile.emailAlreadyLinked", "Email is already linked to another profile");
-    public static final ErrorMessage.Template PROFILE_BOOTSTRAP_FAILED = template("error.profile.profileBootstrapFailed", "Bootstrap failed");
+    public static final ErrorMessage.Template PROFILE_BOOTSTRAP_FAILED =
+            template("error.profile.profileBootstrapFailed", "Bootstrap failed");
+    public static final ErrorMessage.Template PROFILE_NOT_FOUND =
+            template("error.profile.notFound", "Profile not found");
+    public static final ErrorMessage.Template PROFILE_NOT_ACTIVE =
+            template("error.profile.notActive", "Profile is not active");
 
     private ProfileErrorMessage() {
     }
@@ -31,7 +36,10 @@ public final class ProfileErrorMessage {
                 DISPLAY_NAME_MAX_LENGTH,
                 PHONE_REQUIRED,
                 PHONE_MAX_LENGTH,
-                EMAIL_ALREADY_LINKED
+                EMAIL_ALREADY_LINKED,
+                PROFILE_BOOTSTRAP_FAILED,
+                PROFILE_NOT_FOUND,
+                PROFILE_NOT_ACTIVE
         );
     }
 }

@@ -67,7 +67,9 @@ public final class ErrorMessage {
                         CommonErrorMessage.templates(),
                         AuthErrorMessage.templates(),
                         ValidationErrorMessage.templates(),
-                        ProfileErrorMessage.templates()
+                        ProfileErrorMessage.templates(),
+                        StationErrorMessage.templates(),
+                        ApprovalErrorMessage.templates()
                 )
                 .flatMap(List::stream)
                 .collect(toUnmodifiableMap(Template::key, Function.identity()));

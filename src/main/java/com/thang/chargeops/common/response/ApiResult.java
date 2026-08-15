@@ -79,7 +79,7 @@ public class ApiResult<T> {
         private Boolean hasNextPage;
 
         // --- Offset pagination (admin tables) ---
-        /** Zero-based page index. */
+        /** One-based page number exposed to API clients. */
         private Integer page;
         /** Page size. */
         private Integer size;
@@ -209,7 +209,7 @@ public class ApiResult<T> {
      * @param page the Spring Data page
      */
     public static <T> ApiResult<List<T>> successPage(Page<T> page) {
-        return success(page.getContent(), page.getNumber(), page.getSize(), page.getTotalElements());
+        return success(page.getContent(), page.getNumber() + 1, page.getSize(), page.getTotalElements());
     }
 
     /**
@@ -223,7 +223,7 @@ public class ApiResult<T> {
                 .data(page.getContent())
                 .meta(Meta.builder()
                         .message(message)
-                        .page(page.getNumber())
+                        .page(page.getNumber() + 1)
                         .size(page.getSize())
                         .totalElements(page.getTotalElements())
                         .totalPages(page.getTotalPages())
@@ -246,7 +246,7 @@ public class ApiResult<T> {
         return ApiResult.<List<R>>builder()
                 .data(content)
                 .meta(Meta.builder()
-                        .page(pageInfo.getNumber())
+                        .page(pageInfo.getNumber() + 1)
                         .size(pageInfo.getSize())
                         .totalElements(pageInfo.getTotalElements())
                         .totalPages(pageInfo.getTotalPages())
