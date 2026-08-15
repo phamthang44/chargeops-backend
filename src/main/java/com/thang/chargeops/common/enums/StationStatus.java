@@ -4,5 +4,6 @@ public enum StationStatus {
     PENDING_APPROVAL,
     ACTIVE,
     REJECTED,
-    SUSPENDED
+    SUSPENDED,
+    WITHDRAWN
 }
