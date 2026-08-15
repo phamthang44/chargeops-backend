@@ -33,7 +33,7 @@ services:
 
   keycloak:
     build:
-      context: ./keycloak-account-console
+      context: ../../chargeops-frontend/chargeops-keycloak/account-console
       dockerfile: Dockerfile
     image: chargeops/keycloak:26.0.8
     command: start-dev --spi-theme-cache-themes=false --spi-theme-cache-templates=false --spi-theme-static-max-age=-1
@@ -50,7 +50,7 @@ services:
       KC_HOSTNAME_STRICT: "false"
       KC_PROXY_HEADERS: xforwarded
     volumes:
-      - ../../chargeops-keycloak-theme/themes/chargeops-driver:/opt/keycloak/themes/chargeops-driver:ro
+      - ../../chargeops-frontend/chargeops-keycloak/themes/chargeops-driver:/opt/keycloak/themes/chargeops-driver:ro
     depends_on:
       postgres:
         condition: service_healthy
