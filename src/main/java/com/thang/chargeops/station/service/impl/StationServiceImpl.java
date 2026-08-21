@@ -168,6 +168,12 @@ public class StationServiceImpl implements StationService {
         return stations.map(stationMapper::toStationApprovalSummaryResponse);
     }
 
+    @Override
+    public Station getStationById(UUID stationId) {
+        return stationRepository.findApprovalDetailById(stationId)
+                .orElseThrow(() -> new AppException(StationErrorCode.STATION_NOT_FOUND, stationId));
+    }
+
     private Pageable getPageable(int pageNo, int pageSize) {
         return PageRequest.of(pageNo - 1, pageSize, Sort.by(Sort.Direction.DESC, "createdAt"));
     }

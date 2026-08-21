@@ -6,6 +6,7 @@ import com.thang.chargeops.station.dto.station.response.OwnerStationSummaryRespo
 import com.thang.chargeops.station.dto.station.response.StationApprovalDetailResponse;
 import com.thang.chargeops.station.dto.station.response.StationApprovalSummaryResponse;
 import com.thang.chargeops.station.dto.station.response.StationCreatedResponse;
+import com.thang.chargeops.station.entity.Station;
 import org.springframework.data.domain.Page;
 
 import java.util.UUID;
@@ -23,5 +24,7 @@ public interface StationService {
     Page<OwnerStationSummaryResponse> getMyStations(int pageNo, int pageSize);
 
     Page<StationApprovalSummaryResponse> getStationApprovals(int pageNo, int pageSize);
+
+    Station getStationById(UUID stationId);
 
 }
