@@ -1,6 +1,7 @@
 package com.thang.chargeops.station.mapper;
 
 import com.thang.chargeops.profile.entity.UserProfile;
+import com.thang.chargeops.station.dto.license.response.LicenseSummaryResponse;
 import com.thang.chargeops.station.dto.station.request.RegisterStationRequest;
 import com.thang.chargeops.station.dto.station.response.*;
 import com.thang.chargeops.station.entity.Station;

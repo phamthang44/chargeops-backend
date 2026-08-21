@@ -12,6 +12,13 @@ import org.springframework.stereotype.Component;
 
 import java.time.Instant;
 
+/** Chốt về active license nghĩa là gì ?
+ *  effective active =
+ *  status == ACTIVE
+ *  AND current time vẫn nằm trong thời hạn license
+ * <p>
+// *  Tức là license có status ACTIVE nhưng expiresAt đã qua thì về business nó phải được coi là không còn hiệu lực, kể cả scheduler chưa kịp đổi status sang EXPIRED.
+ * */
 @Component
 @RequiredArgsConstructor
 public class StationApprovalPolicyImpl implements StationApprovalPolicy {
@@ -32,30 +39,6 @@ public class StationApprovalPolicyImpl implements StationApprovalPolicy {
             throw new AppException(ApprovalErrorCode.ACTIVE_LICENSE_REQUIRED, station.getId());
         }
     }
-
-//    private void requireReasonWhenNeeded(StationStatusEventType eventType, String reason) {
-//        if (!eventType.isReasonRequired() || hasText(reason)) {
-//            return;
-//        }
-//
-//        if (eventType == StationStatusEventType.REJECTED) {
-//            throw new AppException(ApprovalErrorCode.REJECTION_REASON_REQUIRED);
-//        }
-//
-//        throw new AppException(StationErrorCode.STATION_SUSPENSION_REASON_REQUIRED);
-//    }
-//
-//    private boolean hasText(String value) {
-//        return value != null && !value.isBlank();
-//    }
-//
-//    private String requireValidRejectionReason(String reason) {
-//        if (reason == null || reason.isBlank()) {
-//            throw new AppException(ApprovalErrorCode.REJECTION_REASON_REQUIRED);
-//        }
-//
-//        return reason.trim();
-//    }
 
     @Override
     public void requireCanBeRejected(Station station, String reason) {

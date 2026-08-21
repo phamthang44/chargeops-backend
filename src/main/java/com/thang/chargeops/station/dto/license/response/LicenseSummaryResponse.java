@@ -1,4 +1,4 @@
-package com.thang.chargeops.station.dto.station.response;
+package com.thang.chargeops.station.dto.license.response;
 
 import com.thang.chargeops.common.enums.Plan;
 

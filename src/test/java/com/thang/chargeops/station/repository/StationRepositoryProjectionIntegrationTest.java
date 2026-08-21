@@ -121,8 +121,8 @@ class StationRepositoryProjectionIntegrationTest {
                 """
                         INSERT INTO licenses
                             (id, station_id, owner_id, plan, fee_amount, start_at, expires_at,
-                             status, created_at, updated_at)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                             status, license_code, version, created_at, updated_at)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         """,
                 UUID.randomUUID(),
                 stationId,
@@ -132,6 +132,8 @@ class StationRepositoryProjectionIntegrationTest {
                 Timestamp.from(at.minusSeconds(60)),
                 Timestamp.from(expiresAt),
                 "ACTIVE",
+                "LIC-TEST-0001",
+                0L,
                 Timestamp.from(submittedAt),
                 Timestamp.from(submittedAt)
         );
