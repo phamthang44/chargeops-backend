@@ -31,7 +31,7 @@ public interface LicenseMapper {
     List<AdminLicenseListItemResponse> toListItemResponseList(List<License> licenses);
 
     // 3. Map sang DetailResponse dùng cho Detail Drawer bên frontend
-    @Mapping(target = "licenseId", source = "license.id")
+    @Mapping(target = "id", source = "license.id")
     @Mapping(target = "stationId", source = "license.station.id")
     @Mapping(target = "stationCode", source = "license.station.stationCode")
     @Mapping(target = "stationName", source = "license.station.name")
@@ -54,6 +54,18 @@ public interface LicenseMapper {
     @Mapping(target = "stationId", source = "station.id")
     @Mapping(target = "renewedFromLicenseId", source = "renewedFrom.id")
     RenewLicenseResponse toRenewLicenseResponse(License license);
+
+    // Map sang Owner license response
+    @Mapping(target = "stationId", source = "station.id")
+    @Mapping(target = "stationName", source = "station.name")
+    @Mapping(target = "stationCode", source = "station.stationCode")
+    @Mapping(target = "ownerId", source = "owner.id")
+    @Mapping(target = "daysLeft", expression = "java(license.calculateDaysLeft())")
+    @Mapping(target = "isExpiringSoon", expression = "java(license.isExpiringSoon())")
+    @Mapping(target = "histories", ignore = true)
+    OwnerLicenseResponse toOwnerLicenseResponse(License license);
+
+    List<OwnerLicenseHistoryResponse> toOwnerLicenseHistoryResponseList(List<License> licenses);
 
     //  --- Presentation Formatting Helpers ---
     default String resolveOwnerName(UserProfile owner) {

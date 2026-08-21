@@ -35,7 +35,7 @@ public class LicenseStatusEventServiceImpl implements LicenseStatusEventService 
     @Transactional(readOnly = true)
     public List<LicenseStatusEventResponse> getLicenseStatusEvents(UUID licenseId) {
         List<LicenseStatusEvent> results = licenseStatusEventRepository
-                .findAllByLicenseId(licenseId, Sort.by(Sort.Direction.DESC, "performedAt"));
+                .findAllByLicenseId(licenseId, Sort.by(Sort.Direction.ASC, "performedAt").and(Sort.by(Sort.Direction.ASC, "id")));
 
         return licenseMapper.toStatusEventResponseList(results);
     }

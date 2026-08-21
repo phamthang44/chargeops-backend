@@ -1,11 +1,9 @@
 package com.thang.chargeops.station.service;
 
+import com.thang.chargeops.station.dto.station.filter.StationFilter;
 import com.thang.chargeops.station.dto.station.request.RegisterStationRequest;
 import com.thang.chargeops.station.dto.station.request.RejectStationRequest;
-import com.thang.chargeops.station.dto.station.response.OwnerStationSummaryResponse;
-import com.thang.chargeops.station.dto.station.response.StationApprovalDetailResponse;
-import com.thang.chargeops.station.dto.station.response.StationApprovalSummaryResponse;
-import com.thang.chargeops.station.dto.station.response.StationCreatedResponse;
+import com.thang.chargeops.station.dto.station.response.*;
 import com.thang.chargeops.station.entity.Station;
 import org.springframework.data.domain.Page;
 
@@ -26,5 +24,17 @@ public interface StationService {
     Page<StationApprovalSummaryResponse> getStationApprovals(int pageNo, int pageSize);
 
     Station getStationById(UUID stationId);
+
+    Page<AdminStationListItemResponse> getAdminStations(
+            int pageNo,
+            int pageSize,
+            StationFilter filter
+    );
+
+    AdminStationDetailResponse getAdminStationDetail(UUID stationId);
+
+    void suspendStation(UUID stationId, String reason);
+
+    void reactivateStation(UUID stationId, String reason);
 
 }

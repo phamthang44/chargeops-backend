@@ -8,21 +8,19 @@ import lombok.Setter;
 
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.util.List;
 import java.util.UUID;
 
 @Builder
 @Getter
 @Setter
-public class AdminLicenseDetailResponse {
+public class OwnerLicenseResponse {
 
     private UUID id;
-    private String licenseCode;
     private UUID stationId;
-    private String stationCode;
     private String stationName;
+    private String stationCode;
     private UUID ownerId;
-    private String ownerName;
-    private String ownerEmail;
     private Plan plan;
     private BigDecimal feeAmount;
     private Instant startAt;
@@ -30,7 +28,7 @@ public class AdminLicenseDetailResponse {
     private LicenseStatus status;
     private int daysLeft;
     private boolean isExpiringSoon;
-    private Instant createdAt;
-    private String recordedByName;
 
+    private List<OwnerLicenseHistoryResponse> histories;
 }
+

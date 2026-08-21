@@ -5,10 +5,13 @@ import com.thang.chargeops.common.enums.LicenseStatusEventType;
 import com.thang.chargeops.common.enums.Plan;
 import com.thang.chargeops.exception.AppException;
 import com.thang.chargeops.exception.errorcode.LicenseErrorCode;
+import com.thang.chargeops.exception.errorcode.StationErrorCode;
 import com.thang.chargeops.profile.entity.UserProfile;
 import com.thang.chargeops.profile.service.UserProfileService;
 import com.thang.chargeops.profile.support.CurrentProfileProvider;
 import com.thang.chargeops.station.dto.license.request.IssueLicenseRequest;
+import com.thang.chargeops.station.dto.license.response.OwnerLicenseHistoryResponse;
+import com.thang.chargeops.station.dto.license.response.OwnerLicenseResponse;
 import com.thang.chargeops.station.entity.License;
 import com.thang.chargeops.station.entity.LicenseStatusEvent;
 import com.thang.chargeops.station.entity.Station;
@@ -26,6 +29,7 @@ import org.springframework.dao.DataIntegrityViolationException;
 
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -237,6 +241,61 @@ class LicenseServiceImplTest {
         ArgumentCaptor<License> licenseCaptor = ArgumentCaptor.forClass(License.class);
         verify(licenseRepository).save(licenseCaptor.capture());
         assertThat(licenseCaptor.getValue().getLicenseCode()).isEqualTo("LIC-001000");
+    }
+
+    @Test
+    void returnsCurrentLicenseAndHistoryForTheOwningStationOwner() {
+        UUID stationId = UUID.randomUUID();
+        UUID ownerId = UUID.randomUUID();
+        UserProfile owner = mock(UserProfile.class);
+        Station station = new Station();
+        station.setId(stationId);
+        station.setOwner(owner);
+        License currentLicense = mock(License.class);
+        List<License> licenses = List.of(currentLicense);
+        OwnerLicenseHistoryResponse history = OwnerLicenseHistoryResponse.builder().build();
+        OwnerLicenseResponse expected = OwnerLicenseResponse.builder().build();
+
+        when(owner.getId()).thenReturn(ownerId);
+        when(currentProfileProvider.requireProfile()).thenReturn(owner);
+        when(stationService.getStationById(stationId)).thenReturn(station);
+        when(licenseRepository.findOwnerStationLicenseHistory(stationId, ownerId))
+                .thenReturn(licenses);
+        when(currentLicense.isEffectivelyActiveAt(any(Instant.class))).thenReturn(true);
+        when(licenseMapper.toOwnerLicenseHistoryResponseList(licenses))
+                .thenReturn(List.of(history));
+        when(licenseMapper.toOwnerLicenseResponse(currentLicense)).thenReturn(expected);
+
+        OwnerLicenseResponse actual = licenseService.getMyLicenseByStationId(stationId);
+
+        assertThat(actual).isSameAs(expected);
+        assertThat(actual.getHistories()).containsExactly(history);
+    }
+
+    @Test
+    void rejectsAnOwnerTryingToReadAnotherOwnersStationLicense() {
+        UUID stationId = UUID.randomUUID();
+        UserProfile currentOwner = mock(UserProfile.class);
+        UserProfile stationOwner = mock(UserProfile.class);
+        Station station = new Station();
+        station.setOwner(stationOwner);
+
+        when(currentOwner.getId()).thenReturn(UUID.randomUUID());
+        when(stationOwner.getId()).thenReturn(UUID.randomUUID());
+        when(currentProfileProvider.requireProfile()).thenReturn(currentOwner);
+        when(stationService.getStationById(stationId)).thenReturn(station);
+
+        assertThatThrownBy(() -> licenseService.getMyLicenseByStationId(stationId))
+                .isInstanceOfSatisfying(
+                        AppException.class,
+                        exception -> assertThat(exception.getErrorCode())
+                                .isEqualTo(StationErrorCode.STATION_ACCESS_DENIED)
+                );
+
+        verify(licenseRepository, never()).findOwnerStationLicenseHistory(
+                any(UUID.class),
+                any(UUID.class)
+        );
     }
 
     private void prepareIssue(UUID stationId) {

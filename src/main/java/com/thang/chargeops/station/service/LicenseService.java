@@ -2,11 +2,8 @@ package com.thang.chargeops.station.service;
 
 import com.thang.chargeops.station.dto.license.request.IssueLicenseRequest;
 import com.thang.chargeops.station.dto.license.request.RenewLicenseRequest;
-import com.thang.chargeops.station.dto.license.response.AdminLicenseDetailResponse;
-import com.thang.chargeops.station.dto.license.response.AdminLicenseListItemResponse;
-import com.thang.chargeops.station.dto.license.response.IssueLicenseResponse;
+import com.thang.chargeops.station.dto.license.response.*;
 import com.thang.chargeops.station.dto.license.filter.LicenseFilter;
-import com.thang.chargeops.station.dto.license.response.RenewLicenseResponse;
 import org.springframework.data.domain.Page;
 
 import java.util.List;
@@ -27,4 +24,5 @@ public interface LicenseService {
 
     List<AdminLicenseListItemResponse> getStationLicenseHistory(UUID stationId);
 
+    OwnerLicenseResponse getMyLicenseByStationId(UUID stationId);
 }

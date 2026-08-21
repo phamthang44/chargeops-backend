@@ -6,6 +6,7 @@ import com.thang.chargeops.common.enums.LicenseStatus;
 import com.thang.chargeops.common.enums.LicenseStatusEventType;
 import com.thang.chargeops.exception.AppException;
 import com.thang.chargeops.exception.errorcode.LicenseErrorCode;
+import com.thang.chargeops.exception.errorcode.StationErrorCode;
 import com.thang.chargeops.exception.errormessage.LicenseErrorMessage;
 import com.thang.chargeops.profile.entity.UserProfile;
 import com.thang.chargeops.profile.service.UserProfileService;
@@ -355,6 +356,37 @@ public class LicenseServiceImpl implements LicenseService {
         return licenseMapper.toListItemResponseList(licenses);
     }
 
+    @Override
+    @Transactional(readOnly = true)
+    public OwnerLicenseResponse getMyLicenseByStationId(UUID stationId) {
+        UserProfile owner = currentProfileProvider.requireProfile();
+        Station station = stationService.getStationById(stationId);
+
+        if (!station.getOwner().getId().equals(owner.getId())) {
+            throw new AppException(StationErrorCode.STATION_ACCESS_DENIED, stationId);
+        }
+
+        List<License> licenses = licenseRepository.findOwnerStationLicenseHistory(
+                stationId,
+                owner.getId()
+        );
+        if (licenses.isEmpty()) {
+            throw new AppException(LicenseErrorCode.LICENSE_NOT_FOUND, stationId);
+        }
+
+        Instant now = Instant.now();
+        License currentLicense = licenses.stream()
+                .filter(license -> license.isEffectivelyActiveAt(now))
+                .findFirst()
+                .orElse(licenses.getFirst());
+        List<OwnerLicenseHistoryResponse> histories =
+                licenseMapper.toOwnerLicenseHistoryResponseList(licenses);
+
+        OwnerLicenseResponse response = licenseMapper.toOwnerLicenseResponse(currentLicense);
+        response.setHistories(histories);
+        return response;
+    }
+
     private String resolveRecordedByName(UUID createdById) {
         if (createdById == null) {
             return SystemConstant.SYSTEM_ACTOR;
@@ -411,10 +443,7 @@ public class LicenseServiceImpl implements LicenseService {
     }
 
     private int getPageNo(int pageNo) {
-        if(pageNo <= 1) {
-            pageNo = 0;
-        }
-        return pageNo;
+        return pageNo > 0 ? pageNo - 1 : 0;
     }
 
     private boolean isActiveLicenseUniqueConstraintViolation(DataIntegrityViolationException exception) {

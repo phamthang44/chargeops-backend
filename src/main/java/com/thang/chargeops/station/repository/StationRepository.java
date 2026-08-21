@@ -8,6 +8,8 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
@@ -17,7 +19,7 @@ import java.util.Optional;
 import java.util.UUID;
 
 @Repository
-public interface StationRepository extends JpaRepository<Station, UUID> {
+public interface StationRepository extends JpaRepository<Station, UUID>, JpaSpecificationExecutor<Station> {
 
     @Query(value = "SELECT nextval('station_code_seq')", nativeQuery = true)
     long nextStationCodeSequence();
@@ -94,6 +96,26 @@ public interface StationRepository extends JpaRepository<Station, UUID> {
         WHERE station.id = :stationId
         """)
     Optional<Station> findApprovalDetailById(
+            @Param("stationId") UUID stationId
+    );
+
+    @Override
+    @EntityGraph(attributePaths = {"owner", "ward", "ward.province"})
+    Page<Station> findAll(Specification<Station> specification, Pageable pageable);
+
+    @EntityGraph(attributePaths = {
+            "owner",
+            "ward",
+            "ward.province",
+            "assets",
+            "operatingPeriods"
+    })
+    @Query("""
+        SELECT DISTINCT station
+        FROM Station station
+        WHERE station.id = :stationId
+        """)
+    Optional<Station> findAdminDetailById(
             @Param("stationId") UUID stationId
     );
 

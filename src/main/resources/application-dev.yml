@@ -9,7 +9,7 @@ spring:
       on-profile: dev
 
   jpa:
-    show-sql: true                # dev: in SQL để debug
+    show-sql: false                # dev: in SQL để debug
 
 logging:
   level:

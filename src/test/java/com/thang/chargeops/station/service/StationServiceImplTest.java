@@ -11,10 +11,14 @@ import com.thang.chargeops.profile.entity.UserProfile;
 import com.thang.chargeops.profile.support.CurrentProfileProvider;
 import com.thang.chargeops.station.dto.station.request.RegisterStationRequest;
 import com.thang.chargeops.station.dto.station.request.RejectStationRequest;
+import com.thang.chargeops.station.dto.license.response.LicenseSummaryResponse;
+import com.thang.chargeops.station.dto.station.filter.StationFilter;
+import com.thang.chargeops.station.dto.station.response.AdminStationListItemResponse;
 import com.thang.chargeops.station.dto.station.response.OwnerStationSummaryResponse;
 import com.thang.chargeops.station.dto.station.response.StationApprovalSummaryResponse;
 import com.thang.chargeops.station.dto.station.response.StationCreatedResponse;
 import com.thang.chargeops.station.entity.Station;
+import com.thang.chargeops.station.entity.License;
 import com.thang.chargeops.station.mapper.StationMapper;
 import com.thang.chargeops.station.policy.StationApprovalPolicy;
 import com.thang.chargeops.station.projection.OwnerStationSummaryProjection;
@@ -33,6 +37,7 @@ import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
+import org.springframework.data.jpa.domain.Specification;
 
 import java.time.Instant;
 import java.util.List;
@@ -288,5 +293,64 @@ class StationServiceImplTest {
         assertThat(actual.getTotalElements()).isEqualTo(1);
         verify(stationMapper).toStationApprovalSummaryResponse(station);
         verifyNoInteractions(currentProfileProvider);
+    }
+
+    @Test
+    void filtersAdminStationsAndLoadsLicenseSummariesInOneBatch() {
+        UUID stationId = UUID.randomUUID();
+        Station station = new Station();
+        station.setId(stationId);
+        License activeLicense = mock(License.class);
+        LicenseSummaryResponse licenseSummary = new LicenseSummaryResponse(
+                com.thang.chargeops.common.enums.Plan.MONTHLY,
+                Instant.parse("2026-09-21T00:00:00Z")
+        );
+        AdminStationListItemResponse expected = new AdminStationListItemResponse(
+                stationId,
+                "ST-0001",
+                "Station",
+                "Address",
+                "Province",
+                "Ward",
+                UUID.randomUUID(),
+                "Owner",
+                "owner@chargeops.test",
+                "0900000000",
+                2,
+                StationStatus.ACTIVE,
+                Instant.now(),
+                licenseSummary
+        );
+        Page<Station> stationPage = new PageImpl<>(
+                List.of(station),
+                PageRequest.of(0, 20),
+                1
+        );
+        StationFilter filter = new StationFilter();
+        filter.setSearch("station");
+
+        when(stationRepository.findAll(
+                any(Specification.class),
+                any(Pageable.class)
+        )).thenReturn(stationPage);
+        when(activeLicense.getStation()).thenReturn(station);
+        when(activeLicense.getPlan()).thenReturn(licenseSummary.plan());
+        when(activeLicense.getExpiresAt()).thenReturn(licenseSummary.expiresAt());
+        when(licenseRepository.findActiveByStationIds(
+                eq(List.of(stationId)),
+                any(Instant.class)
+        )).thenReturn(List.of(activeLicense));
+        when(stationMapper.toAdminStationListItemResponse(station, licenseSummary))
+                .thenReturn(expected);
+
+        Page<AdminStationListItemResponse> actual =
+                stationService.getAdminStations(1, 20, filter);
+
+        assertThat(actual.getContent()).containsExactly(expected);
+        verify(licenseRepository).findActiveByStationIds(
+                eq(List.of(stationId)),
+                any(Instant.class)
+        );
+        verify(stationMapper).toAdminStationListItemResponse(station, licenseSummary);
     }
 }

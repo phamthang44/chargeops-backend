@@ -81,4 +81,60 @@ public interface StationMapper {
     @Mapping(target = "submittedAt", source = "createdAt")
     StationCreatedResponse toStationCreatedResponse(Station station);
 
+    @Mapping(target = "provinceName", source = "station.ward.province.fullName")
+    @Mapping(target = "wardName", source = "station.ward.fullName")
+    @Mapping(target = "ownerId", source = "station.owner.id")
+    @Mapping(target = "ownerDisplayName", expression = "java(resolveOwnerName(station.getOwner()))")
+    @Mapping(target = "ownerEmail", source = "station.owner.email")
+    @Mapping(target = "licenseSummary", source = "licenseSummary")
+    AdminStationListItemResponse toAdminStationListItemResponse(
+            Station station,
+            LicenseSummaryResponse licenseSummary
+    );
+
+    @Mapping(
+            target = "ownerId",
+            source = "station.owner.id"
+    )
+    @Mapping(
+            target = "ownerDisplayName",
+            expression = "java(resolveOwnerName(station.getOwner()))"
+    )
+    @Mapping(
+            target = "ownerEmail",
+            source = "station.owner.email"
+    )
+    @Mapping(
+            target = "ownerPhoneNumber",
+            source = "station.owner.phone"
+    )
+    @Mapping(
+            target = "provinceName",
+            source = "station.ward.province.fullName"
+    )
+    @Mapping(
+            target = "wardName",
+            source = "station.ward.fullName"
+    )
+    @Mapping(
+            target = "assets",
+            source = "station.assets"
+    )
+    @Mapping(
+            target = "operatingPeriods",
+            source = "station.operatingPeriods"
+    )
+    @Mapping(
+            target = "licenseSummary",
+            source = "licenseSummary"
+    )
+    AdminStationDetailResponse toAdminStationDetailResponse(
+            Station station,
+            LicenseSummaryResponse licenseSummary
+    );
+
+    StationOperatingPeriodResponse toStationOperatingPeriodResponse(com.thang.chargeops.station.entity.StationOperatingPeriod period);
+
+    java.util.List<StationOperatingPeriodResponse> toStationOperatingPeriodResponseList(java.util.List<com.thang.chargeops.station.entity.StationOperatingPeriod> periods);
+
 }

@@ -8,6 +8,7 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.data.domain.Pageable;
 
 import java.time.Instant;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -100,6 +101,19 @@ public interface LicenseRepository extends JpaRepository<License, UUID>, JpaSpec
             """)
     List<License> findStationLicenseHistory(@Param("stationId") UUID stationId);
 
+    @Query("""
+            SELECT l FROM License l
+            JOIN FETCH l.station s
+            JOIN FETCH l.owner owner
+            WHERE s.id = :stationId
+              AND owner.id = :ownerId
+            ORDER BY l.startAt DESC, l.createdAt DESC
+            """)
+    List<License> findOwnerStationLicenseHistory(
+            @Param("stationId") UUID stationId,
+            @Param("ownerId") UUID ownerId
+    );
+
     @Query(value = "SELECT nextval('license_code_seq')", nativeQuery = true)
     long nextLicenseCodeSequence();
 
@@ -109,5 +123,30 @@ public interface LicenseRepository extends JpaRepository<License, UUID>, JpaSpec
 
     Optional<License> findFirstByStation_IdOrderByStartAtDescCreatedAtDesc(
             UUID stationId
+    );
+
+    @Query("""
+            SELECT l FROM License l
+            WHERE l.station.id = :stationId
+              AND l.status = com.thang.chargeops.common.enums.LicenseStatus.ACTIVE
+              AND l.startAt <= :at
+              AND l.expiresAt > :at
+            """)
+    Optional<License> findActiveByStationId(
+            @Param("stationId") UUID stationId,
+            @Param("at") Instant at
+    );
+
+    @Query("""
+            SELECT l FROM License l
+            JOIN FETCH l.station s
+            WHERE s.id IN :stationIds
+              AND l.status = com.thang.chargeops.common.enums.LicenseStatus.ACTIVE
+              AND l.startAt <= :at
+              AND l.expiresAt > :at
+            """)
+    List<License> findActiveByStationIds(
+            @Param("stationIds") Collection<UUID> stationIds,
+            @Param("at") Instant at
     );
 }
