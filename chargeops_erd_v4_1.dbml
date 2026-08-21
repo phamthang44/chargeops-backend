@@ -291,13 +291,12 @@ Table payments {
 
 Table transactions {
   id           uuid [pk, default: `gen_random_uuid()`]
-  type         varchar [not null, note: 'SLOT_PAYMENT / REFUND / LICENSE_FEE']
+  type         varchar [not null, note: 'SLOT_PAYMENT / REFUND']
   amount       "numeric(15,2)" [not null]
   payer_id     uuid
   payee_id     uuid
   station_id   uuid
   booking_id   uuid
-  license_id   uuid
   provider     varchar
   provider_ref varchar
   status       varchar [not null, note: 'PENDING / SUCCESS / FAILED']
@@ -312,43 +311,53 @@ Table transactions {
     occurred_at
   }
 
-  Note: 'Append-only ledger for slot payments, refunds, and license fees.'
+  Note: 'Append-only accounting/audit ledger for driver slot payments and refunds. License purchase/payment is handled outside the platform and is not recorded as an in-app transaction.'
 }
 
 Table licenses {
-  id         uuid [pk, default: `gen_random_uuid()`]
-  station_id uuid [not null]
-  owner_id   uuid [not null]
-  plan       varchar [not null, note: 'MONTHLY / YEARLY']
-  fee_amount "numeric(15,2)" [not null]
-  start_at   timestamptz [not null]
-  expires_at timestamptz [not null]
-  status     varchar [not null, note: 'PENDING / ACTIVE / EXPIRED / CANCELLED / SUSPENDED']
-  created_at timestamptz [not null, default: `now()`]
-  updated_at timestamptz [not null, default: `now()`]
-  created_by uuid
-  updated_by uuid
+  id                      uuid [pk, default: `gen_random_uuid()`]
+  station_id              uuid [not null]
+  owner_id                uuid [not null]
+  renewed_from_license_id uuid [note: 'Null for a new issue; unique to allow at most one direct renewal per source']
+  license_code            varchar(20) [not null, note: 'Immutable public code generated from license_code_seq, e.g. LIC-001000']
+  plan                    varchar [not null, note: 'MONTHLY / YEARLY']
+  fee_amount              "numeric(15,2)" [not null]
+  start_at                timestamptz [not null]
+  expires_at              timestamptz [not null]
+  status                  varchar [not null, note: 'PENDING / ACTIVE / EXPIRED / CANCELLED / SUSPENDED']
+  created_at              timestamptz [not null, default: `now()`]
+  updated_at              timestamptz [not null, default: `now()`]
+  created_by              uuid
+  updated_by              uuid
+  version                 bigint [not null, default: 0]
 
   Indexes {
     station_id
     owner_id
+    license_code [unique, name: 'ux_licenses_license_code']
+    renewed_from_license_id [unique, name: 'ux_licenses_renewed_from']
   }
 
-  Note: 'One station can only have one ACTIVE license at a time. Enforce in migration/code.'
+  Note: 'One station can only have one ACTIVE license at a time. One source license can have at most one direct renewal.'
 }
 
-Table license_status_history {
-  id          uuid [pk, default: `gen_random_uuid()`]
-  license_id  uuid [not null]
-  from_status varchar
-  to_status   varchar [not null]
-  changed_at  timestamptz [not null, default: `now()`]
-  changed_by  uuid
-  reason      varchar
+Table license_status_events {
+  id           uuid [pk, default: `gen_random_uuid()`]
+  license_id   uuid [not null]
+  event_type   varchar [not null, note: 'ISSUED / ACTIVATED / SUSPENDED / REACTIVATED / CANCELLED / EXPIRED']
+  from_status  varchar [note: 'Null only for ISSUED']
+  to_status    varchar [not null, note: 'PENDING / ACTIVE / SUSPENDED / CANCELLED / EXPIRED']
+  reason       varchar(500)
+  actor_type   varchar [not null, note: 'USER / SYSTEM']
+  performed_by uuid [note: 'Required for USER; null for SYSTEM']
+  performed_at timestamptz [not null, default: `now()`]
 
   Indexes {
-    license_id
+    (license_id, performed_at) [name: 'idx_license_status_events_license_time']
+    (event_type, performed_at) [name: 'idx_license_status_events_event_time']
   }
+
+  Note: 'Append-only audit events for license lifecycle transitions. RENEW is not an event: it creates a new license row.'
 }
 
 Table system_config {
@@ -547,11 +556,11 @@ Ref: transactions.payer_id > user_profile.id
 Ref: transactions.payee_id > user_profile.id
 Ref: transactions.station_id > stations.id
 Ref: transactions.booking_id > bookings.id
-Ref: transactions.license_id > licenses.id
 Ref: licenses.station_id > stations.id
 Ref: licenses.owner_id > user_profile.id
-Ref: license_status_history.license_id > licenses.id
-Ref: license_status_history.changed_by > user_profile.id
+Ref: licenses.renewed_from_license_id > licenses.id
+Ref: license_status_events.license_id > licenses.id
+Ref: license_status_events.performed_by > user_profile.id
 Ref: tou_rates.station_id > stations.id
 Ref: tou_rates.created_by > user_profile.id
 Ref: legal_documents.created_by > user_profile.id
