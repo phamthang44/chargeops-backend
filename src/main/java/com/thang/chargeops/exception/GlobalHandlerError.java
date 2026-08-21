@@ -7,6 +7,8 @@ import com.thang.chargeops.exception.errormessage.ValidationErrorMessage;
 import com.thang.chargeops.exception.errorcode.AuthErrorCode;
 import com.thang.chargeops.exception.errorcode.BaseErrorCode;
 import com.thang.chargeops.exception.errorcode.CommonErrorCode;
+import com.thang.chargeops.exception.errorcode.LicenseErrorCode;
+import com.thang.chargeops.station.entity.License;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.ConstraintViolationException;
 import lombok.extern.slf4j.Slf4j;
@@ -173,14 +175,22 @@ public class GlobalHandlerError {
     @ExceptionHandler(ObjectOptimisticLockingFailureException.class)
     public ResponseEntity<ApiResult<?>> handleOptimisticLocking(ObjectOptimisticLockingFailureException ex) {
         String traceId = newTraceId();
+        BaseErrorCode errorCode = isLicenseConflict(ex)
+                ? LicenseErrorCode.LICENSE_WAS_MODIFIED
+                : CommonErrorCode.RESOURCE_CONFLICT;
         log.warn("Optimistic locking conflict [{}]: {}", traceId, ex.getMessage());
-        return ResponseEntity.status(CommonErrorCode.RESOURCE_CONFLICT.getHttpStatus())
+        return ResponseEntity.status(errorCode.getHttpStatus())
                 .body(ApiResult.error(
-                        CommonErrorCode.RESOURCE_CONFLICT.getCode(),
-                        CommonErrorCode.RESOURCE_CONFLICT.getMessageKey(),
-                        CommonErrorCode.RESOURCE_CONFLICT.getMessage(),
+                        errorCode.getCode(),
+                        errorCode.getMessageKey(),
+                        errorCode.getMessage(),
                         traceId
                 ));
+    }
+
+    private boolean isLicenseConflict(ObjectOptimisticLockingFailureException ex) {
+        Class<?> persistentClass = ex.getPersistentClass();
+        return persistentClass != null && License.class.isAssignableFrom(persistentClass);
     }
 
     @ExceptionHandler(DataIntegrityViolationException.class)

@@ -72,10 +72,6 @@ public final class StationErrorMessage {
             template("error.station.accessDenied", "You do not have permission to manage this station");
     public static final ErrorMessage.Template INVALID_STATUS_TRANSITION =
             template("error.station.invalidStatusTransition", "Station status cannot change from {0} to {1}");
-    public static final ErrorMessage.Template ACTIVE_LICENSE_ALREADY_EXISTS =
-            template("error.station.activeLicenseAlreadyExists", "The station already has an active license");
-    public static final ErrorMessage.Template LICENSE_NOT_FOUND =
-            template("error.station.licenseNotFound", "License not found: {0}");
     public static final ErrorMessage.Template CHARGE_POINT_NOT_FOUND =
             template("error.station.chargePointNotFound", "Charge point not found: {0}");
     public static final ErrorMessage.Template CHARGE_POINT_CODE_ALREADY_EXISTS =
@@ -109,8 +105,6 @@ public final class StationErrorMessage {
                 STATION_NOT_FOUND,
                 STATION_ACCESS_DENIED,
                 INVALID_STATUS_TRANSITION,
-                ACTIVE_LICENSE_ALREADY_EXISTS,
-                LICENSE_NOT_FOUND,
                 CHARGE_POINT_NOT_FOUND,
                 CHARGE_POINT_CODE_ALREADY_EXISTS,
                 CONNECTOR_NOT_FOUND,

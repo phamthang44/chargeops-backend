@@ -16,10 +16,6 @@ public enum StationErrorCode implements BaseErrorCode {
             HttpStatus.FORBIDDEN, "STATION_002", StationErrorMessage.STATION_ACCESS_DENIED),
     INVALID_STATUS_TRANSITION(
             HttpStatus.CONFLICT, "STATION_003", StationErrorMessage.INVALID_STATUS_TRANSITION),
-    ACTIVE_LICENSE_ALREADY_EXISTS(
-            HttpStatus.CONFLICT, "STATION_005", StationErrorMessage.ACTIVE_LICENSE_ALREADY_EXISTS),
-    LICENSE_NOT_FOUND(
-            HttpStatus.NOT_FOUND, "STATION_006", StationErrorMessage.LICENSE_NOT_FOUND),
     CHARGE_POINT_NOT_FOUND(
             HttpStatus.NOT_FOUND, "STATION_007", StationErrorMessage.CHARGE_POINT_NOT_FOUND),
     CHARGE_POINT_CODE_ALREADY_EXISTS(

@@ -14,7 +14,8 @@ import static java.util.stream.Collectors.toUnmodifiableMap;
  *
  * <p>Message constants live in domain-specific classes such as
  * {@link CommonErrorMessage}, {@link AuthErrorMessage},
- * {@link ValidationErrorMessage}, and {@link ProfileErrorMessage}.
+ * {@link ValidationErrorMessage}, {@link ProfileErrorMessage}, and
+ * {@link LicenseErrorMessage}.
  */
 public final class ErrorMessage {
     private ErrorMessage() {
@@ -69,6 +70,7 @@ public final class ErrorMessage {
                         ValidationErrorMessage.templates(),
                         ProfileErrorMessage.templates(),
                         StationErrorMessage.templates(),
+                        LicenseErrorMessage.templates(),
                         ApprovalErrorMessage.templates()
                 )
                 .flatMap(List::stream)
