@@ -80,6 +80,15 @@ app:
   name: ChargeOps
   base-url: ${BACKEND_BASE_URL:http://localhost:8081}
   frontend-url: ${FRONTEND_BASE_URL:http://localhost:5173}
+  scheduling:
+    license-expiration:
+      fixed-delay-ms: ${LICENSE_EXPIRATION_FIXED_DELAY_MS:60000}
+      initial-delay-ms: ${LICENSE_EXPIRATION_INITIAL_DELAY_MS:60000}
+      batch-size: ${LICENSE_EXPIRATION_BATCH_SIZE:100}
+    license-renewal-activation:
+      fixed-delay-ms: ${LICENSE_RENEWAL_ACTIVATION_FIXED_DELAY_MS:60000}
+      initial-delay-ms: ${LICENSE_RENEWAL_ACTIVATION_INITIAL_DELAY_MS:30000}
+      batch-size: ${LICENSE_RENEWAL_ACTIVATION_BATCH_SIZE:100}
   # CORS allowed origins (comma-separated). Read by CorsConfig.
   cors:
     allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5173,http://localhost:8082}
