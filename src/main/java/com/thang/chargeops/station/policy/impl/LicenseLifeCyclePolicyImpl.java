@@ -1,9 +1,10 @@
-package com.thang.chargeops.station.policy;
+package com.thang.chargeops.station.policy.impl;
 
 import com.thang.chargeops.common.enums.LicenseStatus;
 import com.thang.chargeops.exception.AppException;
 import com.thang.chargeops.exception.errorcode.LicenseErrorCode;
 import com.thang.chargeops.station.entity.License;
+import com.thang.chargeops.station.policy.LicenseLifeCyclePolicy;
 import com.thang.chargeops.station.repository.LicenseRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;

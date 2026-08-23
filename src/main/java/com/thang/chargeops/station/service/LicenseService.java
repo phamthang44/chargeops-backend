@@ -25,4 +25,6 @@ public interface LicenseService {
     List<AdminLicenseListItemResponse> getStationLicenseHistory(UUID stationId);
 
     OwnerLicenseResponse getMyLicenseByStationId(UUID stationId);
+
+
 }

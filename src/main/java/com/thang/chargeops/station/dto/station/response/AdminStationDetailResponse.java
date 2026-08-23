@@ -31,3 +31,13 @@ public record AdminStationDetailResponse(
         LicenseSummaryResponse licenseSummary
 ) {
 }
+//bị thiếu sau T17 cần ít nhất mớ này
+//chargePoints[]
+//  id/code/name/zone
+//  provisioningStatus
+//  operationalStatus
+//  maxPowerKw
+//  connectors[]
+//    id/code/type/power
+//    runtimeStatus
+//    qrAvailable

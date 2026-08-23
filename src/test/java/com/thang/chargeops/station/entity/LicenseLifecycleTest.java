@@ -3,7 +3,7 @@ package com.thang.chargeops.station.entity;
 import com.thang.chargeops.common.enums.LicenseStatus;
 import com.thang.chargeops.common.enums.Plan;
 import com.thang.chargeops.station.exception.LicenseDomainException;
-import com.thang.chargeops.station.exception.LicenseViolation;
+import com.thang.chargeops.station.exception.violation.LicenseViolation;
 import org.junit.jupiter.api.Test;
 
 import java.time.Instant;

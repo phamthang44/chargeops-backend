@@ -1,4 +1,4 @@
-package com.thang.chargeops.station.exception;
+package com.thang.chargeops.station.exception.violation;
 
 public enum LicenseViolation {
     INVALID_TRANSITION,

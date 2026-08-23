@@ -8,6 +8,8 @@ import com.thang.chargeops.exception.AppException;
 import com.thang.chargeops.exception.errorcode.ApprovalErrorCode;
 import com.thang.chargeops.exception.errorcode.ProfileErrorCode;
 import com.thang.chargeops.exception.errorcode.StationErrorCode;
+import com.thang.chargeops.exception.errormessage.LicenseErrorMessage;
+import com.thang.chargeops.exception.errormessage.StationErrorMessage;
 import com.thang.chargeops.location.entity.AdministrativeWard;
 import com.thang.chargeops.location.service.AdministrativeLocationService;
 import com.thang.chargeops.profile.entity.UserProfile;
@@ -18,11 +20,15 @@ import com.thang.chargeops.station.dto.station.request.RegisterStationRequest;
 import com.thang.chargeops.station.dto.station.request.RejectStationRequest;
 import com.thang.chargeops.station.dto.station.response.*;
 import com.thang.chargeops.station.entity.Station;
+import com.thang.chargeops.station.entity.StationAsset;
+import com.thang.chargeops.station.entity.StationOperatingPeriod;
 import com.thang.chargeops.station.mapper.StationMapper;
 import com.thang.chargeops.station.policy.StationApprovalPolicy;
 import com.thang.chargeops.station.projection.OwnerStationSummaryProjection;
 import com.thang.chargeops.station.projection.StationApprovalSummaryProjection;
 import com.thang.chargeops.station.repository.LicenseRepository;
+import com.thang.chargeops.station.repository.StationAssetRepository;
+import com.thang.chargeops.station.repository.StationOperatingPeriodRepository;
 import com.thang.chargeops.station.repository.StationRepository;
 import com.thang.chargeops.station.repository.specs.StationSpecification;
 import com.thang.chargeops.station.service.StationService;
@@ -37,6 +43,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 import java.util.UUID;
@@ -54,7 +61,9 @@ public class StationServiceImpl implements StationService {
     private final StationStatusHistoryService stationStatusHistoryService;
     private final StationApprovalPolicy stationApprovalPolicy;
 
-    private final LicenseRepository licenseRepository; //tạm thòời
+    private final LicenseRepository licenseRepository; //tạm thời
+    private final StationAssetRepository stationAssetRepository;
+    private final StationOperatingPeriodRepository stationOperatingPeriodRepository;
 
     @Override
     @Transactional
@@ -228,6 +237,12 @@ public class StationServiceImpl implements StationService {
                 .map(l -> new LicenseSummaryResponse(l.getPlan(), l.getExpiresAt()))
                 .orElse(null);
 
+        List<StationAsset> assets = stationAssetRepository.findByStationIdOrderByDisplayOrderAsc(stationId);
+        List<StationOperatingPeriod> stationOperatingPeriods = stationOperatingPeriodRepository.findByStationIdOrderByDayOfWeekAsc(stationId);
+
+        station.setOperatingPeriods(stationOperatingPeriods);
+        station.setAssets(assets);
+
         return stationMapper.toAdminStationDetailResponse(station, licenseSummary);
     }
 
@@ -240,7 +255,14 @@ public class StationServiceImpl implements StationService {
                 .orElseThrow(() -> new AppException(StationErrorCode.STATION_NOT_FOUND, stationId));
 
         if (station.getStatus() != StationStatus.ACTIVE) {
-            throw new AppException(StationErrorCode.INVALID_STATUS_TRANSITION, stationId);
+            throw new AppException(
+                    StationErrorCode.INVALID_STATUS_TRANSITION,
+                    station.getStatus(),
+                    StationStatus.SUSPENDED
+            );
+        }
+        if (reason == null || reason.isBlank()) {
+            throw new AppException(StationErrorCode.STATION_SUSPENSION_REASON_REQUIRED);
         }
 
         StationStatus previousStatus = station.getStatus();
@@ -265,7 +287,14 @@ public class StationServiceImpl implements StationService {
                 .orElseThrow(() -> new AppException(StationErrorCode.STATION_NOT_FOUND, stationId));
 
         if (station.getStatus() != StationStatus.SUSPENDED) {
-            throw new AppException(StationErrorCode.INVALID_STATUS_TRANSITION, stationId);
+            throw new AppException(
+                    StationErrorCode.INVALID_STATUS_TRANSITION,
+                    station.getStatus(),
+                    StationStatus.ACTIVE
+            );
+        }
+        if (reason == null || reason.isBlank()) {
+            throw new AppException(StationErrorCode.STATION_REACTIVATION_REASON_REQUIRED);
         }
 
         StationStatus previousStatus = station.getStatus();
@@ -282,7 +311,16 @@ public class StationServiceImpl implements StationService {
     }
 
     private Pageable getPageable(int pageNo, int pageSize) {
-        int pageIndex = pageNo > 0 ? pageNo - 1 : 0;
+        if (pageNo < 1) {
+            throw new IllegalArgumentException(StationErrorMessage.PAGE_NUMBER_MIN.defaultMessage());
+        }
+        if (pageSize < 1) {
+            throw new IllegalArgumentException(StationErrorMessage.PAGE_SIZE_MIN.defaultMessage());
+        }
+        if (pageSize > 100) {
+            throw new IllegalArgumentException(StationErrorMessage.PAGE_SIZE_MAX.defaultMessage());
+        }
+        int pageIndex = pageNo - 1;
         return PageRequest.of(pageIndex, pageSize, Sort.by(Sort.Direction.DESC, "createdAt"));
     }
 

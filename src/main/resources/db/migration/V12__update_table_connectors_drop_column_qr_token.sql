@@ -1,0 +1,1 @@
+ALTER TABLE connectors DROP COLUMN IF EXISTS qr_token;

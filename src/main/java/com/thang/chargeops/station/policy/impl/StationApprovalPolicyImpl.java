@@ -1,11 +1,10 @@
-package com.thang.chargeops.station.policy;
+package com.thang.chargeops.station.policy.impl;
 
 import com.thang.chargeops.common.enums.StationStatus;
-import com.thang.chargeops.common.enums.StationStatusEventType;
 import com.thang.chargeops.exception.AppException;
 import com.thang.chargeops.exception.errorcode.ApprovalErrorCode;
-import com.thang.chargeops.exception.errorcode.StationErrorCode;
 import com.thang.chargeops.station.entity.Station;
+import com.thang.chargeops.station.policy.StationApprovalPolicy;
 import com.thang.chargeops.station.repository.LicenseRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;

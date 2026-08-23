@@ -5,6 +5,7 @@ import com.thang.chargeops.common.enums.StationStatusEventType;
 import com.thang.chargeops.common.enums.UserStatus;
 import com.thang.chargeops.exception.AppException;
 import com.thang.chargeops.exception.errorcode.ProfileErrorCode;
+import com.thang.chargeops.exception.errormessage.StationErrorMessage;
 import com.thang.chargeops.location.entity.AdministrativeWard;
 import com.thang.chargeops.location.service.AdministrativeLocationService;
 import com.thang.chargeops.profile.entity.UserProfile;
@@ -77,6 +78,12 @@ class StationServiceImplTest {
     private LicenseRepository licenseRepository;
 
     @Mock
+    private com.thang.chargeops.station.repository.StationAssetRepository stationAssetRepository;
+
+    @Mock
+    private com.thang.chargeops.station.repository.StationOperatingPeriodRepository stationOperatingPeriodRepository;
+
+    @Mock
     private RegisterStationRequest request;
 
     private StationServiceImpl stationService;
@@ -90,7 +97,9 @@ class StationServiceImplTest {
                 administrativeLocationService,
                 stationStatusHistoryService,
                 stationApprovalPolicy,
-                licenseRepository
+                licenseRepository,
+                stationAssetRepository,
+                stationOperatingPeriodRepository
         );
     }
 
@@ -353,4 +362,75 @@ class StationServiceImplTest {
         );
         verify(stationMapper).toAdminStationListItemResponse(station, licenseSummary);
     }
+
+    @Test
+    void suspendsActiveStationAndRecordsTransition() {
+        UUID stationId = UUID.randomUUID();
+        Station station = new Station();
+        station.setStatus(StationStatus.ACTIVE);
+        UserProfile admin = UserProfile.builder().status(UserStatus.ACTIVE).build();
+
+        when(stationRepository.findById(stationId)).thenReturn(java.util.Optional.of(station));
+        when(currentProfileProvider.requireProfile()).thenReturn(admin);
+
+        stationService.suspendStation(stationId, "Maintenance required");
+
+        assertThat(station.getStatus()).isEqualTo(StationStatus.SUSPENDED);
+        verify(stationStatusHistoryService).recordTransition(
+                station,
+                StationStatusEventType.SUSPENDED,
+                StationStatus.ACTIVE,
+                admin,
+                "Maintenance required"
+        );
+    }
+
+    @Test
+    void reactivatesSuspendedStationAndRecordsTransition() {
+        UUID stationId = UUID.randomUUID();
+        Station station = new Station();
+        station.setStatus(StationStatus.SUSPENDED);
+        UserProfile admin = UserProfile.builder().status(UserStatus.ACTIVE).build();
+
+        when(stationRepository.findById(stationId)).thenReturn(java.util.Optional.of(station));
+        when(currentProfileProvider.requireProfile()).thenReturn(admin);
+
+        stationService.reactivateStation(stationId, "Station restored");
+
+        assertThat(station.getStatus()).isEqualTo(StationStatus.ACTIVE);
+        verify(stationStatusHistoryService).recordTransition(
+                station,
+                StationStatusEventType.REACTIVATED,
+                StationStatus.SUSPENDED,
+                admin,
+                "Station restored"
+        );
+    }
+    @Test
+    void rejectsPageNumberBelowOneBeforeQuerying() {
+        assertThatThrownBy(() -> stationService.getAdminStations(0, 8, new StationFilter()))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage(StationErrorMessage.PAGE_NUMBER_MIN.defaultMessage());
+
+        verifyNoInteractions(stationRepository);
+    }
+
+    @Test
+    void rejectsPageSizeBelowOneBeforeQuerying() {
+        assertThatThrownBy(() -> stationService.getAdminStations(1, 0, new StationFilter()))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage(StationErrorMessage.PAGE_SIZE_MIN.defaultMessage());
+
+        verifyNoInteractions(stationRepository);
+    }
+
+    @Test
+    void rejectsPageSizeAboveMaximumBeforeQuerying() {
+        assertThatThrownBy(() -> stationService.getAdminStations(1, 101, new StationFilter()))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage(StationErrorMessage.PAGE_SIZE_MAX.defaultMessage());
+
+        verifyNoInteractions(stationRepository);
+    }
+
 }

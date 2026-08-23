@@ -106,9 +106,7 @@ public interface StationRepository extends JpaRepository<Station, UUID>, JpaSpec
     @EntityGraph(attributePaths = {
             "owner",
             "ward",
-            "ward.province",
-            "assets",
-            "operatingPeriods"
+            "ward.province"
     })
     @Query("""
         SELECT DISTINCT station

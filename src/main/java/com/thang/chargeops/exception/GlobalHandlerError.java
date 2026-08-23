@@ -8,7 +8,10 @@ import com.thang.chargeops.exception.errorcode.AuthErrorCode;
 import com.thang.chargeops.exception.errorcode.BaseErrorCode;
 import com.thang.chargeops.exception.errorcode.CommonErrorCode;
 import com.thang.chargeops.exception.errorcode.LicenseErrorCode;
+import com.thang.chargeops.exception.errorcode.StationErrorCode;
 import com.thang.chargeops.station.entity.License;
+import com.thang.chargeops.station.exception.ChargePointDomainException;
+import com.thang.chargeops.station.exception.ConnectorDomainException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.ConstraintViolationException;
 import lombok.extern.slf4j.Slf4j;
@@ -52,6 +55,32 @@ public class GlobalHandlerError {
         log.warn("Business error [{}]: {} - code={}", traceId, e.getMessage(), e.getErrorCodeStr());
         return ResponseEntity.status(e.getHttpStatus())
                 .body(ApiResult.error(errorCode.getCode(), errorCode.getMessageKey(), e.getMessage(), traceId));
+    }
+
+    @ExceptionHandler(ChargePointDomainException.class)
+    public ResponseEntity<ApiResult<?>> handleChargePointDomainException(ChargePointDomainException e) {
+        BaseErrorCode errorCode = switch (e.getViolation()) {
+            case STATION_REQUIRED -> StationErrorCode.STATION_NOT_FOUND;
+            case CODE_REQUIRED -> StationErrorCode.CHARGE_POINT_CODE_REQUIRED;
+            case MAX_POWER_OUT_OF_RANGE -> StationErrorCode.CHARGE_POINT_MAX_POWER_RANGE_INVALID;
+            case CONNECTOR_POWER_EXCEEDS_MAX_POWER -> StationErrorCode.CONNECTOR_POWER_EXCEEDS_MAX_POWER;
+            case STATUS_REQUIRED -> StationErrorCode.CHARGE_POINT_OPERATIONAL_STATUS_REQUIRED;
+            case INVALID_PROVISIONING_TRANSITION -> StationErrorCode.INVALID_CHARGE_POINT_PROVISIONING_TRANSITION;
+        };
+        return handleAppException(new AppException(errorCode, e.getMessage()));
+    }
+
+    @ExceptionHandler(ConnectorDomainException.class)
+    public ResponseEntity<ApiResult<?>> handleConnectorDomainException(ConnectorDomainException e) {
+        BaseErrorCode errorCode = switch (e.getViolation()) {
+            case CODE_REQUIRED -> StationErrorCode.CONNECTOR_CODE_REQUIRED;
+            case POWER_OUT_OF_RANGE -> StationErrorCode.CONNECTOR_POWER_RANGE_INVALID;
+            case TYPE_MISMATCH -> StationErrorCode.CONNECTOR_TYPE_MISMATCH;
+            case POWER_EXCEEDS_MAX_POWER -> StationErrorCode.CONNECTOR_POWER_EXCEEDS_MAX_POWER;
+            case TYPE_REQUIRED -> CommonErrorCode.INVALID_REQUEST;
+            case STATUS_REQUIRED -> StationErrorCode.CONNECTOR_RUNTIME_STATUS_REQUIRED;
+        };
+        return handleAppException(new AppException(errorCode, e.getMessage()));
     }
 
     @ExceptionHandler({
