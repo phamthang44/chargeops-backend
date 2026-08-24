@@ -14,6 +14,7 @@ import com.thang.chargeops.station.dto.station.request.RegisterStationRequest;
 import com.thang.chargeops.station.dto.station.request.RejectStationRequest;
 import com.thang.chargeops.station.dto.license.response.LicenseSummaryResponse;
 import com.thang.chargeops.station.dto.station.filter.StationFilter;
+import com.thang.chargeops.station.dto.station.response.AdminStationDetailResponse;
 import com.thang.chargeops.station.dto.station.response.AdminStationListItemResponse;
 import com.thang.chargeops.station.dto.station.response.OwnerStationSummaryResponse;
 import com.thang.chargeops.station.dto.station.response.StationApprovalSummaryResponse;
@@ -81,6 +82,9 @@ class StationServiceImplTest {
     private com.thang.chargeops.station.repository.StationAssetRepository stationAssetRepository;
 
     @Mock
+    private com.thang.chargeops.station.repository.StationOperatingScheduleRepository stationOperatingScheduleRepository;
+
+    @Mock
     private com.thang.chargeops.station.repository.StationOperatingPeriodRepository stationOperatingPeriodRepository;
 
     @Mock
@@ -99,6 +103,7 @@ class StationServiceImplTest {
                 stationApprovalPolicy,
                 licenseRepository,
                 stationAssetRepository,
+                stationOperatingScheduleRepository,
                 stationOperatingPeriodRepository
         );
     }
@@ -431,6 +436,50 @@ class StationServiceImplTest {
                 .hasMessage(StationErrorMessage.PAGE_SIZE_MAX.defaultMessage());
 
         verifyNoInteractions(stationRepository);
+    }
+
+    @Test
+    void returnsAdminStationDetailWithActiveSchedulePeriods() {
+        UUID stationId = UUID.randomUUID();
+        Station station = new Station();
+        station.setId(stationId);
+
+        UUID scheduleId = UUID.randomUUID();
+        com.thang.chargeops.station.entity.StationOperatingSchedule schedule =
+                com.thang.chargeops.station.entity.StationOperatingSchedule.builder()
+                        .station(station)
+                        .effectiveFrom(Instant.now().minusSeconds(3600))
+                        .open24Hours(false)
+                        .build();
+        schedule.setId(scheduleId);
+
+        com.thang.chargeops.station.entity.StationOperatingPeriod period =
+                com.thang.chargeops.station.entity.StationOperatingPeriod.builder()
+                        .schedule(schedule)
+                        .dayOfWeek(com.thang.chargeops.common.enums.StationDayOfWeek.MONDAY)
+                        .openTime(java.time.LocalTime.of(8, 0))
+                        .closeTime(java.time.LocalTime.of(22, 0))
+                        .enabled(true)
+                        .build();
+
+        com.thang.chargeops.station.entity.StationAsset asset = mock(com.thang.chargeops.station.entity.StationAsset.class);
+        AdminStationDetailResponse expected = mock(AdminStationDetailResponse.class);
+
+        when(stationRepository.findAdminDetailById(stationId)).thenReturn(java.util.Optional.of(station));
+        when(licenseRepository.findActiveByStationId(eq(stationId), any(Instant.class))).thenReturn(java.util.Optional.empty());
+        when(stationAssetRepository.findByStationIdOrderByDisplayOrderAsc(stationId)).thenReturn(List.of(asset));
+        when(stationOperatingScheduleRepository.findActiveByStationId(eq(stationId), any(Instant.class))).thenReturn(java.util.Optional.of(schedule));
+        when(stationOperatingPeriodRepository.findByScheduleIdOrderByDayOfWeekAscOpenTimeAsc(scheduleId)).thenReturn(List.of(period));
+        when(stationMapper.toAdminStationDetailResponse(station, List.of(period), null)).thenReturn(expected);
+
+        AdminStationDetailResponse actual = stationService.getAdminStationDetail(stationId);
+
+        assertThat(actual).isSameAs(expected);
+        assertThat(station.getAssets()).containsExactly(asset);
+        verify(stationRepository).findAdminDetailById(stationId);
+        verify(stationOperatingScheduleRepository).findActiveByStationId(eq(stationId), any(Instant.class));
+        verify(stationOperatingPeriodRepository).findByScheduleIdOrderByDayOfWeekAscOpenTimeAsc(scheduleId);
+        verify(stationMapper).toAdminStationDetailResponse(station, List.of(period), null);
     }
 
 }

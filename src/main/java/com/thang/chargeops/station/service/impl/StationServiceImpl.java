@@ -29,6 +29,7 @@ import com.thang.chargeops.station.projection.StationApprovalSummaryProjection;
 import com.thang.chargeops.station.repository.LicenseRepository;
 import com.thang.chargeops.station.repository.StationAssetRepository;
 import com.thang.chargeops.station.repository.StationOperatingPeriodRepository;
+import com.thang.chargeops.station.repository.StationOperatingScheduleRepository;
 import com.thang.chargeops.station.repository.StationRepository;
 import com.thang.chargeops.station.repository.specs.StationSpecification;
 import com.thang.chargeops.station.service.StationService;
@@ -63,6 +64,7 @@ public class StationServiceImpl implements StationService {
 
     private final LicenseRepository licenseRepository; //tạm thời
     private final StationAssetRepository stationAssetRepository;
+    private final StationOperatingScheduleRepository stationOperatingScheduleRepository;
     private final StationOperatingPeriodRepository stationOperatingPeriodRepository;
 
     @Override
@@ -238,12 +240,14 @@ public class StationServiceImpl implements StationService {
                 .orElse(null);
 
         List<StationAsset> assets = stationAssetRepository.findByStationIdOrderByDisplayOrderAsc(stationId);
-        List<StationOperatingPeriod> stationOperatingPeriods = stationOperatingPeriodRepository.findByStationIdOrderByDayOfWeekAsc(stationId);
-
-        station.setOperatingPeriods(stationOperatingPeriods);
         station.setAssets(assets);
 
-        return stationMapper.toAdminStationDetailResponse(station, licenseSummary);
+        var activeScheduleOpt = stationOperatingScheduleRepository.findActiveByStationId(stationId, Instant.now());
+        List<StationOperatingPeriod> stationOperatingPeriods = activeScheduleOpt
+                .map(schedule -> stationOperatingPeriodRepository.findByScheduleIdOrderByDayOfWeekAscOpenTimeAsc(schedule.getId()))
+                .orElse(List.of());
+
+        return stationMapper.toAdminStationDetailResponse(station, stationOperatingPeriods, licenseSummary);
     }
 
     @Override

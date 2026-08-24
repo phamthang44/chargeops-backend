@@ -77,9 +77,12 @@ public class Station extends SoftDeletableEntity {
     private List<StationAsset> assets = new ArrayList<>();
 
     @Builder.Default
-    @OneToMany(mappedBy = "station", cascade = CascadeType.ALL, orphanRemoval = true)
-    @OrderBy("dayOfWeek ASC, openTime ASC")
-    private List<StationOperatingPeriod> operatingPeriods = new ArrayList<>();
+    @OneToMany(mappedBy = "station", cascade = {CascadeType.PERSIST, CascadeType.MERGE})
+    @OrderBy("effectiveFrom DESC")
+    private List<StationOperatingSchedule> operatingSchedules = new ArrayList<>();
+
+    @OneToOne(mappedBy = "station", cascade = {CascadeType.PERSIST, CascadeType.MERGE}, fetch = FetchType.LAZY)
+    private StationBookingSettings bookingSettings;
 
     public void addAsset(StationAsset asset) {
         assets.add(asset);
@@ -91,14 +94,27 @@ public class Station extends SoftDeletableEntity {
         asset.setStation(null);
     }
 
-    public void addOperatingPeriod(StationOperatingPeriod period) {
-        operatingPeriods.add(period);
-        period.setStation(this);
+    public void addOperatingSchedule(StationOperatingSchedule schedule) {
+        operatingSchedules.add(schedule);
+        schedule.setStation(this);
     }
 
-    public void removeOperatingPeriod(StationOperatingPeriod period) {
-        operatingPeriods.remove(period);
-        period.setStation(null);
+    public void removeOperatingSchedule(StationOperatingSchedule schedule) {
+        operatingSchedules.remove(schedule);
+        schedule.setStation(null);
+    }
+
+    public void setBookingSettings(StationBookingSettings bookingSettings) {
+        this.bookingSettings = bookingSettings;
+        if (bookingSettings != null) {
+            bookingSettings.setStation(this);
+        }
+    }
+
+    public java.util.Optional<StationOperatingSchedule> findActiveSchedule(java.time.Instant now) {
+        return operatingSchedules.stream()
+                .filter(s -> s.isActive(now))
+                .findFirst();
     }
 
 }

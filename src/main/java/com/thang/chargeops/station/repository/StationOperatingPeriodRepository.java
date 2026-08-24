@@ -9,5 +9,5 @@ import java.util.UUID;
 
 @Repository
 public interface StationOperatingPeriodRepository extends JpaRepository<StationOperatingPeriod, UUID> {
-    List<StationOperatingPeriod> findByStationIdOrderByDayOfWeekAsc(UUID stationId);
+    List<StationOperatingPeriod> findByScheduleIdOrderByDayOfWeekAscOpenTimeAsc(UUID scheduleId);
 }

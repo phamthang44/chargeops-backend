@@ -28,6 +28,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.Locale;
 import java.util.UUID;
@@ -260,7 +261,7 @@ public class ConnectorServiceImpl implements ConnectorService {
                 .findByChargePointIdOrderByConnectorCodeAsc(chargePoint.getId())
                 .stream()
                 .map(Connector::getPowerKw)
-                .max(java.math.BigDecimal::compareTo)
+                .max(BigDecimal::compareTo)
                 .orElse(null);
         chargePoint.updateMaxPowerKw(maxPower);
     }
