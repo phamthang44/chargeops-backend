@@ -4,6 +4,8 @@ import com.thang.chargeops.common.entity.AuditableEntity;
 import jakarta.persistence.*;
 import lombok.*;
 
+import java.math.BigDecimal;
+
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
@@ -28,6 +30,10 @@ public class StationBookingSettings extends AuditableEntity {
     @Column(name = "max_duration_minutes", nullable = false)
     @Builder.Default
     private int maxDurationMinutes = 180;
+
+    @Column(name = "base_price_vnd", nullable = false, precision = 15, scale = 2)
+    @Builder.Default
+    private BigDecimal basePriceVnd = new BigDecimal("3400.00");
 
     @Version
     @Column(name = "version", nullable = false)

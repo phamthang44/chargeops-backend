@@ -19,6 +19,18 @@ public interface TouRateRepository extends JpaRepository<TouRate, UUID> {
     @Query("""
         SELECT t FROM TouRate t
         WHERE t.station.id = :stationId
+          AND t.effectiveFrom <= :at
+          AND (t.effectiveTo IS NULL OR t.effectiveTo > :at)
+        ORDER BY t.dayType ASC, t.startTime ASC
+    """)
+    List<TouRate> findActiveByStationId(
+            @Param("stationId") UUID stationId,
+            @Param("at") Instant at
+    );
+
+    @Query("""
+        SELECT t FROM TouRate t
+        WHERE t.station.id = :stationId
           AND t.dayType = :dayType
           AND t.effectiveFrom <= :at
           AND (t.effectiveTo IS NULL OR t.effectiveTo > :at)
