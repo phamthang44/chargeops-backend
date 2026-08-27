@@ -3,7 +3,6 @@ package com.thang.chargeops.station.policy.impl;
 import com.thang.chargeops.common.enums.StationDayOfWeek;
 import com.thang.chargeops.common.enums.TouRateDayType;
 import com.thang.chargeops.exception.AppException;
-
 import com.thang.chargeops.exception.errorcode.StationErrorCode;
 import com.thang.chargeops.station.dto.station.request.UpdateStationPricingRequest;
 import com.thang.chargeops.station.entity.Station;
@@ -37,43 +36,35 @@ public class StationPricingPolicyImpl implements StationPricingPolicy {
     @Override
     public void validateBookingSettings(int minDurationMinutes) {
         if (minDurationMinutes != 30 && minDurationMinutes != 60 && minDurationMinutes != 90) {
-            throw new IllegalArgumentException(
-                    "Minimum booking duration must be exactly 30, 60, or 90 minutes"
-            );
+            throw new AppException(StationErrorCode.PRICING_MIN_BOOKING_DURATION_INVALID);
         }
     }
 
     @Override
     public void validateOperatingHours(boolean open24Hours, List<UpdateStationPricingRequest.OperatingHourRequest> hours) {
         if (hours == null || hours.size() != StationDayOfWeek.values().length) {
-            throw new IllegalArgumentException("Operating hours must contain exactly seven days");
+            throw new AppException(StationErrorCode.PRICING_OPERATING_WEEK_INVALID);
         }
 
         Set<StationDayOfWeek> uniqueDays = EnumSet.noneOf(StationDayOfWeek.class);
         for (var hour : hours) {
             if (hour.day() == null || !uniqueDays.add(hour.day())) {
-                throw new IllegalArgumentException("Operating hours must contain every day exactly once");
+                throw new AppException(StationErrorCode.PRICING_OPERATING_WEEK_INVALID);
             }
             if (open24Hours) {
                 continue;
             }
             if (!hour.enabled()) {
                 if (hour.openTime() != null || hour.closeTime() != null) {
-                    throw new IllegalArgumentException(
-                            "A closed day must not contain open or close time"
-                    );
+                    throw new AppException(StationErrorCode.PRICING_CLOSED_DAY_TIME_PRESENT);
                 }
                 continue;
             }
             if (hour.openTime() == null || hour.closeTime() == null) {
-                throw new IllegalArgumentException(
-                        "An enabled day requires both open and close time"
-                );
+                throw new AppException(StationErrorCode.PRICING_OPEN_DAY_TIME_REQUIRED);
             }
             if (hour.openTime().equals(hour.closeTime())) {
-                throw new IllegalArgumentException(
-                        "Equal open and close time is ambiguous; use the 24/7 option instead"
-                );
+                throw new AppException(StationErrorCode.PRICING_OPERATING_WINDOW_AMBIGUOUS);
             }
             // close < open is intentionally valid and means the window crosses midnight.
         }
@@ -82,9 +73,7 @@ public class StationPricingPolicyImpl implements StationPricingPolicy {
     @Override
     public void validateTouRules(List<UpdateStationPricingRequest.TouRuleRequest> touRules) {
         if (touRules == null) {
-            throw new IllegalArgumentException(
-                    "TOU rules are required; use an empty list when only base price applies"
-            );
+            throw new AppException(StationErrorCode.PRICING_TOU_RULES_REQUIRED);
         }
 
         Set<String> names = new HashSet<>();
@@ -93,13 +82,13 @@ public class StationPricingPolicyImpl implements StationPricingPolicy {
             var rule = touRules.get(ruleIndex);
             String normalizedName = rule.name().trim().toLowerCase(Locale.ROOT);
             if (!names.add(normalizedName)) {
-                throw new IllegalArgumentException("TOU rule names must be unique");
+                throw new AppException(StationErrorCode.PRICING_TOU_NAME_DUPLICATED);
             }
             if (rule.startTime().equals(rule.endTime())) {
-                throw new IllegalArgumentException("A TOU rule must have a non-zero time window");
+                throw new AppException(StationErrorCode.PRICING_TOU_WINDOW_INVALID);
             }
             if (rule.rateVnd().signum() <= 0) {
-                throw new IllegalArgumentException("TOU rate must be greater than zero");
+                throw new AppException(StationErrorCode.PRICING_TOU_RATE_INVALID);
             }
 
             for (WeeklyInterval candidate : expand(
@@ -113,9 +102,7 @@ public class StationPricingPolicyImpl implements StationPricingPolicy {
                                 && existing.startMinute() < candidate.endMinute()
                                 && candidate.startMinute() < existing.endMinute());
                 if (overlaps) {
-                    throw new IllegalArgumentException(
-                            "TOU rules overlap after applying DAILY/WEEKDAY/WEEKEND day groups"
-                    );
+                    throw new AppException(StationErrorCode.PRICING_TOU_RULES_OVERLAP);
                 }
                 occupied.add(candidate);
             }

@@ -3,6 +3,8 @@ package com.thang.chargeops.station.policy;
 import com.thang.chargeops.common.enums.StationDayOfWeek;
 import com.thang.chargeops.common.enums.TouRateDayType;
 import com.thang.chargeops.common.enums.TouRatePeriodCode;
+import com.thang.chargeops.exception.AppException;
+import com.thang.chargeops.exception.errorcode.StationErrorCode;
 import com.thang.chargeops.station.dto.station.request.UpdateStationPricingRequest;
 import com.thang.chargeops.station.policy.impl.StationPricingPolicyImpl;
 import org.junit.jupiter.api.Test;
@@ -12,6 +14,7 @@ import java.time.LocalTime;
 import java.util.Arrays;
 import java.util.List;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
@@ -25,7 +28,11 @@ class StationPricingPolicyImplTest {
         assertThatCode(() -> policy.validateBookingSettings(60)).doesNotThrowAnyException();
         assertThatCode(() -> policy.validateBookingSettings(90)).doesNotThrowAnyException();
         assertThatThrownBy(() -> policy.validateBookingSettings(45))
-                .isInstanceOf(IllegalArgumentException.class);
+                .isInstanceOfSatisfying(
+                        AppException.class,
+                        error -> assertThat(error.getErrorCode())
+                                .isEqualTo(StationErrorCode.PRICING_MIN_BOOKING_DURATION_INVALID)
+                );
     }
 
     @Test
@@ -57,8 +64,11 @@ class StationPricingPolicyImplTest {
                         .toList();
 
         assertThatThrownBy(() -> policy.validateOperatingHours(false, hours))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("every day exactly once");
+                .isInstanceOfSatisfying(
+                        AppException.class,
+                        error -> assertThat(error.getErrorCode())
+                                .isEqualTo(StationErrorCode.PRICING_OPERATING_WEEK_INVALID)
+                );
     }
 
     @Test
@@ -69,8 +79,11 @@ class StationPricingPolicyImplTest {
         );
 
         assertThatThrownBy(() -> policy.validateTouRules(rules))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("overlap");
+                .isInstanceOfSatisfying(
+                        AppException.class,
+                        error -> assertThat(error.getErrorCode())
+                                .isEqualTo(StationErrorCode.PRICING_TOU_RULES_OVERLAP)
+                );
     }
 
     @Test
@@ -91,8 +104,11 @@ class StationPricingPolicyImplTest {
         );
 
         assertThatThrownBy(() -> policy.validateTouRules(rules))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("overlap");
+                .isInstanceOfSatisfying(
+                        AppException.class,
+                        error -> assertThat(error.getErrorCode())
+                                .isEqualTo(StationErrorCode.PRICING_TOU_RULES_OVERLAP)
+                );
     }
 
     private UpdateStationPricingRequest.TouRuleRequest rule(

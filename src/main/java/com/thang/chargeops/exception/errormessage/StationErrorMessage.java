@@ -221,6 +221,57 @@ public final class StationErrorMessage {
             template("error.station.notEligibleForNewBusiness", "Station is not eligible for new bookings at this time");
     public static final ErrorMessage.Template CONNECTOR_NOT_BOOKABLE =
             template("error.station.connectorNotBookable", "Connector is not bookable at this time: {0}");
+    public static final ErrorMessage.Template PRICING_MIN_BOOKING_DURATION_INVALID =
+            template(
+                    "error.station.pricing.minBookingDurationInvalid",
+                    "Minimum booking duration must be exactly 30, 60, or 90 minutes"
+            );
+    public static final ErrorMessage.Template PRICING_OPERATING_WEEK_INVALID =
+            template(
+                    "error.station.pricing.operatingWeekInvalid",
+                    "Operating hours must contain every day exactly once"
+            );
+    public static final ErrorMessage.Template PRICING_CLOSED_DAY_TIME_PRESENT =
+            template(
+                    "error.station.pricing.closedDayTimePresent",
+                    "A closed day must not contain open or close time"
+            );
+    public static final ErrorMessage.Template PRICING_OPEN_DAY_TIME_REQUIRED =
+            template(
+                    "error.station.pricing.openDayTimeRequired",
+                    "An enabled day requires both open and close time"
+            );
+    public static final ErrorMessage.Template PRICING_OPERATING_WINDOW_AMBIGUOUS =
+            template(
+                    "error.station.pricing.operatingWindowAmbiguous",
+                    "Equal open and close time is ambiguous; use the 24/7 option instead"
+            );
+    public static final ErrorMessage.Template PRICING_TOU_RULES_REQUIRED =
+            template(
+                    "error.station.pricing.touRulesRequired",
+                    "TOU rules are required; use an empty list when only base price applies"
+            );
+    public static final ErrorMessage.Template PRICING_TOU_NAME_DUPLICATED =
+            template(
+                    "error.station.pricing.touNameDuplicated",
+                    "TOU rule names must be unique"
+            );
+    public static final ErrorMessage.Template PRICING_TOU_WINDOW_INVALID =
+            template(
+                    "error.station.pricing.touWindowInvalid",
+                    "A TOU rule must have a non-zero time window"
+            );
+    public static final ErrorMessage.Template PRICING_TOU_RATE_INVALID =
+            template(
+                    "error.station.pricing.touRateInvalid",
+                    "TOU rate must be greater than zero"
+            );
+    public static final ErrorMessage.Template PRICING_TOU_RULES_OVERLAP =
+            template(
+                    "error.station.pricing.touRulesOverlap",
+                    "TOU rules overlap after applying DAILY/WEEKDAY/WEEKEND day groups"
+            );
+
     static List<ErrorMessage.Template> templates() {
         return List.of(
                 STATION_NAME_REQUIRED,
@@ -300,7 +351,17 @@ public final class StationErrorMessage {
                 CHARGE_POINT_DRAFT_DELETE_ONLY,
                 CONNECTOR_DRAFT_DELETE_ONLY,
                 STATION_NOT_ELIGIBLE_FOR_NEW_BUSINESS,
-                CONNECTOR_NOT_BOOKABLE
+                CONNECTOR_NOT_BOOKABLE,
+                PRICING_MIN_BOOKING_DURATION_INVALID,
+                PRICING_OPERATING_WEEK_INVALID,
+                PRICING_CLOSED_DAY_TIME_PRESENT,
+                PRICING_OPEN_DAY_TIME_REQUIRED,
+                PRICING_OPERATING_WINDOW_AMBIGUOUS,
+                PRICING_TOU_RULES_REQUIRED,
+                PRICING_TOU_NAME_DUPLICATED,
+                PRICING_TOU_WINDOW_INVALID,
+                PRICING_TOU_RATE_INVALID,
+                PRICING_TOU_RULES_OVERLAP
         );
     }
 }
