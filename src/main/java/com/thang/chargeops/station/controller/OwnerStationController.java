@@ -17,6 +17,11 @@ import org.springframework.web.bind.annotation.*;
 @RequestMapping(SystemConstant.API_URL_PATTERN + "owner/stations")
 @RequiredArgsConstructor
 @PreAuthorize("hasRole('OWNER')")
+/*
+ * TODO(staff-access): Đăng ký station, chỉnh cấu hình station và các thao tác ownership phải giữ
+ * OWNER-only. Nếu Staff cần một màn hình tổng quan station, hãy tạo use case đọc riêng và kiểm tra
+ * bằng StationAccessService.requireOwnerOrActiveStaff(), không mở toàn bộ controller này.
+ */
 public class OwnerStationController {
 
     private final StationService stationService;

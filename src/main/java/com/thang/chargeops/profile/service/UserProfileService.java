@@ -14,4 +14,6 @@ public interface UserProfileService {
     UserProfileResponse updateCurrentProfile(Jwt jwt, UserProfileUpdateRequest request);
 
     UserProfile getUserProfileById(UUID id);
+
+    UserProfile getUserProfileByEmail(String email);
 }

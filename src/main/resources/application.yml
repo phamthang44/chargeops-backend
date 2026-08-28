@@ -80,6 +80,14 @@ app:
   name: ChargeOps
   base-url: ${BACKEND_BASE_URL:http://localhost:8081}
   frontend-url: ${FRONTEND_BASE_URL:http://localhost:5173}
+  identity:
+    keycloak-admin:
+      base-url: ${KEYCLOAK_ADMIN_BASE_URL:http://localhost:8080}
+      realm: ${KEYCLOAK_ADMIN_REALM:chargeops}
+      client-id: ${KEYCLOAK_ADMIN_CLIENT_ID:chargeops-backend}
+      # Không commit secret. Tạo confidential service-account client trong Keycloak
+      # rồi chỉ cấp realm-management/view-users để đọc role của user.
+      client-secret: ${KEYCLOAK_ADMIN_CLIENT_SECRET:}
   scheduling:
     license-expiration:
       fixed-delay-ms: ${LICENSE_EXPIRATION_FIXED_DELAY_MS:60000}

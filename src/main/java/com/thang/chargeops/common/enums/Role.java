@@ -7,6 +7,5 @@ package com.thang.chargeops.common.enums;
 public enum Role {
     DRIVER,
     OWNER,
-    ADMIN,
-    STATION_STAFF
+    ADMIN
 }

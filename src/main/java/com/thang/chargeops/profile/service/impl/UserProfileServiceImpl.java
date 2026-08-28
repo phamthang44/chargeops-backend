@@ -56,6 +56,11 @@ public class UserProfileServiceImpl implements UserProfileService {
         );
     }
 
+    @Override
+    public UserProfile getUserProfileByEmail(String email) {
+        return userProfileRepository.findByEmail(email).orElse(null);
+    }
+
     private UserProfile findOrCreateFromJwt(Jwt jwt) {
         String keycloakId = jwtClaimExtractor.requireSubject(jwt);
         String email = jwtClaimExtractor.requireEmail(jwt);

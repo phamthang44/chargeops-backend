@@ -20,6 +20,12 @@ import java.util.UUID;
 @RequestMapping(SystemConstant.API_URL_PATTERN + "owner/stations/{stationId}/charge-points")
 @RequiredArgsConstructor
 @PreAuthorize("hasRole('OWNER')")
+/*
+ * TODO(staff-access): Phase sau có thể cho Staff đang ACTIVE xem charge point, xem lịch sử trạng
+ * thái và chuyển operational status của thiết bị thuộc station được gán. Riêng cập nhật cấu hình
+ * charge point vẫn phải OWNER-only. Không mở toàn bộ controller này; endpoint dùng chung phải gọi
+ * StationAccessService.requireOwnerOrActiveStaff() trong service nghiệp vụ.
+ */
 public class OwnerChargePointController {
 
     private final ChargePointService chargePointService;

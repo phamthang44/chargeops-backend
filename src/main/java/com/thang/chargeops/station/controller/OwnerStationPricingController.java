@@ -17,6 +17,10 @@ import java.util.UUID;
 @RequestMapping(SystemConstant.API_URL_PATTERN + "owner/stations")
 @RequiredArgsConstructor
 @PreAuthorize("hasRole('OWNER')")
+/*
+ * TODO(staff-access): Giữ toàn bộ pricing OWNER-only. Không thay kiểm tra ownership bằng
+ * StationAccessService.requireOwnerOrActiveStaff() khi triển khai các quyền Staff ở phase sau.
+ */
 public class OwnerStationPricingController {
 
     private final StationPricingService stationPricingService;

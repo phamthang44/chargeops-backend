@@ -19,6 +19,12 @@ import java.util.UUID;
 @RequestMapping(SystemConstant.API_URL_PATTERN + "owner/stations/{stationId}/charge-points/{chargePointId}/connectors")
 @RequiredArgsConstructor
 @PreAuthorize("hasRole('OWNER')")
+/*
+ * TODO(staff-access): Phase sau có thể cho Staff đang ACTIVE xem connector, xem lịch sử trạng
+ * thái và chuyển runtime status của connector thuộc station được gán. Không đổi annotation ở cấp
+ * class này thành DRIVER/Staff vì sẽ mở đồng loạt mọi endpoint Owner. Hãy tách/mở đúng endpoint
+ * cần thiết và bắt buộc service nghiệp vụ gọi StationAccessService.requireOwnerOrActiveStaff().
+ */
 public class OwnerConnectorController {
 
     private final ConnectorService connectorService;
