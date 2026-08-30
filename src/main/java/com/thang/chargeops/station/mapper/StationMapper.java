@@ -25,7 +25,6 @@ public interface StationMapper {
     @Mapping(target = "version", ignore = true)
     @Mapping(target = "assets", ignore = true)
     @Mapping(target = "operatingSchedules", ignore = true)
-    @Mapping(target = "bookingSettings", ignore = true)
     Station toStationEntity(RegisterStationRequest request);
 
     @Mapping(target = "licenseSummary", expression = "java(toLicenseSummary(projection))")

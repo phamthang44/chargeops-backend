@@ -81,9 +81,6 @@ public class Station extends SoftDeletableEntity {
     @OrderBy("effectiveFrom DESC")
     private List<StationOperatingSchedule> operatingSchedules = new ArrayList<>();
 
-    @OneToOne(mappedBy = "station", cascade = {CascadeType.PERSIST, CascadeType.MERGE}, fetch = FetchType.LAZY)
-    private StationBookingSettings bookingSettings;
-
     public void addAsset(StationAsset asset) {
         assets.add(asset);
         asset.setStation(this);
@@ -102,13 +99,6 @@ public class Station extends SoftDeletableEntity {
     public void removeOperatingSchedule(StationOperatingSchedule schedule) {
         operatingSchedules.remove(schedule);
         schedule.setStation(null);
-    }
-
-    public void setBookingSettings(StationBookingSettings bookingSettings) {
-        this.bookingSettings = bookingSettings;
-        if (bookingSettings != null) {
-            bookingSettings.setStation(this);
-        }
     }
 
     public java.util.Optional<StationOperatingSchedule> findActiveSchedule(java.time.Instant now) {

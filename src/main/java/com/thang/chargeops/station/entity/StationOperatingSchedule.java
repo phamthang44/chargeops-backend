@@ -1,10 +1,14 @@
 package com.thang.chargeops.station.entity;
 
 import com.thang.chargeops.common.entity.AuditableEntity;
+import com.thang.chargeops.common.enums.StationDayOfWeek;
+import com.thang.chargeops.station.exception.StationPricingDomainException;
+import com.thang.chargeops.station.exception.violation.StationPricingViolation;
 import jakarta.persistence.*;
 import lombok.*;
 
 import java.time.Instant;
+import java.time.LocalTime;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -37,6 +41,70 @@ public class StationOperatingSchedule extends AuditableEntity {
     @OrderBy("dayOfWeek ASC, openTime ASC")
     private List<StationOperatingPeriod> periods = new ArrayList<>();
 
+    public static StationOperatingSchedule create(
+            Station station,
+            boolean open24Hours,
+            Instant effectiveFrom
+    ) {
+        if (station == null) {
+            throw new IllegalArgumentException("Operating schedule requires a station");
+        }
+        if (effectiveFrom == null) {
+            throw new IllegalArgumentException("Operating schedule requires an effective time");
+        }
+
+        return StationOperatingSchedule.builder()
+                .station(station)
+                .open24Hours(open24Hours)
+                .effectiveFrom(effectiveFrom)
+                .build();
+    }
+
+    public void addPeriod(
+            StationDayOfWeek day,
+            LocalTime openTime,
+            LocalTime closeTime,
+            boolean enabled
+    ) {
+        if (open24Hours) {
+            throw new StationPricingDomainException(
+                    StationPricingViolation.OPEN_24_HOURS_PERIOD_NOT_ALLOWED,
+                    "An open-24-hours schedule cannot contain periods"
+            );
+        }
+        if (day == null || periods.stream().anyMatch(period -> period.getDayOfWeek() == day)) {
+            throw new StationPricingDomainException(
+                    StationPricingViolation.OPERATING_WEEK_INVALID,
+                    "Operating schedule requires one unique period per day"
+            );
+        }
+        if (enabled && (openTime == null || closeTime == null)) {
+            throw new StationPricingDomainException(
+                    StationPricingViolation.OPEN_DAY_TIME_REQUIRED,
+                    "Enabled operating period requires open and close times"
+            );
+        }
+        if (enabled && openTime.equals(closeTime)) {
+            throw new StationPricingDomainException(
+                    StationPricingViolation.OPERATING_WINDOW_AMBIGUOUS,
+                    "Enabled operating period requires an unambiguous time window"
+            );
+        }
+        if (!enabled && (openTime != null || closeTime != null)) {
+            throw new StationPricingDomainException(
+                    StationPricingViolation.CLOSED_DAY_TIME_PRESENT,
+                    "Disabled operating period cannot contain times"
+            );
+        }
+
+        addPeriod(StationOperatingPeriod.builder()
+                .dayOfWeek(day)
+                .openTime(enabled ? openTime : null)
+                .closeTime(enabled ? closeTime : null)
+                .enabled(enabled)
+                .build());
+    }
+
     public void addPeriod(StationOperatingPeriod period) {
         periods.add(period);
         period.setSchedule(this);
@@ -60,5 +128,21 @@ public class StationOperatingSchedule extends AuditableEntity {
 
     public boolean isHistorical(Instant now) {
         return effectiveTo != null && !effectiveTo.isAfter(now);
+    }
+
+    public void expireAt(Instant at) {
+        if (at == null || effectiveFrom == null || at.isBefore(effectiveFrom)) {
+            throw new StationPricingDomainException(
+                    StationPricingViolation.CONFIGURATION_CONFLICT,
+                    "Schedule expiry cannot precede its effective time"
+            );
+        }
+        if (effectiveTo != null && !effectiveTo.equals(at)) {
+            throw new StationPricingDomainException(
+                    StationPricingViolation.CONFIGURATION_CONFLICT,
+                    "Operating schedule is already expired"
+            );
+        }
+        effectiveTo = at;
     }
 }

@@ -3,9 +3,9 @@ package com.thang.chargeops.station.policy;
 import com.thang.chargeops.common.enums.StationDayOfWeek;
 import com.thang.chargeops.common.enums.TouRateDayType;
 import com.thang.chargeops.common.enums.TouRatePeriodCode;
-import com.thang.chargeops.exception.AppException;
-import com.thang.chargeops.exception.errorcode.StationErrorCode;
 import com.thang.chargeops.station.dto.station.request.UpdateStationPricingRequest;
+import com.thang.chargeops.station.exception.StationPricingDomainException;
+import com.thang.chargeops.station.exception.violation.StationPricingViolation;
 import com.thang.chargeops.station.policy.impl.StationPricingPolicyImpl;
 import org.junit.jupiter.api.Test;
 
@@ -29,9 +29,9 @@ class StationPricingPolicyImplTest {
         assertThatCode(() -> policy.validateBookingSettings(90)).doesNotThrowAnyException();
         assertThatThrownBy(() -> policy.validateBookingSettings(45))
                 .isInstanceOfSatisfying(
-                        AppException.class,
-                        error -> assertThat(error.getErrorCode())
-                                .isEqualTo(StationErrorCode.PRICING_MIN_BOOKING_DURATION_INVALID)
+                        StationPricingDomainException.class,
+                        error -> assertThat(error.getViolation())
+                                .isEqualTo(StationPricingViolation.MIN_BOOKING_DURATION_INVALID)
                 );
     }
 
@@ -65,9 +65,9 @@ class StationPricingPolicyImplTest {
 
         assertThatThrownBy(() -> policy.validateOperatingHours(false, hours))
                 .isInstanceOfSatisfying(
-                        AppException.class,
-                        error -> assertThat(error.getErrorCode())
-                                .isEqualTo(StationErrorCode.PRICING_OPERATING_WEEK_INVALID)
+                        StationPricingDomainException.class,
+                        error -> assertThat(error.getViolation())
+                                .isEqualTo(StationPricingViolation.OPERATING_WEEK_INVALID)
                 );
     }
 
@@ -80,9 +80,9 @@ class StationPricingPolicyImplTest {
 
         assertThatThrownBy(() -> policy.validateTouRules(rules))
                 .isInstanceOfSatisfying(
-                        AppException.class,
-                        error -> assertThat(error.getErrorCode())
-                                .isEqualTo(StationErrorCode.PRICING_TOU_RULES_OVERLAP)
+                        StationPricingDomainException.class,
+                        error -> assertThat(error.getViolation())
+                                .isEqualTo(StationPricingViolation.TOU_RULES_OVERLAP)
                 );
     }
 
@@ -105,9 +105,9 @@ class StationPricingPolicyImplTest {
 
         assertThatThrownBy(() -> policy.validateTouRules(rules))
                 .isInstanceOfSatisfying(
-                        AppException.class,
-                        error -> assertThat(error.getErrorCode())
-                                .isEqualTo(StationErrorCode.PRICING_TOU_RULES_OVERLAP)
+                        StationPricingDomainException.class,
+                        error -> assertThat(error.getViolation())
+                                .isEqualTo(StationPricingViolation.TOU_RULES_OVERLAP)
                 );
     }
 

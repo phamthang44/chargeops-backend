@@ -20,7 +20,10 @@ class StationPricingErrorCodeTest {
             StationErrorCode.PRICING_TOU_NAME_DUPLICATED,
             StationErrorCode.PRICING_TOU_WINDOW_INVALID,
             StationErrorCode.PRICING_TOU_RATE_INVALID,
-            StationErrorCode.PRICING_TOU_RULES_OVERLAP
+            StationErrorCode.PRICING_TOU_RULES_OVERLAP,
+            StationErrorCode.PRICING_BASE_PRICE_INVALID,
+            StationErrorCode.PRICING_TOU_NAME_REQUIRED,
+            StationErrorCode.PRICING_OPEN_24_HOURS_PERIOD_NOT_ALLOWED
     );
 
     @Test
@@ -37,7 +40,10 @@ class StationPricingErrorCodeTest {
                         "STATION_046",
                         "STATION_047",
                         "STATION_048",
-                        "STATION_049"
+                        "STATION_049",
+                        "STATION_050",
+                        "STATION_051",
+                        "STATION_052"
                 );
 
         assertThat(PRICING_ERROR_CODES).allSatisfy(errorCode -> {
@@ -45,5 +51,15 @@ class StationPricingErrorCodeTest {
             assertThat(ErrorMessage.defaultMessage(errorCode.getMessageKey()))
                     .isEqualTo(errorCode.getMessage());
         });
+    }
+
+    @Test
+    void exposesPricingConfigurationConflict() {
+        StationErrorCode errorCode = StationErrorCode.PRICING_CONFIGURATION_CONFLICT;
+
+        assertThat(errorCode.getCode()).isEqualTo("STATION_053");
+        assertThat(errorCode.getHttpStatus()).isEqualTo(HttpStatus.CONFLICT);
+        assertThat(ErrorMessage.defaultMessage(errorCode.getMessageKey()))
+                .isEqualTo(errorCode.getMessage());
     }
 }

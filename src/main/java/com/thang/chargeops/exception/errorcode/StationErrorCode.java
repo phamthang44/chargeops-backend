@@ -97,7 +97,15 @@ public enum StationErrorCode implements BaseErrorCode {
     PRICING_TOU_RATE_INVALID(
             HttpStatus.BAD_REQUEST, "STATION_048", StationErrorMessage.PRICING_TOU_RATE_INVALID),
     PRICING_TOU_RULES_OVERLAP(
-            HttpStatus.BAD_REQUEST, "STATION_049", StationErrorMessage.PRICING_TOU_RULES_OVERLAP);
+            HttpStatus.BAD_REQUEST, "STATION_049", StationErrorMessage.PRICING_TOU_RULES_OVERLAP),
+    PRICING_BASE_PRICE_INVALID(
+            HttpStatus.BAD_REQUEST, "STATION_050", StationErrorMessage.PRICING_BASE_PRICE_INVALID),
+    PRICING_TOU_NAME_REQUIRED(
+            HttpStatus.BAD_REQUEST, "STATION_051", StationErrorMessage.PRICING_TOU_NAME_REQUIRED),
+    PRICING_OPEN_24_HOURS_PERIOD_NOT_ALLOWED(
+            HttpStatus.BAD_REQUEST, "STATION_052", StationErrorMessage.PRICING_OPEN_24_HOURS_PERIOD_NOT_ALLOWED),
+    PRICING_CONFIGURATION_CONFLICT(
+            HttpStatus.CONFLICT, "STATION_053", StationErrorMessage.PRICING_CONFIGURATION_CONFLICT);
 
     private final HttpStatus httpStatus;
     private final String code;

@@ -271,6 +271,26 @@ public final class StationErrorMessage {
                     "error.station.pricing.touRulesOverlap",
                     "TOU rules overlap after applying DAILY/WEEKDAY/WEEKEND day groups"
             );
+    public static final ErrorMessage.Template PRICING_BASE_PRICE_INVALID =
+            template(
+                    "error.station.pricing.basePriceInvalid",
+                    "Base price must be greater than zero"
+            );
+    public static final ErrorMessage.Template PRICING_TOU_NAME_REQUIRED =
+            template(
+                    "error.station.pricing.touNameRequired",
+                    "TOU rule name is required"
+            );
+    public static final ErrorMessage.Template PRICING_OPEN_24_HOURS_PERIOD_NOT_ALLOWED =
+            template(
+                    "error.station.pricing.open24HoursPeriodNotAllowed",
+                    "A 24/7 operating schedule cannot contain daily periods"
+            );
+    public static final ErrorMessage.Template PRICING_CONFIGURATION_CONFLICT =
+            template(
+                    "error.station.pricing.configurationConflict",
+                    "Pricing configuration changed concurrently or is no longer active"
+            );
 
     static List<ErrorMessage.Template> templates() {
         return List.of(
@@ -361,7 +381,11 @@ public final class StationErrorMessage {
                 PRICING_TOU_NAME_DUPLICATED,
                 PRICING_TOU_WINDOW_INVALID,
                 PRICING_TOU_RATE_INVALID,
-                PRICING_TOU_RULES_OVERLAP
+                PRICING_TOU_RULES_OVERLAP,
+                PRICING_BASE_PRICE_INVALID,
+                PRICING_TOU_NAME_REQUIRED,
+                PRICING_OPEN_24_HOURS_PERIOD_NOT_ALLOWED,
+                PRICING_CONFIGURATION_CONFLICT
         );
     }
 }
