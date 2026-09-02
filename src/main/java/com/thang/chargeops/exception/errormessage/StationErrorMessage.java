@@ -62,6 +62,20 @@ public final class StationErrorMessage {
     public static final String PAGE_NUMBER_MIN_KEY = "validation.pagination.page.min";
     public static final String PAGE_SIZE_MIN_KEY = "validation.pagination.size.min";
     public static final String PAGE_SIZE_MAX_KEY = "validation.pagination.size.max";
+    public static final String DISCOVERY_QUERY_MAX_LENGTH_KEY =
+            "validation.station.discovery.query.maxLength";
+    public static final String DISCOVERY_CONNECTOR_TYPES_MAX_KEY =
+            "validation.station.discovery.connectorTypes.max";
+    public static final String DISCOVERY_PROVINCE_CODE_MAX_LENGTH_KEY =
+            "validation.station.discovery.provinceCode.maxLength";
+    public static final String DISCOVERY_MIN_POWER_MIN_KEY =
+            "validation.station.discovery.minPower.min";
+    public static final String DISCOVERY_MAX_DISTANCE_MIN_KEY =
+            "validation.station.discovery.maxDistance.min";
+    public static final String AVAILABILITY_CONNECTOR_REQUIRED_KEY =
+            "validation.station.availability.connector.required";
+    public static final String AVAILABILITY_DATE_REQUIRED_KEY =
+            "validation.station.availability.date.required";
 
     public static final ErrorMessage.Template STATION_NAME_REQUIRED =
             template(STATION_NAME_REQUIRED_KEY, "Station name is required");
@@ -151,6 +165,20 @@ public final class StationErrorMessage {
             template(PAGE_SIZE_MIN_KEY, "Page size must be at least 1");
     public static final ErrorMessage.Template PAGE_SIZE_MAX =
             template(PAGE_SIZE_MAX_KEY, "Page size cannot exceed 100");
+    public static final ErrorMessage.Template DISCOVERY_QUERY_MAX_LENGTH =
+            template(DISCOVERY_QUERY_MAX_LENGTH_KEY, "Discovery query cannot exceed 200 characters");
+    public static final ErrorMessage.Template DISCOVERY_CONNECTOR_TYPES_MAX =
+            template(DISCOVERY_CONNECTOR_TYPES_MAX_KEY, "At most 4 connector types may be selected");
+    public static final ErrorMessage.Template DISCOVERY_PROVINCE_CODE_MAX_LENGTH =
+            template(DISCOVERY_PROVINCE_CODE_MAX_LENGTH_KEY, "Province code cannot exceed 20 characters");
+    public static final ErrorMessage.Template DISCOVERY_MIN_POWER_MIN =
+            template(DISCOVERY_MIN_POWER_MIN_KEY, "Minimum connector power cannot be negative");
+    public static final ErrorMessage.Template DISCOVERY_MAX_DISTANCE_MIN =
+            template(DISCOVERY_MAX_DISTANCE_MIN_KEY, "Discovery distance must be greater than zero");
+    public static final ErrorMessage.Template AVAILABILITY_CONNECTOR_REQUIRED =
+            template(AVAILABILITY_CONNECTOR_REQUIRED_KEY, "Connector is required to check availability");
+    public static final ErrorMessage.Template AVAILABILITY_DATE_REQUIRED =
+            template(AVAILABILITY_DATE_REQUIRED_KEY, "Availability date is required");
 
     public static final ErrorMessage.Template STATION_NOT_FOUND =
             template("error.station.notFound", "Station not found: {0}");
@@ -336,6 +364,13 @@ public final class StationErrorMessage {
                 PAGE_NUMBER_MIN,
                 PAGE_SIZE_MIN,
                 PAGE_SIZE_MAX,
+                DISCOVERY_QUERY_MAX_LENGTH,
+                DISCOVERY_CONNECTOR_TYPES_MAX,
+                DISCOVERY_PROVINCE_CODE_MAX_LENGTH,
+                DISCOVERY_MIN_POWER_MIN,
+                DISCOVERY_MAX_DISTANCE_MIN,
+                AVAILABILITY_CONNECTOR_REQUIRED,
+                AVAILABILITY_DATE_REQUIRED,
                 STATION_NOT_FOUND,
                 STATION_ACCESS_DENIED,
                 INVALID_STATUS_TRANSITION,

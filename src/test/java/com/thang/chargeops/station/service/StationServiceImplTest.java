@@ -226,7 +226,9 @@ class StationServiceImplTest {
                 "Cau Giay Ward",
                 3,
                 StationStatus.PENDING_APPROVAL,
-                null
+                null,
+                0,
+                0
         );
         Page<OwnerStationSummaryProjection> stationPage = new PageImpl<>(
                 List.of(station),

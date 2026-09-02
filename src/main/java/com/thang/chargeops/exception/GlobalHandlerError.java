@@ -22,11 +22,13 @@ import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.validation.BindingResult;
 import org.springframework.validation.FieldError;
+import org.springframework.validation.method.ParameterErrors;
 import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.method.annotation.HandlerMethodValidationException;
 import org.springframework.web.servlet.NoHandlerFoundException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 import tools.jackson.core.JacksonException;
@@ -85,6 +87,7 @@ public class GlobalHandlerError {
 
     @ExceptionHandler({
             MethodArgumentNotValidException.class,
+            HandlerMethodValidationException.class,
             ConstraintViolationException.class,
             MissingServletRequestParameterException.class,
             IllegalArgumentException.class
@@ -102,6 +105,8 @@ public class GlobalHandlerError {
                 errors.put(fieldError.getField(), toValidationFailure(fieldError.getDefaultMessage()));
             }
             details = errors;
+        } else if (e instanceof HandlerMethodValidationException ex) {
+            details = toValidationDetails(ex);
         } else if (e instanceof ConstraintViolationException ex) {
             details = ex.getConstraintViolations().stream()
                     .collect(Collectors.toMap(
@@ -247,6 +252,43 @@ public class GlobalHandlerError {
                         CommonErrorCode.INTERNAL_ERROR.getMessage(),
                         traceId
                 ));
+    }
+
+    /**
+     * VI: Gom lỗi validation method của Spring 7 về map field → chi tiết giống
+     * lỗi DTO thông thường, để frontend không phải xử lý hai JSON contract.
+     *
+     * <p>EN: Converts Spring 7 method-validation results into the same
+     * field-to-detail map used for regular DTO validation, keeping one JSON
+     * contract for the frontend.</p>
+     */
+    private Map<String, ValidationFailure> toValidationDetails(
+            HandlerMethodValidationException exception
+    ) {
+        Map<String, ValidationFailure> errors = new HashMap<>();
+
+        exception.getParameterValidationResults().forEach(result -> {
+            if (result instanceof ParameterErrors parameterErrors) {
+                for (FieldError fieldError : parameterErrors.getFieldErrors()) {
+                    errors.put(
+                            fieldError.getField(),
+                            toValidationFailure(fieldError.getDefaultMessage())
+                    );
+                }
+                return;
+            }
+
+            String parameterName = result.getMethodParameter().getParameterName();
+            String field = parameterName != null
+                    ? parameterName
+                    : "argument" + result.getMethodParameter().getParameterIndex();
+
+            result.getResolvableErrors().forEach(error ->
+                    errors.put(field, toValidationFailure(error.getDefaultMessage()))
+            );
+        });
+
+        return errors;
     }
 
     private ValidationFailure toValidationFailure(String rawMessage) {

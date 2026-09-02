@@ -36,4 +36,6 @@ public class UserProfileController {
         return ResponseEntity.ok(ApiResult.success(userProfileService.updateCurrentProfile(jwt, request)));
     }
 
+
+
 }

@@ -28,4 +28,17 @@ public class StationBusinessEligibilityPolicyImpl implements StationBusinessElig
             );
         }
     }
+
+    @Override
+    public boolean isEligibleForNewBusiness(
+            Station station,
+            Instant at
+    ) {
+        return station.getStatus() == StationStatus.ACTIVE
+                && licenseRepository.existsActiveLicenseForStation(
+                station.getId(),
+                at
+        );
+    }
+
 }

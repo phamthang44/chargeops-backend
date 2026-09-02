@@ -1,6 +1,6 @@
 package com.thang.chargeops.station.policy;
 
-import com.thang.chargeops.booking.BookingRepository;
+import com.thang.chargeops.booking.repository.BookingRepository;
 import com.thang.chargeops.common.enums.OperationalChargePointStatus;
 import com.thang.chargeops.common.enums.ProvisioningStatus;
 import com.thang.chargeops.common.enums.RuntimeStatus;

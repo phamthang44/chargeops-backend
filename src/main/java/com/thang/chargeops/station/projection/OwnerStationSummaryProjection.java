@@ -27,4 +27,8 @@ public interface OwnerStationSummaryProjection {
     Plan getLicensePlan();
 
     Instant getLicenseExpiresAt();
+
+    int getOnlineChargePointCount();
+
+    int getActualChargePointCount();
 }

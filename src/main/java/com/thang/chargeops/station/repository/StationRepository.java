@@ -41,7 +41,25 @@ public interface StationRepository extends JpaRepository<Station, UUID>, JpaSpec
                            s.plannedChargePointCount AS plannedChargePointCount,
                            s.status AS status,
                            license.plan AS licensePlan,
-                           license.expiresAt AS licenseExpiresAt
+                           license.expiresAt AS licenseExpiresAt,
+                           (
+                              SELECT COUNT(cp1.id)
+                              FROM ChargePoint cp1
+                              WHERE cp1.station = s
+                                AND cp1.provisioningStatus =
+                                    com.thang.chargeops.common.enums.ProvisioningStatus.ACTIVE
+                                AND cp1.deletedAt IS NULL
+                           ) AS actualChargePointCount,
+                           (
+                              SELECT COUNT(cp2.id)
+                              FROM ChargePoint cp2
+                              WHERE cp2.station = s
+                                AND cp2.provisioningStatus =
+                                    com.thang.chargeops.common.enums.ProvisioningStatus.ACTIVE
+                                AND cp2.operationalChargePointStatus =
+                                    com.thang.chargeops.common.enums.OperationalChargePointStatus.AVAILABLE
+                                AND cp2.deletedAt IS NULL
+                           ) AS onlineChargePointCount
                     FROM Station s
                     JOIN s.ward ward
                     JOIN ward.province province
@@ -123,4 +141,20 @@ public interface StationRepository extends JpaRepository<Station, UUID>, JpaSpec
             @Param("stationId") UUID stationId
     );
 
+    Optional<Station> findByOwner_Id(UUID ownerId);
+
+
+    @EntityGraph(attributePaths = {
+            "ward",
+            "ward.province",
+            "assets"
+    })
+    @Query("""
+    select distinct station
+    from Station station
+    where station.id = :stationId
+    """)
+    Optional<Station> findDiscoveryDetailById(
+            @Param("stationId") UUID stationId
+    );
 }

@@ -14,6 +14,9 @@ public record OwnerStationSummaryResponse(
         String wardName,
         int plannedChargePointCount,
         StationStatus status,
-        LicenseSummaryResponse licenseSummary
+        LicenseSummaryResponse licenseSummary,
+        // ⬇️ CẦN BỔ SUNG 2 TRƯỜNG DƯỚI ĐÂY:
+        int actualChargePointCount, // Tổng số trụ sạc thực tế đã kích hoạt (provisioning_status = 'ACTIVE')
+        int onlineChargePointCount   // Số trụ sạc đang online/khả dụng tiếp nhận sạc
 ) {
 }

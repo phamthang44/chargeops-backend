@@ -2,6 +2,7 @@ package com.thang.chargeops.station.repository;
 
 import com.thang.chargeops.station.entity.ChargePoint;
 import jakarta.persistence.LockModeType;
+import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
@@ -18,6 +19,24 @@ public interface ChargePointRepository extends JpaRepository<ChargePoint, UUID> 
     long countByStationId(UUID stationId);
 
     List<ChargePoint> findByStationIdOrderByChargePointCodeAsc(UUID stationId);
+
+    /**
+     * Load topology hiển thị trên trang chi tiết Driver trong một lần đọc:
+     * charge points được sắp theo code và connectors được fetch sẵn để mapper
+     * không phải gọi repository lặp lại cho từng charge point.
+     */
+    @EntityGraph(attributePaths = "connectors")
+    @Query("""
+        SELECT DISTINCT chargePoint
+        FROM ChargePoint chargePoint
+        WHERE chargePoint.station.id = :stationId
+          AND chargePoint.provisioningStatus =
+              com.thang.chargeops.common.enums.ProvisioningStatus.ACTIVE
+        ORDER BY chargePoint.chargePointCode ASC
+        """)
+    List<ChargePoint> findDiscoveryEquipment(
+            @Param("stationId") UUID stationId
+    );
 
     Optional<ChargePoint> findByIdAndStationId(UUID id, UUID stationId);
 
