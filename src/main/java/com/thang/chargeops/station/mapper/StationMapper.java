@@ -9,6 +9,7 @@ import com.thang.chargeops.station.entity.StationAsset;
 import com.thang.chargeops.station.entity.StationOperatingPeriod;
 import com.thang.chargeops.station.projection.OwnerStationSummaryProjection;
 import com.thang.chargeops.station.projection.StationApprovalSummaryProjection;
+import com.thang.chargeops.station.service.support.StationOperatingStatus;
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
 import org.mapstruct.ReportingPolicy;
@@ -22,13 +23,21 @@ public interface StationMapper {
     @Mapping(target = "owner", ignore = true)
     @Mapping(target = "ward", ignore = true)
     @Mapping(target = "status", ignore = true)
+    @Mapping(target = "operationalStatus", ignore = true)
+    @Mapping(target = "operationalStatusReason", ignore = true)
     @Mapping(target = "version", ignore = true)
     @Mapping(target = "assets", ignore = true)
     @Mapping(target = "operatingSchedules", ignore = true)
     Station toStationEntity(RegisterStationRequest request);
 
     @Mapping(target = "licenseSummary", expression = "java(toLicenseSummary(projection))")
-    OwnerStationSummaryResponse toOwnerStationSummaryResponse(OwnerStationSummaryProjection projection);
+    @Mapping(target = "openNow", source = "operatingStatus.openNow")
+    @Mapping(target = "operatingState", source = "operatingStatus.state")
+    @Mapping(target = "scheduleConfigured", source = "operatingStatus.scheduleConfigured")
+    OwnerStationSummaryResponse toOwnerStationSummaryResponse(
+            OwnerStationSummaryProjection projection,
+            StationOperatingStatus operatingStatus
+    );
 
     @Mapping(
             target = "ownerDisplayName",

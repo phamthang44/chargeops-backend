@@ -1,6 +1,7 @@
 package com.thang.chargeops.station.projection;
 
 import com.thang.chargeops.common.enums.Plan;
+import com.thang.chargeops.common.enums.StationOperationalStatus;
 import com.thang.chargeops.common.enums.StationStatus;
 
 import java.time.Instant;
@@ -23,6 +24,10 @@ public interface OwnerStationSummaryProjection {
     int getPlannedChargePointCount();
 
     StationStatus getStatus();
+
+    StationOperationalStatus getOperationalStatus();
+
+    String getOperationalStatusReason();
 
     Plan getLicensePlan();
 

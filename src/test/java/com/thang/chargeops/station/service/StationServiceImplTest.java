@@ -1,10 +1,13 @@
 package com.thang.chargeops.station.service;
 
 import com.thang.chargeops.common.enums.StationStatus;
+import com.thang.chargeops.common.enums.StationOperatingState;
+import com.thang.chargeops.common.enums.StationOperationalStatus;
 import com.thang.chargeops.common.enums.StationStatusEventType;
 import com.thang.chargeops.common.enums.UserStatus;
 import com.thang.chargeops.exception.AppException;
 import com.thang.chargeops.exception.errorcode.ProfileErrorCode;
+import com.thang.chargeops.exception.errorcode.StationErrorCode;
 import com.thang.chargeops.exception.errormessage.StationErrorMessage;
 import com.thang.chargeops.location.entity.AdministrativeWard;
 import com.thang.chargeops.location.service.AdministrativeLocationService;
@@ -12,6 +15,7 @@ import com.thang.chargeops.profile.entity.UserProfile;
 import com.thang.chargeops.profile.support.CurrentProfileProvider;
 import com.thang.chargeops.station.dto.station.request.RegisterStationRequest;
 import com.thang.chargeops.station.dto.station.request.RejectStationRequest;
+import com.thang.chargeops.station.dto.station.request.ChangeStationOperationalStatusRequest;
 import com.thang.chargeops.station.dto.license.response.LicenseSummaryResponse;
 import com.thang.chargeops.station.dto.station.filter.StationFilter;
 import com.thang.chargeops.station.dto.station.response.AdminStationDetailResponse;
@@ -21,6 +25,8 @@ import com.thang.chargeops.station.dto.station.response.StationApprovalSummaryRe
 import com.thang.chargeops.station.dto.station.response.StationCreatedResponse;
 import com.thang.chargeops.station.entity.Station;
 import com.thang.chargeops.station.entity.License;
+import com.thang.chargeops.station.entity.StationOperatingSchedule;
+import com.thang.chargeops.station.entity.StationOperationalStatusEvent;
 import com.thang.chargeops.station.mapper.StationMapper;
 import com.thang.chargeops.station.policy.StationApprovalPolicy;
 import com.thang.chargeops.station.projection.OwnerStationSummaryProjection;
@@ -28,6 +34,14 @@ import com.thang.chargeops.station.projection.StationApprovalSummaryProjection;
 import com.thang.chargeops.station.repository.LicenseRepository;
 import com.thang.chargeops.station.repository.StationRepository;
 import com.thang.chargeops.station.service.impl.StationServiceImpl;
+import com.thang.chargeops.station.service.support.StationOperatingStatus;
+import com.thang.chargeops.station.service.support.StationEffectiveStateResolver;
+import com.thang.chargeops.station.service.usecase.AdminStationQueryUseCase;
+import com.thang.chargeops.station.service.usecase.OwnerStationUseCase;
+import com.thang.chargeops.station.service.usecase.StationLifecycleUseCase;
+import com.thang.chargeops.station.service.usecase.StationRegistrationUseCase;
+import com.thang.chargeops.station.policy.StationOperationalStatusPolicy;
+import com.thang.chargeops.station.repository.StationOperationalStatusEventRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -88,6 +102,15 @@ class StationServiceImplTest {
     private com.thang.chargeops.station.repository.StationOperatingPeriodRepository stationOperatingPeriodRepository;
 
     @Mock
+    private StationEffectiveStateResolver effectiveStateResolver;
+
+    @Mock
+    private StationOperationalStatusPolicy operationalStatusPolicy;
+
+    @Mock
+    private StationOperationalStatusEventRepository operationalStatusEventRepository;
+
+    @Mock
     private RegisterStationRequest request;
 
     private StationServiceImpl stationService;
@@ -95,16 +118,39 @@ class StationServiceImplTest {
     @BeforeEach
     void setUp() {
         stationService = new StationServiceImpl(
-                stationRepository,
-                stationMapper,
-                currentProfileProvider,
-                administrativeLocationService,
-                stationStatusHistoryService,
-                stationApprovalPolicy,
-                licenseRepository,
-                stationAssetRepository,
-                stationOperatingScheduleRepository,
-                stationOperatingPeriodRepository
+                new StationRegistrationUseCase(
+                        stationRepository,
+                        stationMapper,
+                        currentProfileProvider,
+                        administrativeLocationService,
+                        stationStatusHistoryService
+                ),
+                new StationLifecycleUseCase(
+                        stationRepository,
+                        stationMapper,
+                        currentProfileProvider,
+                        stationStatusHistoryService,
+                        stationApprovalPolicy,
+                        licenseRepository,
+                        stationOperatingScheduleRepository
+                ),
+                new OwnerStationUseCase(
+                        stationRepository,
+                        stationMapper,
+                        currentProfileProvider,
+                        stationOperatingScheduleRepository,
+                        effectiveStateResolver,
+                        operationalStatusPolicy,
+                        operationalStatusEventRepository
+                ),
+                new AdminStationQueryUseCase(
+                        stationRepository,
+                        stationMapper,
+                        licenseRepository,
+                        stationAssetRepository,
+                        stationOperatingScheduleRepository,
+                        stationOperatingPeriodRepository
+                )
         );
     }
 
@@ -158,6 +204,10 @@ class StationServiceImplTest {
 
         when(stationRepository.findById(stationId)).thenReturn(java.util.Optional.of(station));
         when(currentProfileProvider.requireProfile()).thenReturn(admin);
+        when(stationOperatingScheduleRepository.findActiveByStationId(
+                eq(stationId),
+                any(Instant.class)
+        )).thenReturn(java.util.Optional.of(mock(StationOperatingSchedule.class)));
 
         stationService.approveStation(stationId);
 
@@ -171,6 +221,32 @@ class StationServiceImplTest {
                 admin,
                 null
         );
+    }
+
+    @Test
+    void rejectsApprovalWhenOperatingScheduleIsMissing() {
+        UUID stationId = UUID.randomUUID();
+        Station station = new Station();
+        station.setStatus(StationStatus.PENDING_APPROVAL);
+        UserProfile admin = UserProfile.builder().status(UserStatus.ACTIVE).build();
+
+        when(stationRepository.findById(stationId))
+                .thenReturn(java.util.Optional.of(station));
+        when(currentProfileProvider.requireProfile()).thenReturn(admin);
+        when(stationOperatingScheduleRepository.findActiveByStationId(
+                eq(stationId),
+                any(Instant.class)
+        )).thenReturn(java.util.Optional.empty());
+
+        assertThatThrownBy(() -> stationService.approveStation(stationId))
+                .isInstanceOfSatisfying(
+                        AppException.class,
+                        exception -> assertThat(exception.getErrorCode())
+                                .isEqualTo(StationErrorCode.STATION_OPERATING_SCHEDULE_REQUIRED)
+                );
+
+        assertThat(station.getStatus()).isEqualTo(StationStatus.PENDING_APPROVAL);
+        verifyNoInteractions(stationStatusHistoryService);
     }
 
     @Test
@@ -215,10 +291,13 @@ class StationServiceImplTest {
     @Test
     void convertsFirstClientPageAndReturnsOnlyCurrentOwnersStations() {
         UUID ownerId = UUID.randomUUID();
+        UUID stationId = UUID.randomUUID();
         UserProfile owner = mock(UserProfile.class);
         OwnerStationSummaryProjection station = mock(OwnerStationSummaryProjection.class);
+        StationOperatingStatus operatingStatus =
+                StationOperatingStatus.unavailableByPlatform(false);
         OwnerStationSummaryResponse expected = new OwnerStationSummaryResponse(
-                UUID.randomUUID(),
+                stationId,
                 "ST-0001",
                 "Station",
                 "123 Main Street",
@@ -228,7 +307,12 @@ class StationServiceImplTest {
                 StationStatus.PENDING_APPROVAL,
                 null,
                 0,
-                0
+                0,
+                StationOperationalStatus.PAUSED,
+                null,
+                false,
+                StationOperatingState.UNAVAILABLE_BY_PLATFORM,
+                false
         );
         Page<OwnerStationSummaryProjection> stationPage = new PageImpl<>(
                 List.of(station),
@@ -238,13 +322,28 @@ class StationServiceImplTest {
 
         when(currentProfileProvider.requireProfile()).thenReturn(owner);
         when(owner.getId()).thenReturn(ownerId);
+        when(station.getId()).thenReturn(stationId);
+        when(station.getStatus()).thenReturn(StationStatus.PENDING_APPROVAL);
+        when(station.getOperationalStatus()).thenReturn(StationOperationalStatus.PAUSED);
         when(stationRepository.findOwnerStationSummaries(
                 eq(ownerId),
                 any(Instant.class),
                 any(Pageable.class)
         ))
                 .thenReturn(stationPage);
-        when(stationMapper.toOwnerStationSummaryResponse(station)).thenReturn(expected);
+        when(stationOperatingScheduleRepository.findActiveByStationIds(
+                eq(List.of(stationId)),
+                any(Instant.class)
+        )).thenReturn(List.of());
+        when(effectiveStateResolver.resolve(
+                eq(false),
+                eq(StationOperationalStatus.PAUSED),
+                org.mockito.ArgumentMatchers.isNull(),
+                any(Instant.class)
+        ))
+                .thenReturn(operatingStatus);
+        when(stationMapper.toOwnerStationSummaryResponse(station, operatingStatus))
+                .thenReturn(expected);
 
         Page<OwnerStationSummaryResponse> actual = stationService.getMyStations(1, 20);
 
@@ -263,7 +362,7 @@ class StationServiceImplTest {
                 .isEqualTo(Sort.Direction.DESC);
         assertThat(actual.getContent()).containsExactly(expected);
         assertThat(actual.getTotalElements()).isEqualTo(1);
-        verify(stationMapper).toOwnerStationSummaryResponse(station);
+        verify(stationMapper).toOwnerStationSummaryResponse(station, operatingStatus);
     }
 
     @Test
@@ -401,6 +500,10 @@ class StationServiceImplTest {
 
         when(stationRepository.findById(stationId)).thenReturn(java.util.Optional.of(station));
         when(currentProfileProvider.requireProfile()).thenReturn(admin);
+        when(stationOperatingScheduleRepository.findActiveByStationId(
+                eq(stationId),
+                any(Instant.class)
+        )).thenReturn(java.util.Optional.of(mock(StationOperatingSchedule.class)));
 
         stationService.reactivateStation(stationId, "Station restored");
 
@@ -412,6 +515,109 @@ class StationServiceImplTest {
                 admin,
                 "Station restored"
         );
+    }
+
+    @Test
+    void ownerPausesStationAndRecordsOperationalAuditEvent() {
+        UUID stationId = UUID.randomUUID();
+        UUID ownerId = UUID.randomUUID();
+        UserProfile owner = UserProfile.builder().status(UserStatus.ACTIVE).build();
+        owner.setId(ownerId);
+        Station station = Station.builder()
+                .owner(owner)
+                .operationalStatus(StationOperationalStatus.OPERATING)
+                .build();
+        station.setId(stationId);
+        ChangeStationOperationalStatusRequest request =
+                new ChangeStationOperationalStatusRequest(
+                        StationOperationalStatus.PAUSED,
+                        "  Power outage  "
+                );
+
+        when(currentProfileProvider.requireProfile()).thenReturn(owner);
+        when(stationRepository.findByIdForOperationalStatusUpdate(stationId))
+                .thenReturn(java.util.Optional.of(station));
+
+        var response = stationService.changeOperationalStatusForCurrentOwner(
+                stationId,
+                request
+        );
+
+        assertThat(response.stationId()).isEqualTo(stationId);
+        assertThat(response.operationalStatus()).isEqualTo(StationOperationalStatus.PAUSED);
+        assertThat(response.reason()).isEqualTo("Power outage");
+        assertThat(station.getOperationalStatusReason()).isEqualTo("Power outage");
+        verify(operationalStatusPolicy).requireCanChange(
+                eq(station),
+                eq(StationOperationalStatus.PAUSED),
+                eq("  Power outage  "),
+                any(Instant.class)
+        );
+
+        ArgumentCaptor<StationOperationalStatusEvent> eventCaptor =
+                ArgumentCaptor.forClass(StationOperationalStatusEvent.class);
+        verify(operationalStatusEventRepository).save(eventCaptor.capture());
+        assertThat(eventCaptor.getValue().getFromStatus())
+                .isEqualTo(StationOperationalStatus.OPERATING);
+        assertThat(eventCaptor.getValue().getToStatus())
+                .isEqualTo(StationOperationalStatus.PAUSED);
+        assertThat(eventCaptor.getValue().getReason()).isEqualTo("Power outage");
+    }
+
+    @Test
+    void rejectsOperationalChangeForAnotherOwnersStation() {
+        UUID stationId = UUID.randomUUID();
+        UserProfile currentOwner = UserProfile.builder().build();
+        currentOwner.setId(UUID.randomUUID());
+        UserProfile stationOwner = UserProfile.builder().build();
+        stationOwner.setId(UUID.randomUUID());
+        Station station = Station.builder().owner(stationOwner).build();
+
+        when(currentProfileProvider.requireProfile()).thenReturn(currentOwner);
+        when(stationRepository.findByIdForOperationalStatusUpdate(stationId))
+                .thenReturn(java.util.Optional.of(station));
+
+        assertThatThrownBy(() -> stationService.changeOperationalStatusForCurrentOwner(
+                stationId,
+                new ChangeStationOperationalStatusRequest(
+                        StationOperationalStatus.PAUSED,
+                        "Power outage"
+                )
+        )).isInstanceOfSatisfying(
+                AppException.class,
+                exception -> assertThat(exception.getErrorCode())
+                        .isEqualTo(StationErrorCode.STATION_ACCESS_DENIED)
+        );
+
+        verifyNoInteractions(operationalStatusPolicy, operationalStatusEventRepository);
+    }
+
+    @Test
+    void rejectsReactivationWhenOperatingScheduleIsMissing() {
+        UUID stationId = UUID.randomUUID();
+        Station station = new Station();
+        station.setStatus(StationStatus.SUSPENDED);
+        UserProfile admin = UserProfile.builder().status(UserStatus.ACTIVE).build();
+
+        when(stationRepository.findById(stationId))
+                .thenReturn(java.util.Optional.of(station));
+        when(currentProfileProvider.requireProfile()).thenReturn(admin);
+        when(stationOperatingScheduleRepository.findActiveByStationId(
+                eq(stationId),
+                any(Instant.class)
+        )).thenReturn(java.util.Optional.empty());
+
+        assertThatThrownBy(() -> stationService.reactivateStation(
+                stationId,
+                "Station restored"
+        )).isInstanceOfSatisfying(
+                AppException.class,
+                exception -> assertThat(exception.getErrorCode())
+                        .isEqualTo(StationErrorCode.STATION_OPERATING_SCHEDULE_REQUIRED)
+        );
+
+        assertThat(station.getStatus()).isEqualTo(StationStatus.SUSPENDED);
+        verifyNoInteractions(stationStatusHistoryService);
     }
     @Test
     void rejectsPageNumberBelowOneBeforeQuerying() {

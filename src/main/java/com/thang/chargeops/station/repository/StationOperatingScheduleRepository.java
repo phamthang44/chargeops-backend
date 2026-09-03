@@ -27,4 +27,16 @@ public interface StationOperatingScheduleRepository extends JpaRepository<Statio
             @Param("stationId") UUID stationId,
             @Param("now") Instant now
     );
+
+    @Query("""
+        SELECT DISTINCT s FROM StationOperatingSchedule s
+        LEFT JOIN FETCH s.periods
+        WHERE s.station.id IN :stationIds
+          AND s.effectiveFrom <= :now
+          AND (s.effectiveTo IS NULL OR s.effectiveTo > :now)
+    """)
+    List<StationOperatingSchedule> findActiveByStationIds(
+            @Param("stationIds") List<UUID> stationIds,
+            @Param("now") Instant now
+    );
 }

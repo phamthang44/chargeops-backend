@@ -13,6 +13,7 @@ import com.thang.chargeops.station.entity.Station;
 import com.thang.chargeops.station.entity.StationAsset;
 import com.thang.chargeops.station.entity.StationOperatingPeriod;
 import com.thang.chargeops.station.entity.StationOperatingSchedule;
+import com.thang.chargeops.station.service.support.StationOperatingStatus;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
@@ -37,7 +38,7 @@ public class StationDetailMapper {
             StationOperatingSchedule schedule,
             List<ChargePoint> chargePoints,
             BigDecimal currentPrice,
-            boolean openNow,
+            StationOperatingStatus operatingStatus,
             CancellationPolicySummary cancellationPolicy
     ) {
         return new StationDiscoveryDetailResponse(
@@ -53,11 +54,15 @@ public class StationDetailMapper {
                 station.getContactPhone(),
                 toAssets(station.getAssets()),
                 currentPrice,
+                station.getOperationalStatus(),
+                station.getOperationalStatusReason(),
                 schedule != null && schedule.isOpen24Hours(),
-                openNow,
+                operatingStatus.openNow(),
+                operatingStatus.state(),
+                operatingStatus.scheduleConfigured(),
                 toOperatingHours(schedule),
                 toCancellationPolicy(cancellationPolicy),
-                toChargePoints(chargePoints)
+                toChargePoints(chargePoints, operatingStatus.openNow())
         );
     }
 
@@ -150,7 +155,8 @@ public class StationDetailMapper {
      * Map danh sách charge point; connectors đã được repository fetch sẵn.
      */
     private List<StationDiscoveryDetailResponse.ChargePointResponse> toChargePoints(
-            List<ChargePoint> chargePoints
+            List<ChargePoint> chargePoints,
+            boolean stationOpenNow
     ) {
         if (chargePoints == null || chargePoints.isEmpty()) {
             return List.of();
@@ -164,7 +170,7 @@ public class StationDetailMapper {
                         chargePoint.getZoneLabel(),
                         chargePoint.getMaxPowerKw(),
                         chargePoint.getOperationalChargePointStatus(),
-                        toConnectors(chargePoint)
+                        toConnectors(chargePoint, stationOpenNow)
                 ))
                 .toList();
     }
@@ -174,7 +180,8 @@ public class StationDetailMapper {
      * Busy ranges theo booking thuộc StationAvailabilityService, không thuộc mapper này.
      */
     private List<StationDiscoveryDetailResponse.ConnectorResponse> toConnectors(
-            ChargePoint chargePoint
+            ChargePoint chargePoint,
+            boolean stationOpenNow
     ) {
         List<Connector> connectors = chargePoint.getConnectors();
         if (connectors == null || connectors.isEmpty()) {
@@ -194,7 +201,8 @@ public class StationDetailMapper {
                         connector.getChargerType(),
                         connector.getPowerKw(),
                         connector.getRuntimeStatus(),
-                        chargePointAvailable
+                        stationOpenNow
+                                && chargePointAvailable
                                 && connector.getRuntimeStatus() == RuntimeStatus.AVAILABLE
                 ))
                 .toList();

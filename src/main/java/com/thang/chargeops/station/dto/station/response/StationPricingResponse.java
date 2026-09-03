@@ -5,6 +5,7 @@ import com.thang.chargeops.common.enums.TouRateDayType;
 import com.thang.chargeops.common.enums.TouRatePeriodCode;
 
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.time.LocalTime;
 import java.util.List;
 import java.util.UUID;
@@ -26,7 +27,12 @@ public record StationPricingResponse(
         List<TouRuleResponse> touRules,
 
         // 4. Quy chuẩn khả dụng toàn sàn (System policies)
-        AvailabilityPolicyResponse availability
+        AvailabilityPolicyResponse availability,
+
+        // 5. Metadata phiên bản lịch đang áp dụng
+        Instant scheduleEffectiveFrom,
+        Instant scheduleEffectiveTo,
+        String scheduleStatus
 ) {
     // Giờ hoạt động từng ngày
     public record OperatingHourResponse(

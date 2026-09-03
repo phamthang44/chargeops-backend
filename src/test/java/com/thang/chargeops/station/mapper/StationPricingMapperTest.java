@@ -34,6 +34,8 @@ class StationPricingMapperTest {
         assertThat(response.stationId()).isEqualTo(stationId);
         assertThat(response.durationStepMinutes()).isEqualTo(30);
         assertThat(response.maxDurationMinutes()).isEqualTo(180);
+        assertThat(response.scheduleStatus()).isEqualTo("DEFAULT");
+        assertThat(response.scheduleEffectiveFrom()).isNull();
         assertThat(response.hours()).hasSize(StationDayOfWeek.values().length)
                 .allSatisfy(hour -> {
                     assertThat(hour.enabled()).isTrue();

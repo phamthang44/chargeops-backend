@@ -30,6 +30,8 @@ public final class StationErrorMessage {
             "validation.station.plannedChargePointCount.min";
     public static final String STATUS_CHANGE_REASON_REQUIRED_KEY = "validation.reason.required";
     public static final String STATUS_CHANGE_REASON_SIZE_KEY = "validation.station.reason.size";
+    public static final String STATION_OPERATIONAL_STATUS_REQUIRED_KEY =
+            "validation.station.operationalStatus.required";
     public static final String CHARGE_POINT_CODE_MAX_LENGTH_KEY = "validation.chargePoint.code.maxLength";
     public static final String CHARGE_POINT_CODE_FORMAT_KEY = "validation.chargePoint.code.format";
     public static final String CHARGE_POINT_NAME_REQUIRED_KEY = "validation.chargePoint.name.required";
@@ -319,6 +321,26 @@ public final class StationErrorMessage {
                     "error.station.pricing.configurationConflict",
                     "Pricing configuration changed concurrently or is no longer active"
             );
+    public static final ErrorMessage.Template STATION_OPERATING_SCHEDULE_REQUIRED =
+            template(
+                    "error.station.operatingScheduleRequired",
+                    "Station requires an active operating schedule before activation"
+            );
+    public static final ErrorMessage.Template STATION_OPERATIONAL_STATUS_REQUIRED_VALIDATION =
+            template(
+                    STATION_OPERATIONAL_STATUS_REQUIRED_KEY,
+                    "Station operational status is required"
+            );
+    public static final ErrorMessage.Template STATION_OPERATIONAL_STATUS_REQUIRED =
+            template(
+                    "error.station.operationalStatusRequired",
+                    "Station operational status is required"
+            );
+    public static final ErrorMessage.Template STATION_OPERATIONAL_STATUS_REASON_REQUIRED =
+            template(
+                    "error.station.operationalStatusReasonRequired",
+                    "A reason is required when pausing or maintaining a station"
+            );
 
     static List<ErrorMessage.Template> templates() {
         return List.of(
@@ -420,7 +442,11 @@ public final class StationErrorMessage {
                 PRICING_BASE_PRICE_INVALID,
                 PRICING_TOU_NAME_REQUIRED,
                 PRICING_OPEN_24_HOURS_PERIOD_NOT_ALLOWED,
-                PRICING_CONFIGURATION_CONFLICT
+                PRICING_CONFIGURATION_CONFLICT,
+                STATION_OPERATING_SCHEDULE_REQUIRED,
+                STATION_OPERATIONAL_STATUS_REQUIRED_VALIDATION,
+                STATION_OPERATIONAL_STATUS_REQUIRED,
+                STATION_OPERATIONAL_STATUS_REASON_REQUIRED
         );
     }
 }

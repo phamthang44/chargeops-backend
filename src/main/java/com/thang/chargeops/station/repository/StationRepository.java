@@ -40,6 +40,8 @@ public interface StationRepository extends JpaRepository<Station, UUID>, JpaSpec
                            ward.fullName AS wardName,
                            s.plannedChargePointCount AS plannedChargePointCount,
                            s.status AS status,
+                           s.operationalStatus AS operationalStatus,
+                           s.operationalStatusReason AS operationalStatusReason,
                            license.plan AS licensePlan,
                            license.expiresAt AS licenseExpiresAt,
                            (
@@ -142,6 +144,13 @@ public interface StationRepository extends JpaRepository<Station, UUID>, JpaSpec
     );
 
     Optional<Station> findByOwner_Id(UUID ownerId);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @EntityGraph(attributePaths = "owner")
+    @Query("SELECT station FROM Station station WHERE station.id = :stationId")
+    Optional<Station> findByIdForOperationalStatusUpdate(
+            @Param("stationId") UUID stationId
+    );
 
 
     @EntityGraph(attributePaths = {

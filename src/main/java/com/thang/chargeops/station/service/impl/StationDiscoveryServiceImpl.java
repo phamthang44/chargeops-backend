@@ -2,6 +2,8 @@ package com.thang.chargeops.station.service.impl;
 
 import com.thang.chargeops.common.constant.SystemConstant;
 import com.thang.chargeops.common.enums.ConnectorType;
+import com.thang.chargeops.common.enums.StationOperatingState;
+import com.thang.chargeops.common.enums.StationOperationalStatus;
 import com.thang.chargeops.station.dto.station.filter.StationDiscoveryFilter;
 import com.thang.chargeops.station.dto.station.filter.StationDiscoverySort;
 import com.thang.chargeops.station.dto.station.response.StationDiscoveryItemResponse;
@@ -190,7 +192,11 @@ public class StationDiscoveryServiceImpl implements StationDiscoveryService {
                 connectorTypes,
                 toInt(station.getTotalConnectorCount()),
                 toInt(station.getAvailableConnectorCount()),
-                Boolean.TRUE.equals(station.getOpenNow())
+                StationOperationalStatus.valueOf(station.getOperationalStatus()),
+                station.getOperationalStatusReason(),
+                Boolean.TRUE.equals(station.getOpenNow()),
+                StationOperatingState.valueOf(station.getOperatingState()),
+                Boolean.TRUE.equals(station.getScheduleConfigured())
         );
     }
 

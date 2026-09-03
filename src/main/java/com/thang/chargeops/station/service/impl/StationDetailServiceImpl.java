@@ -8,12 +8,14 @@ import com.thang.chargeops.station.entity.ChargePoint;
 import com.thang.chargeops.station.entity.Station;
 import com.thang.chargeops.station.entity.StationOperatingSchedule;
 import com.thang.chargeops.station.mapper.StationDetailMapper;
-import com.thang.chargeops.station.policy.StationBusinessEligibilityPolicy;
+import com.thang.chargeops.station.policy.StationVisibilityPolicy;
 import com.thang.chargeops.station.repository.ChargePointRepository;
 import com.thang.chargeops.station.repository.StationRepository;
 import com.thang.chargeops.station.service.StationDetailService;
 import com.thang.chargeops.station.service.StationPricingService;
 import com.thang.chargeops.station.service.support.StationOperatingHoursResolver;
+import com.thang.chargeops.station.service.support.StationOperatingStatus;
+import com.thang.chargeops.station.service.support.StationEffectiveStateResolver;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -30,8 +32,9 @@ public class StationDetailServiceImpl implements StationDetailService {
 
     private final StationRepository stationRepository;
     private final ChargePointRepository chargePointRepository;
-    private final StationBusinessEligibilityPolicy stationBusinessEligibilityPolicy;
+    private final StationVisibilityPolicy stationVisibilityPolicy;
     private final StationOperatingHoursResolver operatingHoursResolver;
+    private final StationEffectiveStateResolver effectiveStateResolver;
     private final StationPricingService stationPricingService;
     private final StationDetailMapper stationDetailMapper;
     private final BookingCancellationPolicy bookingCancellationPolicy;
@@ -59,14 +62,19 @@ public class StationDetailServiceImpl implements StationDetailService {
                 chargePointRepository.findDiscoveryEquipment(stationId);
         BigDecimal currentPrice =
                 stationPricingService.resolvePriceAt(stationId, now);
-        boolean openNow = operatingHoursResolver.isOpenAt(schedule, now);
+        StationOperatingStatus operatingStatus = effectiveStateResolver.resolve(
+                true,
+                station.getOperationalStatus(),
+                schedule,
+                now
+        );
 
         return stationDetailMapper.toResponse(
                 station,
                 schedule,
                 chargePoints,
                 currentPrice,
-                openNow,
+                operatingStatus,
                 bookingCancellationPolicy.getSummary()
         );
     }
@@ -83,7 +91,7 @@ public class StationDetailServiceImpl implements StationDetailService {
                         stationId
                 ));
 
-        if (!stationBusinessEligibilityPolicy.isEligibleForNewBusiness(station, at)) {
+        if (!stationVisibilityPolicy.isVisibleToDrivers(station, at)) {
             throw new AppException(
                     StationErrorCode.STATION_NOT_FOUND,
                     stationId

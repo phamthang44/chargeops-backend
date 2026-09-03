@@ -36,5 +36,13 @@ public interface StationDiscoveryItemProjection {
 
     Long getAvailableConnectorCount();
 
+    String getOperationalStatus();
+
+    String getOperationalStatusReason();
+
     Boolean getOpenNow();
+
+    String getOperatingState();
+
+    Boolean getScheduleConfigured();
 }

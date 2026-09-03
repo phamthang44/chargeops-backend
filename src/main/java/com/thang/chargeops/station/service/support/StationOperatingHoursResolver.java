@@ -75,6 +75,23 @@ public class StationOperatingHoursResolver {
     }
 
     /**
+     * Resolves both the boolean used by existing clients and an explanatory
+     * state so a missing schedule is not presented as an ordinary scheduled
+     * closure.
+     */
+    public StationOperatingStatus resolveStatus(
+            StationOperatingSchedule schedule,
+            Instant at
+    ) {
+        if (schedule == null || at == null || !schedule.isActive(at)) {
+            return StationOperatingStatus.scheduleNotConfigured();
+        }
+        return isOpenAt(schedule, at)
+                ? StationOperatingStatus.open()
+                : StationOperatingStatus.closedBySchedule();
+    }
+
+    /**
      * Chuyển schedule hiện tại thành các cửa sổ hoạt động nằm trong đúng ngày
      * local mà frontend yêu cầu. Ca qua đêm được tách theo ranh giới ngày để
      * response của mỗi request date luôn nằm trong [dayStart, nextDayStart).

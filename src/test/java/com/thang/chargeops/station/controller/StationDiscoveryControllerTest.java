@@ -3,6 +3,8 @@ package com.thang.chargeops.station.controller;
 import com.thang.chargeops.booking.service.StationAvailabilityService;
 import com.thang.chargeops.common.enums.ChargerType;
 import com.thang.chargeops.common.enums.ConnectorType;
+import com.thang.chargeops.common.enums.StationOperatingState;
+import com.thang.chargeops.common.enums.StationOperationalStatus;
 import com.thang.chargeops.exception.GlobalHandlerError;
 import com.thang.chargeops.station.dto.station.filter.StationDiscoveryFilter;
 import com.thang.chargeops.station.dto.station.filter.StationDiscoverySort;
@@ -72,7 +74,11 @@ class StationDiscoveryControllerTest {
                 "0900000000",
                 List.of(),
                 new BigDecimal("3500.00"),
+                StationOperationalStatus.OPERATING,
+                null,
                 false,
+                true,
+                StationOperatingState.OPEN,
                 true,
                 List.of(),
                 null,
@@ -85,7 +91,9 @@ class StationDiscoveryControllerTest {
                 .andExpect(jsonPath("$.data.id").value(stationId.toString()))
                 .andExpect(jsonPath("$.data.stationCode").value("ST-0001"))
                 .andExpect(jsonPath("$.data.currentPriceVndPerKwh").value(3500.00))
-                .andExpect(jsonPath("$.data.openNow").value(true));
+                .andExpect(jsonPath("$.data.openNow").value(true))
+                .andExpect(jsonPath("$.data.operatingState").value("OPEN"))
+                .andExpect(jsonPath("$.data.scheduleConfigured").value(true));
 
         verify(stationDetailService).getStationDetail(stationId);
     }
@@ -137,6 +145,10 @@ class StationDiscoveryControllerTest {
                 Set.of(ConnectorType.CCS2),
                 2,
                 1,
+                StationOperationalStatus.OPERATING,
+                null,
+                true,
+                StationOperatingState.OPEN,
                 true
         );
         var page = new PageImpl<>(List.of(item), PageRequest.of(1, 12), 13);
@@ -156,6 +168,9 @@ class StationDiscoveryControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data[0].id").value(stationId.toString()))
                 .andExpect(jsonPath("$.data[0].connectorTypes[0]").value("CCS2"))
+                .andExpect(jsonPath("$.data[0].operationalStatus").value("OPERATING"))
+                .andExpect(jsonPath("$.data[0].operatingState").value("OPEN"))
+                .andExpect(jsonPath("$.data[0].scheduleConfigured").value(true))
                 .andExpect(jsonPath("$.meta.page").value(2))
                 .andExpect(jsonPath("$.meta.size").value(12))
                 .andExpect(jsonPath("$.meta.totalElements").value(13))

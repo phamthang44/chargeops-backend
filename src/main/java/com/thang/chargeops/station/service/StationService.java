@@ -3,6 +3,7 @@ package com.thang.chargeops.station.service;
 import com.thang.chargeops.station.dto.station.filter.StationFilter;
 import com.thang.chargeops.station.dto.station.request.RegisterStationRequest;
 import com.thang.chargeops.station.dto.station.request.RejectStationRequest;
+import com.thang.chargeops.station.dto.station.request.ChangeStationOperationalStatusRequest;
 import com.thang.chargeops.station.dto.station.response.*;
 import com.thang.chargeops.station.entity.Station;
 import org.springframework.data.domain.Page;
@@ -20,6 +21,11 @@ public interface StationService {
     void rejectStation(UUID id, RejectStationRequest request);
 
     Page<OwnerStationSummaryResponse> getMyStations(int pageNo, int pageSize);
+
+    StationOperationalStatusResponse changeOperationalStatusForCurrentOwner(
+            UUID stationId,
+            ChangeStationOperationalStatusRequest request
+    );
 
     Page<StationApprovalSummaryResponse> getStationApprovals(int pageNo, int pageSize);
 

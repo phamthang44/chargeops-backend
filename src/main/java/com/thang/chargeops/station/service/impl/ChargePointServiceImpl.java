@@ -9,10 +9,7 @@ import com.thang.chargeops.exception.AppException;
 import com.thang.chargeops.exception.errorcode.StationErrorCode;
 import com.thang.chargeops.profile.entity.UserProfile;
 import com.thang.chargeops.profile.support.CurrentProfileProvider;
-import com.thang.chargeops.station.dto.chargepoint.request.ActivateChargePointRequest;
-import com.thang.chargeops.station.dto.chargepoint.request.ChangeOperationalStatusRequest;
-import com.thang.chargeops.station.dto.chargepoint.request.ProvisionChargePointRequest;
-import com.thang.chargeops.station.dto.chargepoint.request.UpdateChargePointRequest;
+import com.thang.chargeops.station.dto.chargepoint.request.*;
 import com.thang.chargeops.station.dto.chargepoint.response.ChargePointDetailResponse;
 import com.thang.chargeops.station.dto.chargepoint.response.ChargePointStatusEventResponse;
 import com.thang.chargeops.station.entity.ChargePoint;
@@ -60,7 +57,7 @@ public class ChargePointServiceImpl implements ChargePointService {
         }
 
         var maxPowerKw = request.connectorGroups().stream()
-                .map(group -> group.powerKw())
+                .map(ConnectorProvisioningGroupRequest::powerKw)
                 .max(java.math.BigDecimal::compareTo)
                 .orElseThrow();
 
@@ -290,13 +287,12 @@ public class ChargePointServiceImpl implements ChargePointService {
                 .orElseThrow(() -> new AppException(StationErrorCode.CHARGE_POINT_NOT_FOUND, chargePointId));
     }
 
-    private Station requireOwnedStation(UUID stationId) {
+    private void requireOwnedStation(UUID stationId) {
         UserProfile currentOwner = currentProfileProvider.requireProfile();
         Station station = requireStation(stationId);
         if (!station.getOwner().getId().equals(currentOwner.getId())) {
             throw new AppException(StationErrorCode.STATION_ACCESS_DENIED, stationId);
         }
-        return station;
     }
 
     private String resolveCode(Station station, String requestedCode) {

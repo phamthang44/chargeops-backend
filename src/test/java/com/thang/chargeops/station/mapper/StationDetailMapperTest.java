@@ -7,6 +7,7 @@ import com.thang.chargeops.common.enums.ChargerType;
 import com.thang.chargeops.common.enums.ConnectorType;
 import com.thang.chargeops.common.enums.OperationalChargePointStatus;
 import com.thang.chargeops.common.enums.StationDayOfWeek;
+import com.thang.chargeops.common.enums.StationOperatingState;
 import com.thang.chargeops.location.entity.AdministrativeProvince;
 import com.thang.chargeops.location.entity.AdministrativeWard;
 import com.thang.chargeops.station.dto.station.response.StationAssetResponse;
@@ -16,6 +17,7 @@ import com.thang.chargeops.station.entity.Connector;
 import com.thang.chargeops.station.entity.Station;
 import com.thang.chargeops.station.entity.StationAsset;
 import com.thang.chargeops.station.entity.StationOperatingSchedule;
+import com.thang.chargeops.station.service.support.StationOperatingStatus;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -68,6 +70,7 @@ class StationDetailMapperTest {
                 .latitude(new BigDecimal("10.776900"))
                 .longitude(new BigDecimal("106.700900"))
                 .contactPhone("0900000000")
+                .operationalStatus(com.thang.chargeops.common.enums.StationOperationalStatus.OPERATING)
                 .assets(List.of(asset))
                 .build();
         station.setId(stationId);
@@ -109,7 +112,7 @@ class StationDetailMapperTest {
                 schedule,
                 List.of(chargePoint),
                 new BigDecimal("3500.00"),
-                true,
+                StationOperatingStatus.open(),
                 cancellationPolicySummary()
         );
 
@@ -118,8 +121,12 @@ class StationDetailMapperTest {
         assertThat(result.provinceName()).isEqualTo("Thành phố Hồ Chí Minh");
         assertThat(result.assets()).containsExactly(assetResponse);
         assertThat(result.currentPriceVndPerKwh()).isEqualByComparingTo("3500.00");
+        assertThat(result.operationalStatus())
+                .isEqualTo(com.thang.chargeops.common.enums.StationOperationalStatus.OPERATING);
         assertThat(result.open24Hours()).isFalse();
         assertThat(result.openNow()).isTrue();
+        assertThat(result.operatingState()).isEqualTo(StationOperatingState.OPEN);
+        assertThat(result.scheduleConfigured()).isTrue();
         assertThat(result.operatingHours()).hasSize(7);
         assertThat(result.operatingHours().get(0).day())
                 .isEqualTo(StationDayOfWeek.MONDAY);
@@ -176,12 +183,15 @@ class StationDetailMapperTest {
                 null,
                 List.of(chargePoint),
                 null,
-                false,
+                StationOperatingStatus.scheduleNotConfigured(),
                 cancellationPolicySummary()
         );
 
         assertThat(result.open24Hours()).isFalse();
         assertThat(result.openNow()).isFalse();
+        assertThat(result.operatingState())
+                .isEqualTo(StationOperatingState.SCHEDULE_NOT_CONFIGURED);
+        assertThat(result.scheduleConfigured()).isFalse();
         assertThat(result.operatingHours())
                 .hasSize(7)
                 .allSatisfy(day -> {

@@ -14,6 +14,11 @@ final class StationDiscoverySql {
     private StationDiscoverySql() {
     }
 
+    /*
+     * The 3400.00 literals below mirror
+     * StationBookingSetting.DEFAULT_BASE_PRICE_VND. Native @Query text must be
+     * a compile-time String constant, so it cannot interpolate a BigDecimal.
+     */
     static final String SEARCH = """
             WITH equipment_stats AS (
                 SELECT cp.station_id,
@@ -55,21 +60,40 @@ final class StationDiscoverySql {
                            )
                        END AS "distanceKm",
                        primary_asset.asset_url AS "primaryImageUrl",
-                       COALESCE(
-                           (
-                               SELECT MIN(rate.price_per_kwh)
-                               FROM tou_rates rate
-                               WHERE rate.station_id = s.id
-                                 AND rate.effective_from <= :#{#parameters.at}
-                                 AND (rate.effective_to IS NULL OR rate.effective_to > :#{#parameters.at})
-                                 AND rate.day_type IN ('DAILY', :#{#parameters.priceDayType})
+                       LEAST(
+                           COALESCE(
+                               (
+                                   SELECT MIN(rate.price_per_kwh)
+                                   FROM tou_rates rate
+                                   WHERE rate.station_id = s.id
+                                     AND rate.effective_from <= :#{#parameters.at}
+                                     AND (rate.effective_to IS NULL OR rate.effective_to > :#{#parameters.at})
+                                     AND rate.day_type IN ('DAILY', :#{#parameters.priceDayType})
+                               ),
+                               pricing.base_price_vnd,
+                               3400.00
                            ),
-                           pricing.base_price_vnd
+                           COALESCE(
+                               pricing.base_price_vnd,
+                               3400.00
+                           )
                        ) AS "priceFromVndPerKwh",
                        equipment.max_power_kw AS "maxPowerKw",
                        COALESCE(equipment.total_connector_count, 0) AS "totalConnectorCount",
                        COALESCE(equipment.available_connector_count, 0) AS "availableConnectorCount",
+                       s.operational_status AS "operationalStatus",
+                       s.operational_status_reason AS "operationalStatusReason",
                        CASE WHEN EXISTS (
+                           SELECT 1
+                           FROM station_operating_schedules configured_schedule
+                           WHERE configured_schedule.station_id = s.id
+                             AND configured_schedule.effective_from <= :#{#parameters.at}
+                             AND (
+                                 configured_schedule.effective_to IS NULL
+                                 OR configured_schedule.effective_to > :#{#parameters.at}
+                             )
+                       ) THEN TRUE ELSE FALSE END AS "scheduleConfigured",
+                       CASE WHEN s.operational_status = 'OPERATING' AND EXISTS (
                            SELECT 1
                            FROM station_operating_schedules schedule
                            WHERE schedule.station_id = s.id
@@ -117,6 +141,14 @@ final class StationDiscoverySql {
                 LEFT JOIN equipment_stats equipment ON equipment.station_id = s.id
                 WHERE s.status = 'ACTIVE'
                   AND s.deleted_at IS NULL
+                  AND EXISTS (
+                      SELECT 1
+                      FROM licenses visible_license
+                      WHERE visible_license.station_id = s.id
+                        AND visible_license.status = 'ACTIVE'
+                        AND visible_license.start_at <= :#{#parameters.at}
+                        AND visible_license.expires_at > :#{#parameters.at}
+                  )
                   AND (
                       CAST(:#{#parameters.queryPattern} AS VARCHAR) IS NULL
                       OR LOWER(s.station_code) LIKE CAST(:#{#parameters.queryPattern} AS VARCHAR) ESCAPE '!'
@@ -149,7 +181,18 @@ final class StationDiscoverySql {
                         )
                   )
             )
-            SELECT discovery.*
+            SELECT discovery.*,
+                   CASE
+                       WHEN discovery."operationalStatus" = 'PAUSED'
+                           THEN 'PAUSED_BY_OWNER'
+                       WHEN discovery."operationalStatus" = 'MAINTENANCE'
+                           THEN 'MAINTENANCE'
+                       WHEN discovery."scheduleConfigured" = FALSE
+                           THEN 'SCHEDULE_NOT_CONFIGURED'
+                       WHEN discovery."openNow" = TRUE
+                           THEN 'OPEN'
+                       ELSE 'CLOSED_BY_SCHEDULE'
+                   END AS "operatingState"
             FROM discovery_rows discovery
             WHERE (:#{#parameters.availableOnly} = FALSE OR discovery."availableConnectorCount" > 0)
               AND (:#{#parameters.openOnly} = FALSE OR discovery."openNow" = TRUE)
@@ -184,7 +227,7 @@ final class StationDiscoverySql {
                                ))
                            )
                        END AS distance_km,
-                       CASE WHEN EXISTS (
+                       CASE WHEN s.operational_status = 'OPERATING' AND EXISTS (
                            SELECT 1
                            FROM charge_points available_cp
                            JOIN connectors available_c ON available_c.charge_point_id = available_cp.id
@@ -195,7 +238,7 @@ final class StationDiscoverySql {
                              AND available_c.runtime_status = 'AVAILABLE'
                              AND available_c.deleted_at IS NULL
                        ) THEN TRUE ELSE FALSE END AS available_now,
-                       CASE WHEN EXISTS (
+                       CASE WHEN s.operational_status = 'OPERATING' AND EXISTS (
                            SELECT 1
                            FROM station_operating_schedules schedule
                            WHERE schedule.station_id = s.id
@@ -236,6 +279,14 @@ final class StationDiscoverySql {
                 JOIN provinces province ON province.code = ward.province_code
                 WHERE s.status = 'ACTIVE'
                   AND s.deleted_at IS NULL
+                  AND EXISTS (
+                      SELECT 1
+                      FROM licenses visible_license
+                      WHERE visible_license.station_id = s.id
+                        AND visible_license.status = 'ACTIVE'
+                        AND visible_license.start_at <= :#{#parameters.at}
+                        AND visible_license.expires_at > :#{#parameters.at}
+                  )
                   AND (
                       CAST(:#{#parameters.queryPattern} AS VARCHAR) IS NULL
                       OR LOWER(s.station_code) LIKE CAST(:#{#parameters.queryPattern} AS VARCHAR) ESCAPE '!'

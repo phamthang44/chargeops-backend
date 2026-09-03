@@ -8,11 +8,14 @@ import com.thang.chargeops.station.entity.ChargePoint;
 import com.thang.chargeops.station.entity.Station;
 import com.thang.chargeops.station.entity.StationOperatingSchedule;
 import com.thang.chargeops.station.mapper.StationDetailMapper;
-import com.thang.chargeops.station.policy.StationBusinessEligibilityPolicy;
+import com.thang.chargeops.station.policy.StationVisibilityPolicy;
 import com.thang.chargeops.station.repository.ChargePointRepository;
 import com.thang.chargeops.station.repository.StationRepository;
 import com.thang.chargeops.station.service.impl.StationDetailServiceImpl;
 import com.thang.chargeops.station.service.support.StationOperatingHoursResolver;
+import com.thang.chargeops.station.service.support.StationOperatingStatus;
+import com.thang.chargeops.station.service.support.StationEffectiveStateResolver;
+import com.thang.chargeops.common.enums.StationOperationalStatus;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -47,10 +50,13 @@ class StationDetailServiceImplTest {
     private ChargePointRepository chargePointRepository;
 
     @Mock
-    private StationBusinessEligibilityPolicy stationBusinessEligibilityPolicy;
+    private StationVisibilityPolicy stationVisibilityPolicy;
 
     @Mock
     private StationOperatingHoursResolver operatingHoursResolver;
+
+    @Mock
+    private StationEffectiveStateResolver effectiveStateResolver;
 
     @Mock
     private StationPricingService stationPricingService;
@@ -68,8 +74,9 @@ class StationDetailServiceImplTest {
         service = new StationDetailServiceImpl(
                 stationRepository,
                 chargePointRepository,
-                stationBusinessEligibilityPolicy,
+                stationVisibilityPolicy,
                 operatingHoursResolver,
+                effectiveStateResolver,
                 stationPricingService,
                 stationDetailMapper,
                 bookingCancellationPolicy,
@@ -91,22 +98,30 @@ class StationDetailServiceImplTest {
 
         when(stationRepository.findDiscoveryDetailById(stationId))
                 .thenReturn(Optional.of(station));
-        when(stationBusinessEligibilityPolicy.isEligibleForNewBusiness(station, NOW))
+        when(stationVisibilityPolicy.isVisibleToDrivers(station, NOW))
                 .thenReturn(true);
+        when(station.getOperationalStatus()).thenReturn(StationOperationalStatus.OPERATING);
         when(operatingHoursResolver.findActiveSchedule(stationId, NOW))
                 .thenReturn(schedule);
         when(chargePointRepository.findDiscoveryEquipment(stationId))
                 .thenReturn(chargePoints);
         when(stationPricingService.resolvePriceAt(stationId, NOW))
                 .thenReturn(price);
-        when(operatingHoursResolver.isOpenAt(schedule, NOW)).thenReturn(true);
+        StationOperatingStatus operatingStatus = StationOperatingStatus.open();
+        when(effectiveStateResolver.resolve(
+                true,
+                StationOperationalStatus.OPERATING,
+                schedule,
+                NOW
+        ))
+                .thenReturn(operatingStatus);
         when(bookingCancellationPolicy.getSummary()).thenReturn(policySummary);
         when(stationDetailMapper.toResponse(
                 station,
                 schedule,
                 chargePoints,
                 price,
-                true,
+                operatingStatus,
                 policySummary
         )).thenReturn(expected);
 
@@ -115,7 +130,12 @@ class StationDetailServiceImplTest {
         assertThat(result).isSameAs(expected);
         verify(operatingHoursResolver).findActiveSchedule(stationId, NOW);
         verify(stationPricingService).resolvePriceAt(stationId, NOW);
-        verify(operatingHoursResolver).isOpenAt(schedule, NOW);
+        verify(effectiveStateResolver).resolve(
+                true,
+                StationOperationalStatus.OPERATING,
+                schedule,
+                NOW
+        );
     }
 
     @Test
@@ -124,7 +144,7 @@ class StationDetailServiceImplTest {
         Station station = mock(Station.class);
         when(stationRepository.findDiscoveryDetailById(stationId))
                 .thenReturn(Optional.of(station));
-        when(stationBusinessEligibilityPolicy.isEligibleForNewBusiness(station, NOW))
+        when(stationVisibilityPolicy.isVisibleToDrivers(station, NOW))
                 .thenReturn(false);
 
         assertThatThrownBy(() -> service.getStationDetail(stationId))
@@ -140,6 +160,54 @@ class StationDetailServiceImplTest {
     }
 
     @Test
+    void returnsPausedStationDetailWhenItRemainsVisibleToDrivers() {
+        UUID stationId = UUID.randomUUID();
+        Station station = mock(Station.class);
+        StationOperatingSchedule schedule = mock(StationOperatingSchedule.class);
+        StationOperatingStatus pausedStatus =
+                StationOperatingStatus.pausedByOwner(true);
+        StationDiscoveryDetailResponse expected =
+                mock(StationDiscoveryDetailResponse.class);
+        CancellationPolicySummary policySummary =
+                mock(CancellationPolicySummary.class);
+
+        when(stationRepository.findDiscoveryDetailById(stationId))
+                .thenReturn(Optional.of(station));
+        when(stationVisibilityPolicy.isVisibleToDrivers(station, NOW))
+                .thenReturn(true);
+        when(station.getOperationalStatus()).thenReturn(StationOperationalStatus.PAUSED);
+        when(operatingHoursResolver.findActiveSchedule(stationId, NOW))
+                .thenReturn(schedule);
+        when(chargePointRepository.findDiscoveryEquipment(stationId))
+                .thenReturn(List.of());
+        when(stationPricingService.resolvePriceAt(stationId, NOW))
+                .thenReturn(BigDecimal.ZERO);
+        when(effectiveStateResolver.resolve(
+                true,
+                StationOperationalStatus.PAUSED,
+                schedule,
+                NOW
+        )).thenReturn(pausedStatus);
+        when(bookingCancellationPolicy.getSummary()).thenReturn(policySummary);
+        when(stationDetailMapper.toResponse(
+                station,
+                schedule,
+                List.of(),
+                BigDecimal.ZERO,
+                pausedStatus,
+                policySummary
+        )).thenReturn(expected);
+
+        assertThat(service.getStationDetail(stationId)).isSameAs(expected);
+        verify(effectiveStateResolver).resolve(
+                true,
+                StationOperationalStatus.PAUSED,
+                schedule,
+                NOW
+        );
+    }
+
+    @Test
     void returnsNotFoundBeforeCallingDownstreamServicesWhenStationDoesNotExist() {
         UUID stationId = UUID.randomUUID();
         when(stationRepository.findDiscoveryDetailById(stationId))
@@ -149,7 +217,7 @@ class StationDetailServiceImplTest {
                 .isInstanceOf(AppException.class);
 
         verifyNoInteractions(
-                stationBusinessEligibilityPolicy,
+                stationVisibilityPolicy,
                 chargePointRepository,
                 operatingHoursResolver,
                 stationPricingService,

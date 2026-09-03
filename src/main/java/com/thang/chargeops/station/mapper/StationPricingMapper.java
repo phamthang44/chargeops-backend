@@ -59,11 +59,14 @@ public class StationPricingMapper {
                         NO_SHOW_TIMEOUT_MINUTES,
                         MAX_ADVANCE_CALENDAR_DAYS,
                         TURNAROUND_BUFFER_MINUTES
-                )
+                ),
+                schedule != null ? schedule.getEffectiveFrom() : null,
+                schedule != null ? schedule.getEffectiveTo() : null,
+                schedule != null ? "ACTIVE" : "DEFAULT"
         );
     }
 
-    private List<StationPricingResponse.OperatingHourResponse> operatingHours(
+    public List<StationPricingResponse.OperatingHourResponse> operatingHours(
             StationOperatingSchedule schedule
     ) {
         if (schedule == null) {

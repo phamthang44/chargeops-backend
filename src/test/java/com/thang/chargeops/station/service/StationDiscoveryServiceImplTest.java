@@ -1,6 +1,8 @@
 package com.thang.chargeops.station.service;
 
 import com.thang.chargeops.common.enums.ConnectorType;
+import com.thang.chargeops.common.enums.StationOperatingState;
+import com.thang.chargeops.common.enums.StationOperationalStatus;
 import com.thang.chargeops.station.dto.station.filter.StationDiscoveryFilter;
 import com.thang.chargeops.station.dto.station.response.StationDiscoveryItemResponse;
 import com.thang.chargeops.station.projection.StationDiscoveryConnectorTypeProjection;
@@ -78,7 +80,10 @@ class StationDiscoveryServiceImplTest {
             assertThat(item.connectorTypes()).containsExactly(ConnectorType.CCS2);
             assertThat(item.totalConnectorCount()).isEqualTo(2);
             assertThat(item.availableConnectorCount()).isEqualTo(1);
+            assertThat(item.operationalStatus()).isEqualTo(StationOperationalStatus.OPERATING);
             assertThat(item.openNow()).isTrue();
+            assertThat(item.operatingState()).isEqualTo(StationOperatingState.OPEN);
+            assertThat(item.scheduleConfigured()).isTrue();
         });
 
         StationDiscoveryQueryParameters parameters = capturedParameters();
@@ -164,7 +169,10 @@ class StationDiscoveryServiceImplTest {
         when(station.getMaxPowerKw()).thenReturn(new BigDecimal("150.00"));
         when(station.getTotalConnectorCount()).thenReturn(2L);
         when(station.getAvailableConnectorCount()).thenReturn(1L);
+        when(station.getOperationalStatus()).thenReturn("OPERATING");
         when(station.getOpenNow()).thenReturn(true);
+        when(station.getOperatingState()).thenReturn("OPEN");
+        when(station.getScheduleConfigured()).thenReturn(true);
         return station;
     }
 }

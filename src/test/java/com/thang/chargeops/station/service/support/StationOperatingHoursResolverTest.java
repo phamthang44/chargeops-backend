@@ -2,6 +2,7 @@ package com.thang.chargeops.station.service.support;
 
 import com.thang.chargeops.common.constant.SystemConstant;
 import com.thang.chargeops.common.enums.StationDayOfWeek;
+import com.thang.chargeops.common.enums.StationOperatingState;
 import com.thang.chargeops.station.entity.StationOperatingSchedule;
 import com.thang.chargeops.station.repository.StationOperatingScheduleRepository;
 import org.junit.jupiter.api.BeforeEach;
@@ -45,6 +46,14 @@ class StationOperatingHoursResolverTest {
 
         assertThat(resolver.isOpenAt(null, at)).isFalse();
         assertThat(resolver.isOpenAt(expiredSchedule, at)).isFalse();
+        assertThat(resolver.resolveStatus(null, at)).satisfies(status -> {
+            assertThat(status.openNow()).isFalse();
+            assertThat(status.state())
+                    .isEqualTo(StationOperatingState.SCHEDULE_NOT_CONFIGURED);
+            assertThat(status.scheduleConfigured()).isFalse();
+        });
+        assertThat(resolver.resolveStatus(expiredSchedule, at).state())
+                .isEqualTo(StationOperatingState.SCHEDULE_NOT_CONFIGURED);
     }
 
     @Test
@@ -53,6 +62,11 @@ class StationOperatingHoursResolverTest {
         StationOperatingSchedule schedule = activeSchedule(at, true);
 
         assertThat(resolver.isOpenAt(schedule, at)).isTrue();
+        assertThat(resolver.resolveStatus(schedule, at)).satisfies(status -> {
+            assertThat(status.openNow()).isTrue();
+            assertThat(status.state()).isEqualTo(StationOperatingState.OPEN);
+            assertThat(status.scheduleConfigured()).isTrue();
+        });
     }
 
     @Test
@@ -69,6 +83,8 @@ class StationOperatingHoursResolverTest {
 
         assertThat(resolver.isOpenAt(schedule, opening)).isTrue();
         assertThat(resolver.isOpenAt(schedule, closing)).isFalse();
+        assertThat(resolver.resolveStatus(schedule, closing).state())
+                .isEqualTo(StationOperatingState.CLOSED_BY_SCHEDULE);
     }
 
     @Test

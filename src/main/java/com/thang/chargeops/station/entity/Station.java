@@ -1,11 +1,13 @@
 package com.thang.chargeops.station.entity;
 
 import com.thang.chargeops.common.entity.SoftDeletableEntity;
+import com.thang.chargeops.common.enums.StationOperationalStatus;
 import com.thang.chargeops.common.enums.StationStatus;
 import com.thang.chargeops.location.entity.AdministrativeWard;
 import com.thang.chargeops.profile.entity.UserProfile;
 import jakarta.persistence.*;
 import lombok.*;
+import org.hibernate.annotations.ColumnDefault;
 import org.hibernate.annotations.SQLDelete;
 import org.hibernate.annotations.SQLRestriction;
 import org.hibernate.jdbc.Expectation;
@@ -67,6 +69,15 @@ public class Station extends SoftDeletableEntity {
     @Column(name = "status", nullable = false, length = 30)
     private StationStatus status;
 
+    @Builder.Default
+    @Enumerated(EnumType.STRING)
+    @ColumnDefault("'PAUSED'")
+    @Column(name = "operational_status", nullable = false, length = 30)
+    private StationOperationalStatus operationalStatus = StationOperationalStatus.PAUSED;
+
+    @Column(name = "operational_status_reason", length = 500)
+    private String operationalStatusReason;
+
     @Version
     @Column(name = "version", nullable = false)
     private long version;
@@ -105,6 +116,23 @@ public class Station extends SoftDeletableEntity {
         return operatingSchedules.stream()
                 .filter(s -> s.isActive(now))
                 .findFirst();
+    }
+
+    public void updateOperationalStatus(
+            StationOperationalStatus newStatus,
+            String reason
+    ) {
+        if (newStatus == null) {
+            throw new IllegalArgumentException("Station operational status cannot be null");
+        }
+        this.operationalStatus = newStatus;
+        this.operationalStatusReason = newStatus == StationOperationalStatus.OPERATING
+                ? null
+                : normalizeReason(reason);
+    }
+
+    private String normalizeReason(String reason) {
+        return reason == null || reason.isBlank() ? null : reason.trim();
     }
 
 }

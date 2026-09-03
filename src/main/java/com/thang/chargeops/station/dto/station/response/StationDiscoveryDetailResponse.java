@@ -5,6 +5,8 @@ import com.thang.chargeops.common.enums.ConnectorType;
 import com.thang.chargeops.common.enums.OperationalChargePointStatus;
 import com.thang.chargeops.common.enums.RuntimeStatus;
 import com.thang.chargeops.common.enums.StationDayOfWeek;
+import com.thang.chargeops.common.enums.StationOperatingState;
+import com.thang.chargeops.common.enums.StationOperationalStatus;
 
 import java.math.BigDecimal;
 import java.time.LocalTime;
@@ -24,8 +26,12 @@ public record StationDiscoveryDetailResponse(
         String contactPhone,
         List<StationAssetResponse> assets,
         BigDecimal currentPriceVndPerKwh,
+        StationOperationalStatus operationalStatus,
+        String operationalStatusReason,
         boolean open24Hours,
         boolean openNow,
+        StationOperatingState operatingState,
+        boolean scheduleConfigured,
         List<OperatingHourResponse> operatingHours,
         CancellationPolicyResponse cancellationPolicy,
         List<ChargePointResponse> chargePoints

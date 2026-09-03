@@ -4,13 +4,15 @@ import com.thang.chargeops.common.constant.SystemConstant;
 import com.thang.chargeops.common.response.ApiResult;
 import com.thang.chargeops.station.dto.station.request.UpdateStationPricingRequest;
 import com.thang.chargeops.station.dto.station.response.StationPricingResponse;
-import com.thang.chargeops.station.service.StationPricingService;
+import com.thang.chargeops.station.dto.station.response.StationScheduleHistoryResponse;
+import com.thang.chargeops.station.service.StationConfigurationService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
 import java.util.UUID;
 
 @RestController
@@ -23,14 +25,14 @@ import java.util.UUID;
  */
 public class OwnerStationPricingController {
 
-    private final StationPricingService stationPricingService;
+    private final StationConfigurationService stationConfigurationService;
 
     @GetMapping("/{stationId}/pricing")
     public ResponseEntity<ApiResult<StationPricingResponse>> getPricing(
             @PathVariable UUID stationId
     ) {
         return ResponseEntity.ok(ApiResult.success(
-                stationPricingService.getStationPricing(stationId)
+                stationConfigurationService.getConfiguration(stationId)
         ));
     }
 
@@ -40,7 +42,16 @@ public class OwnerStationPricingController {
             @Valid @RequestBody UpdateStationPricingRequest request
     ) {
         return ResponseEntity.ok(ApiResult.success(
-                stationPricingService.updateStationPricing(stationId, request)
+                stationConfigurationService.updateConfiguration(stationId, request)
+        ));
+    }
+
+    @GetMapping("/{stationId}/pricing/schedule-history")
+    public ResponseEntity<ApiResult<List<StationScheduleHistoryResponse>>> getScheduleHistory(
+            @PathVariable UUID stationId
+    ) {
+        return ResponseEntity.ok(ApiResult.success(
+                stationConfigurationService.getScheduleHistory(stationId)
         ));
     }
 }

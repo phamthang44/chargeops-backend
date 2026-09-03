@@ -1,6 +1,8 @@
 package com.thang.chargeops.station.dto.station.response;
 
 import com.thang.chargeops.common.enums.ConnectorType;
+import com.thang.chargeops.common.enums.StationOperatingState;
+import com.thang.chargeops.common.enums.StationOperationalStatus;
 
 import java.math.BigDecimal;
 import java.util.Set;
@@ -19,6 +21,10 @@ public record StationDiscoveryItemResponse(
         Set<ConnectorType> connectorTypes,
         int totalConnectorCount,
         int availableConnectorCount,
-        boolean openNow
+        StationOperationalStatus operationalStatus,
+        String operationalStatusReason,
+        boolean openNow,
+        StationOperatingState operatingState,
+        boolean scheduleConfigured
 ) {
 }

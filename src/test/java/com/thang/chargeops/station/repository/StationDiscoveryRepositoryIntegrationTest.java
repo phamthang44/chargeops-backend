@@ -163,6 +163,49 @@ class StationDiscoveryRepositoryIntegrationTest {
     }
 
     @Test
+    void usesPlatformDefaultPriceWhenStationHasNoPricingConfiguration() {
+        jdbcTemplate.update(
+                "DELETE FROM station_booking_settings WHERE station_id = ?",
+                cheaperStationId
+        );
+
+        Page<StationDiscoveryItemProjection> result = discoveryQueryRepository.findStations(
+                baseParameters()
+                        .sort("CHEAPEST")
+                        .build(),
+                PageRequest.of(0, 2)
+        );
+
+        assertThat(result.getContent())
+                .extracting(StationDiscoveryItemProjection::getId)
+                .containsExactly(nearestStationId.toString(), cheaperStationId.toString());
+        assertThat(result.getContent().get(1).getPriceFromVndPerKwh())
+                .isEqualByComparingTo("3400.00");
+    }
+
+    @Test
+    void includesBasePriceWhenComputingTheCheapestAdvertisedPrice() {
+        jdbcTemplate.update(
+                "UPDATE tou_rates SET price_per_kwh = ? WHERE station_id = ?",
+                new BigDecimal("4100.00"),
+                nearestStationId
+        );
+
+        Page<StationDiscoveryItemProjection> result = discoveryQueryRepository.findStations(
+                baseParameters()
+                        .queryPattern("%central%")
+                        .sort("CHEAPEST")
+                        .build(),
+                PageRequest.of(0, 2)
+        );
+
+        assertThat(result.getContent()).singleElement().satisfies(station ->
+                assertThat(station.getPriceFromVndPerKwh())
+                        .isEqualByComparingTo("3400.00")
+        );
+    }
+
+    @Test
     void sortsByAvailableConnectorCount() {
         Page<StationDiscoveryItemProjection> result = discoveryQueryRepository.findStations(
                 baseParameters().sort("AVAILABLE").build(),
@@ -283,6 +326,74 @@ class StationDiscoveryRepositoryIntegrationTest {
                 .extracting(StationDiscoveryItemProjection::getId)
                 .contains(overnightStation.toString())
                 .doesNotContain(closedStation.toString(), noScheduleStation.toString());
+
+        Page<StationDiscoveryItemProjection> operatingStates =
+                discoveryQueryRepository.findStations(
+                        baseParameters()
+                                .queryPattern("%station%")
+                                .localTime(LocalTime.of(1, 0))
+                                .dayOfWeek("TUESDAY")
+                                .previousDayOfWeek("MONDAY")
+                                .build(),
+                        PageRequest.of(0, 12)
+                );
+
+        assertOperatingState(
+                operatingStates,
+                overnightStation,
+                true,
+                "OPEN",
+                true
+        );
+        assertOperatingState(
+                operatingStates,
+                closedStation,
+                false,
+                "CLOSED_BY_SCHEDULE",
+                true
+        );
+        assertOperatingState(
+                operatingStates,
+                noScheduleStation,
+                false,
+                "SCHEDULE_NOT_CONFIGURED",
+                false
+        );
+    }
+
+    @Test
+    void keepsPausedAndMaintenanceStationsVisibleButClosedForNewBusiness() {
+        UUID pausedStation = insertDiscoverableStation(
+                "ST-PAUSED", "Paused Station", "8 Le Loi", "10.763000", "106.693000"
+        );
+        insertOpen24HoursSchedule(pausedStation);
+        jdbcTemplate.update(
+                "UPDATE stations SET operational_status = ?, operational_status_reason = ? WHERE id = ?",
+                "PAUSED",
+                "Power outage",
+                pausedStation
+        );
+
+        Page<StationDiscoveryItemProjection> result = discoveryQueryRepository.findStations(
+                baseParameters().queryPattern("%paused station%").build(),
+                PageRequest.of(0, 12)
+        );
+
+        assertThat(result).hasSize(1);
+        StationDiscoveryItemProjection station = result.getContent().getFirst();
+        assertThat(station.getOperationalStatus()).isEqualTo("PAUSED");
+        assertThat(station.getOperationalStatusReason()).isEqualTo("Power outage");
+        assertThat(station.getOpenNow()).isFalse();
+        assertThat(station.getOperatingState()).isEqualTo("PAUSED_BY_OWNER");
+
+        Page<StationDiscoveryItemProjection> openOnly = discoveryQueryRepository.findStations(
+                baseParameters()
+                        .queryPattern("%paused station%")
+                        .openOnly(true)
+                        .build(),
+                PageRequest.of(0, 12)
+        );
+        assertThat(openOnly).isEmpty();
     }
 
     @ParameterizedTest
@@ -365,8 +476,8 @@ class StationDiscoveryRepositoryIntegrationTest {
                         INSERT INTO stations
                             (id, station_code, owner_id, name, address_line, ward_code,
                              latitude, longitude, contact_phone, planned_charge_point_count,
-                             status, version, created_at, updated_at)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                             status, operational_status, version, created_at, updated_at)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         """,
                 id,
                 stationCode,
@@ -379,11 +490,36 @@ class StationDiscoveryRepositoryIntegrationTest {
                 "0900000000",
                 2,
                 "ACTIVE",
+                "OPERATING",
                 0L,
                 Timestamp.from(AT),
                 Timestamp.from(AT)
         );
+        insertActiveLicense(id, stationOwnerId);
         return id;
+    }
+
+    private void insertActiveLicense(UUID stationId, UUID stationOwnerId) {
+        jdbcTemplate.update(
+                """
+                        INSERT INTO licenses
+                            (id, license_code, station_id, owner_id, plan, fee_amount,
+                             start_at, expires_at, status, version, created_at, updated_at)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        """,
+                UUID.randomUUID(),
+                "LIC-DISC-" + UUID.randomUUID().toString().substring(0, 8),
+                stationId,
+                stationOwnerId,
+                "MONTHLY",
+                new BigDecimal("0.00"),
+                Timestamp.from(AT.minusSeconds(3600)),
+                Timestamp.from(AT.plusSeconds(86400)),
+                "ACTIVE",
+                0L,
+                Timestamp.from(AT),
+                Timestamp.from(AT)
+        );
     }
 
     private void insertPrimaryImage(UUID stationId, String url) {
@@ -504,5 +640,25 @@ class StationDiscoveryRepositoryIntegrationTest {
 
     private org.assertj.core.data.Offset<Double> within(double value) {
         return org.assertj.core.data.Offset.offset(value);
+    }
+
+    private void assertOperatingState(
+            Page<StationDiscoveryItemProjection> stations,
+            UUID stationId,
+            boolean openNow,
+            String operatingState,
+            boolean scheduleConfigured
+    ) {
+        assertThat(stations.getContent().stream()
+                .filter(station -> station.getId().equals(stationId.toString()))
+                .findFirst())
+                .isPresent()
+                .get()
+                .satisfies(station -> {
+                    assertThat(station.getOpenNow()).isEqualTo(openNow);
+                    assertThat(station.getOperatingState()).isEqualTo(operatingState);
+                    assertThat(station.getScheduleConfigured())
+                            .isEqualTo(scheduleConfigured);
+                });
     }
 }
