@@ -7,7 +7,6 @@ import com.thang.chargeops.station.dto.station.response.StationAvailabilityRespo
 import org.springframework.stereotype.Component;
 
 import java.time.Instant;
-import java.util.List;
 
 @Component
 public class StationAvailabilityMapper {
