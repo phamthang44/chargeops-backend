@@ -3,7 +3,6 @@ package com.thang.chargeops.station.service.impl;
 import com.thang.chargeops.common.enums.StationStatus;
 import com.thang.chargeops.common.enums.StationStatusEventType;
 import com.thang.chargeops.exception.AppException;
-import com.thang.chargeops.exception.errorcode.ApprovalErrorCode;
 import com.thang.chargeops.exception.errorcode.AuthErrorCode;
 import com.thang.chargeops.exception.errorcode.StationErrorCode;
 import com.thang.chargeops.profile.entity.UserProfile;

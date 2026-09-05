@@ -29,7 +29,7 @@ import static com.thang.chargeops.common.constant.CommonConfig.MAX_LENGTH_EMAIL;
 )
 @PreAuthorize("hasRole('OWNER')")
 /*
- * TODO(staff-access): Quản lý Staff (lookup, danh sách, assign, revoke) luôn là OWNER-only.
+ * SECURITY NOTE(staff-access): Quản lý Staff (lookup, danh sách, assign, revoke) luôn là OWNER-only.
  * Không cho Staff tự quản lý assignment và không dùng requireOwnerOrActiveStaff() cho các API này.
  */
 public class OwnerStationStaffController  {
@@ -50,7 +50,7 @@ public class OwnerStationStaffController  {
     }
 
     @GetMapping
-    public ResponseEntity<ApiResult<?>> getMyStaffs(
+    public ResponseEntity<ApiResult<?>> listStationStaff(
             @PathVariable UUID stationId,
 
             @RequestParam(defaultValue = "1")
@@ -65,7 +65,7 @@ public class OwnerStationStaffController  {
             @RequestParam(required = false)
             StaffAssignmentStatus assignmentStatus
     ) {
-        return ResponseEntity.ok(ApiResult.successPage(stationStaffService.getMyStaffs(stationId, pageNo, pageSize, assignmentStatus)));
+        return ResponseEntity.ok(ApiResult.successPage(stationStaffService.listStationStaff(stationId, pageNo, pageSize, assignmentStatus)));
     }
 
     @PostMapping

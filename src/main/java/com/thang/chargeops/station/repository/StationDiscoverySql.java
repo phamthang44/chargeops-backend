@@ -40,6 +40,7 @@ final class StationDiscoverySql {
                 SELECT CAST(s.id AS VARCHAR) AS "id",
                        s.name AS "name",
                        s.address_line AS "addressLine",
+                       province.full_name AS "provinceName",
                        s.latitude AS "latitude",
                        s.longitude AS "longitude",
                        CASE

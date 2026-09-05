@@ -8,7 +8,7 @@ public interface CheckInChallengeService {
     long CHALLENGE_TTL_SECONDS = 60L;
     Duration CHALLENGE_TTL = Duration.ofSeconds(CHALLENGE_TTL_SECONDS);
 
-    String create(UUID connectorId);
+    String create(String connectorId);
 
     UUID resolve(String token);
 

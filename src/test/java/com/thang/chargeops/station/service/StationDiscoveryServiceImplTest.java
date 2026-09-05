@@ -76,6 +76,7 @@ class StationDiscoveryServiceImplTest {
 
         assertThat(result.getContent()).singleElement().satisfies(item -> {
             assertThat(item.id()).isEqualTo(stationId);
+            assertThat(item.provinceName()).isEqualTo("Thành phố Hồ Chí Minh");
             assertThat(item.distanceKm()).isNull();
             assertThat(item.connectorTypes()).containsExactly(ConnectorType.CCS2);
             assertThat(item.totalConnectorCount()).isEqualTo(2);
@@ -161,6 +162,7 @@ class StationDiscoveryServiceImplTest {
         when(station.getId()).thenReturn(stationId.toString());
         when(station.getName()).thenReturn("Central Fast Charge");
         when(station.getAddressLine()).thenReturn("1 Le Loi");
+        when(station.getProvinceName()).thenReturn("Thành phố Hồ Chí Minh");
         when(station.getLatitude()).thenReturn(new BigDecimal("10.776900"));
         when(station.getLongitude()).thenReturn(new BigDecimal("106.700900"));
         when(station.getDistanceKm()).thenReturn(distanceKm);

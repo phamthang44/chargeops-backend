@@ -18,6 +18,8 @@ public interface StationDiscoveryItemProjection {
 
     String getAddressLine();
 
+    String getProvinceName();
+
     BigDecimal getLatitude();
 
     BigDecimal getLongitude();

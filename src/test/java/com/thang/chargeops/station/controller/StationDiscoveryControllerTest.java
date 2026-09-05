@@ -136,6 +136,7 @@ class StationDiscoveryControllerTest {
                 stationId,
                 "Central Fast Charge",
                 "1 Le Loi",
+                "Thành phố Hồ Chí Minh",
                 new BigDecimal("10.776900"),
                 new BigDecimal("106.700900"),
                 new BigDecimal("1.25"),
@@ -159,6 +160,7 @@ class StationDiscoveryControllerTest {
                         .param("page", "2")
                         .param("size", "12")
                         .param("query", "central")
+                        .param("provinceCode", "79")
                         .param("connectorTypes", "CCS2", "TYPE2")
                         .param("chargerType", "DC")
                         .param("availableOnly", "true")
@@ -167,6 +169,7 @@ class StationDiscoveryControllerTest {
                         .param("longitude", "106.700900"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data[0].id").value(stationId.toString()))
+                .andExpect(jsonPath("$.data[0].provinceName").value("Thành phố Hồ Chí Minh"))
                 .andExpect(jsonPath("$.data[0].connectorTypes[0]").value("CCS2"))
                 .andExpect(jsonPath("$.data[0].operationalStatus").value("OPERATING"))
                 .andExpect(jsonPath("$.data[0].operatingState").value("OPEN"))
@@ -186,6 +189,7 @@ class StationDiscoveryControllerTest {
 
         StationDiscoveryFilter boundFilter = filterCaptor.getValue();
         assertThat(boundFilter.getQuery()).isEqualTo("central");
+        assertThat(boundFilter.getProvinceCode()).isEqualTo("79");
         assertThat(boundFilter.getConnectorTypes())
                 .containsExactlyInAnyOrder(ConnectorType.CCS2, ConnectorType.TYPE2);
         assertThat(boundFilter.getChargerType()).isEqualTo(ChargerType.DC);

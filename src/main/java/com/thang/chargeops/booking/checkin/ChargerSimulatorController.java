@@ -20,7 +20,7 @@ public class ChargerSimulatorController {
 
     @PostMapping("/{connectorId}/check-in-challenge")
     public ResponseEntity<ApiResult<CheckInChallengeResponse>> checkInChallenge(
-            @PathVariable UUID connectorId
+            @PathVariable String connectorId
     ) {
         String challengeToken = checkInChallengeService.create(connectorId);
         CheckInChallengeResponse response = new CheckInChallengeResponse(

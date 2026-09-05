@@ -12,6 +12,7 @@ public record StationDiscoveryItemResponse(
         UUID id,
         String name,
         String address,
+        String provinceName,
         BigDecimal latitude,
         BigDecimal longitude,
         BigDecimal distanceKm,

@@ -183,6 +183,7 @@ public class StationDiscoveryServiceImpl implements StationDiscoveryService {
                 stationId(station),
                 station.getName(),
                 station.getAddressLine(),
+                station.getProvinceName(),
                 station.getLatitude(),
                 station.getLongitude(),
                 roundDistance(station.getDistanceKm()),

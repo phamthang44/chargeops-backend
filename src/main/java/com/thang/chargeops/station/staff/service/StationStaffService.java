@@ -11,7 +11,7 @@ import java.util.UUID;
 public interface StationStaffService {
     StaffLookupResponse lookUpEmail(String email, UUID stationId);
 
-    Page<StationStaffResponse> getMyStaffs(
+    Page<StationStaffResponse> listStationStaff(
             UUID stationId,
             int pageNo,
             int pageSize,

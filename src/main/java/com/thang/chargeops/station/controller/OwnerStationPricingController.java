@@ -20,7 +20,7 @@ import java.util.UUID;
 @RequiredArgsConstructor
 @PreAuthorize("hasRole('OWNER')")
 /*
- * TODO(staff-access): Giữ toàn bộ pricing OWNER-only. Không thay kiểm tra ownership bằng
+ * SECURITY NOTE(staff-access): Giữ toàn bộ pricing OWNER-only. Không thay kiểm tra ownership bằng
  * StationAccessService.requireOwnerOrActiveStaff() khi triển khai các quyền Staff ở phase sau.
  */
 public class OwnerStationPricingController {

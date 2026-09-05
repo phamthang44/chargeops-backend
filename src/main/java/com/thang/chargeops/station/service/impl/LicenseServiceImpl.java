@@ -50,6 +50,8 @@ public class LicenseServiceImpl implements LicenseService {
     private static final String ACTIVE_LICENSE_UNIQUE_CONSTRAINT =
             "ux_licenses_one_active_per_station";
     private static final String LICENSE_CODE_FORMAT = "LIC-%06d";
+    private static final String LOG_STATION_ID_FORMAT = "stationId=";
+    private static final String LOG_LICENSE_ID_FORMAT = "licenseId=";
 
     private final StationService stationService;
     private final LicenseMapper licenseMapper;
@@ -64,7 +66,7 @@ public class LicenseServiceImpl implements LicenseService {
     @Transactional
     public IssueLicenseResponse issueLicense(UUID stationId, IssueLicenseRequest request) {
         UserProfile admin = currentProfileProvider.getProfileReference();
-        log.info(LogConstant.SERVICE_LOG_FORMAT, LogConstant.ACTION_START, "issueLicense", admin.getId(), "stationId=" + stationId + ", request=" + request);
+        log.info(LogConstant.SERVICE_LOG_FORMAT, LogConstant.ACTION_START, "issueLicense", admin.getId(), LOG_STATION_ID_FORMAT + stationId + ", request=" + request);
 
         try {
             Station station = stationService.getStationById(stationId);
@@ -112,7 +114,7 @@ public class LicenseServiceImpl implements LicenseService {
             ));
             licenseRepository.flush();
             //ko cần save() lần 2 vì bị managed bởi JPA dirty checking sẽ cập nhật trạng thái
-            log.info(LogConstant.SERVICE_LOG_FORMAT, LogConstant.ACTION_SUCCESS, "issueLicense", admin.getId(), "licenseId=" + savedLicense.getId() + ", stationId=" + stationId + ", status=" + savedLicense.getStatus());
+            log.info(LogConstant.SERVICE_LOG_FORMAT, LogConstant.ACTION_SUCCESS, "issueLicense", admin.getId(), LOG_LICENSE_ID_FORMAT + savedLicense.getId() + ", stationId=" + stationId + ", status=" + savedLicense.getStatus());
             return licenseMapper.toIssueLicenseResponse(savedLicense);
         } catch (DataIntegrityViolationException e) {
             if (!isActiveLicenseUniqueConstraintViolation(e)) {
@@ -128,7 +130,7 @@ public class LicenseServiceImpl implements LicenseService {
     public void suspendLicense(UUID licenseId, String reason) {
         UserProfile admin = currentProfileProvider.getProfileReference();
         log.info(LogConstant.SERVICE_LOG_FORMAT, LogConstant.ACTION_START,
-                "suspendLicense", admin.getId(), "licenseId=" + licenseId);
+                "suspendLicense", admin.getId(), LOG_LICENSE_ID_FORMAT + licenseId);
 
         Instant at = Instant.now();
         String normalizedReason = normalizeRequiredReason(reason);
@@ -160,7 +162,7 @@ public class LicenseServiceImpl implements LicenseService {
         ));
 
         log.info(LogConstant.SERVICE_LOG_FORMAT, LogConstant.ACTION_SUCCESS,
-                "suspendLicense", admin.getId(), "licenseId=" + licenseId);
+                "suspendLicense", admin.getId(), LOG_LICENSE_ID_FORMAT + licenseId);
     }
 
     @Override
@@ -168,7 +170,7 @@ public class LicenseServiceImpl implements LicenseService {
     public void cancelLicense(UUID licenseId, String reason) {
         UserProfile admin = currentProfileProvider.getProfileReference();
         log.info(LogConstant.SERVICE_LOG_FORMAT, LogConstant.ACTION_START,
-                "cancelLicense", admin.getId(), "licenseId=" + licenseId);
+                "cancelLicense", admin.getId(), LOG_LICENSE_ID_FORMAT + licenseId);
 
         Instant at = Instant.now();
         String normalizedReason = normalizeRequiredReason(reason);
@@ -200,7 +202,7 @@ public class LicenseServiceImpl implements LicenseService {
         ));
 
         log.info(LogConstant.SERVICE_LOG_FORMAT, LogConstant.ACTION_SUCCESS,
-                "cancelLicense", admin.getId(), "licenseId=" + licenseId);
+                "cancelLicense", admin.getId(), LOG_LICENSE_ID_FORMAT + licenseId);
     }
 
     @Override
@@ -208,7 +210,7 @@ public class LicenseServiceImpl implements LicenseService {
     public void reactivateLicense(UUID licenseId, String reason) {
         UserProfile admin = currentProfileProvider.getProfileReference();
         log.info(LogConstant.SERVICE_LOG_FORMAT, LogConstant.ACTION_START,
-                "reactivateLicense", admin.getId(), "licenseId=" + licenseId);
+                "reactivateLicense", admin.getId(), LOG_LICENSE_ID_FORMAT + licenseId);
 
         Instant at = Instant.now();
         String normalizedReason = normalizeRequiredReason(reason);
@@ -248,7 +250,7 @@ public class LicenseServiceImpl implements LicenseService {
         }
 
         log.info(LogConstant.SERVICE_LOG_FORMAT, LogConstant.ACTION_SUCCESS,
-                "reactivateLicense", admin.getId(), "licenseId=" + licenseId);
+                "reactivateLicense", admin.getId(), LOG_LICENSE_ID_FORMAT + licenseId);
     }
 
     @Override
@@ -256,7 +258,7 @@ public class LicenseServiceImpl implements LicenseService {
     public RenewLicenseResponse renewLicense(UUID sourceLicenseId, RenewLicenseRequest request) {
         UserProfile admin = currentProfileProvider.getProfileReference();
         log.info(LogConstant.SERVICE_LOG_FORMAT, LogConstant.ACTION_START,
-                "renewLicense", admin.getId(), "licenseId=" + sourceLicenseId);
+                "renewLicense", admin.getId(), LOG_LICENSE_ID_FORMAT + sourceLicenseId);
 
         // Chụp thời gian đúng một lần để toàn bộ quyết định trong transaction
         // (kiểm tra policy, chọn startAt và ghi event) dùng cùng một mốc thời gian.

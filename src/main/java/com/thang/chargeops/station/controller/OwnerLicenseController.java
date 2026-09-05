@@ -3,7 +3,6 @@ package com.thang.chargeops.station.controller;
 import com.thang.chargeops.common.constant.SystemConstant;
 import com.thang.chargeops.common.response.ApiResult;
 import com.thang.chargeops.station.service.LicenseService;
-import jakarta.validation.constraints.Min;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;

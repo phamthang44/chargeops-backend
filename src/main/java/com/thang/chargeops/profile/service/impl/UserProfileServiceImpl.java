@@ -12,11 +12,13 @@ import com.thang.chargeops.profile.service.UserProfileService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.sql.SQLException;
+import java.util.List;
 import java.util.UUID;
 
 @Service
@@ -59,6 +61,12 @@ public class UserProfileServiceImpl implements UserProfileService {
     @Override
     public UserProfile getUserProfileByEmail(String email) {
         return userProfileRepository.findByEmail(email).orElse(null);
+    }
+
+    @Override
+    @PreAuthorize("hasAnyRole('OWNER', 'ADMIN')")
+    public List<UserProfile> getStaffProfiles(List<UUID> ids) {
+        return userProfileRepository.findAllById(ids);
     }
 
     private UserProfile findOrCreateFromJwt(Jwt jwt) {

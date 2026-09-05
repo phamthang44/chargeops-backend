@@ -100,7 +100,7 @@ public class StationStaffServiceImpl implements StationStaffService {
 
     @Override
     @Transactional(readOnly = true)
-    public Page<StationStaffResponse> getMyStaffs(
+    public Page<StationStaffResponse> listStationStaff(
             UUID stationId,
             int pageNo,
             int pageSize,

@@ -54,7 +54,7 @@ class CheckInChallengeServiceImplTest {
     void create_successWhenConnectorExists() {
         when(connectorRepository.findById(connectorId)).thenReturn(Optional.of(connector));
 
-        String token = service.create(connectorId);
+        String token = service.create(connectorId.toString());
 
 
         verify(checkInChallengePolicy).requireCanIssue(eq(connector), any());
@@ -68,7 +68,7 @@ class CheckInChallengeServiceImplTest {
     void create_throwsWhenConnectorNotFound() {
         when(connectorRepository.findById(connectorId)).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> service.create(connectorId))
+        assertThatThrownBy(() -> service.create(connectorId.toString()))
                 .isInstanceOfSatisfying(
                         AppException.class,
                         e -> assertThat(e.getErrorCode()).isEqualTo(StationErrorCode.CONNECTOR_NOT_FOUND)

@@ -5,6 +5,7 @@ import com.thang.chargeops.profile.dto.UserProfileUpdateRequest;
 import com.thang.chargeops.profile.entity.UserProfile;
 import org.springframework.security.oauth2.jwt.Jwt;
 
+import java.util.List;
 import java.util.UUID;
 
 public interface UserProfileService {
@@ -16,4 +17,6 @@ public interface UserProfileService {
     UserProfile getUserProfileById(UUID id);
 
     UserProfile getUserProfileByEmail(String email);
+
+    List<UserProfile> getStaffProfiles(List<UUID> ids);
 }
