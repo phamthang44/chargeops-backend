@@ -15,5 +15,7 @@ public class UserProfileResponse {
     private String phone;
     private UserStatus status;
     private boolean profileCompleted;
+    private String avatarUrl;
+    private String avatarStorageKey;
 
 }

@@ -5,8 +5,10 @@ import com.thang.chargeops.exception.errormessage.ProfileErrorMessage;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 import lombok.Getter;
+import lombok.Setter;
 
 @Getter
+@Setter
 public class UserProfileUpdateRequest {
 
     @NotBlank(message = ProfileErrorMessage.DISPLAY_NAME_REQUIRED_KEY)
@@ -17,5 +19,11 @@ public class UserProfileUpdateRequest {
     @Size(max = 20, message = ProfileErrorMessage.PHONE_MAX_LENGTH_KEY)
     @PhoneNumber
     private String phone;
+
+    @Size(max = 500)
+    private String avatarUrl;
+
+    @Size(max = 255)
+    private String avatarStorageKey;
 
 }

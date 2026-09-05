@@ -46,6 +46,10 @@ public class UserProfileServiceImpl implements UserProfileService {
         UserProfile profile = findOrCreateFromJwt(jwt);
         profile.setDisplayName(request.getDisplayName());
         profile.setPhone(request.getPhone());
+        if (request.getAvatarUrl() != null) {
+            profile.setAvatarUrl(request.getAvatarUrl());
+            profile.setAvatarStorageKey(request.getAvatarStorageKey());
+        }
 
         flushProfileChanges();
         return userProfileMapper.toResponse(profile);

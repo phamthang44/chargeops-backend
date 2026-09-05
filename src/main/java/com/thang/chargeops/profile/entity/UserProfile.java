@@ -34,4 +34,10 @@ public class UserProfile extends SoftDeletableEntity {
     @Column(name = "status")
     private UserStatus status;
 
+    @Column(name = "avatar_url", length = 500)
+    private String avatarUrl;
+
+    @Column(name = "avatar_storage_key", length = 255)
+    private String avatarStorageKey;
+
 }

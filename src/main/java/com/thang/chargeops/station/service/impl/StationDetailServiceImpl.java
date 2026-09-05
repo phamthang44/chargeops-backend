@@ -90,7 +90,6 @@ public class StationDetailServiceImpl implements StationDetailService {
                         StationErrorCode.STATION_NOT_FOUND,
                         stationId
                 ));
-
         if (!stationVisibilityPolicy.isVisibleToDrivers(station, at)) {
             throw new AppException(
                     StationErrorCode.STATION_NOT_FOUND,

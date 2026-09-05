@@ -37,3 +37,9 @@ outputs/
 logs/
 docs/
 .gitnexus
+
+### Node / Frontend Artifacts ###
+node/
+node_modules/
+package.json
+package-lock.json
