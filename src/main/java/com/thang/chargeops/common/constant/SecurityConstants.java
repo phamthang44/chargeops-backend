@@ -16,6 +16,7 @@ public final class SecurityConstants {
             "/swagger-ui.html",
             "/error",
             "/api/v1/internal/**",
+            "/api/v1/administrative-units/**",
             // Actuator (health/info/prometheus) — Prometheus scrapes without a token.
             // In prod keep these off the public Nginx route; Prometheus reaches them on the internal network.
             "/actuator/**"
