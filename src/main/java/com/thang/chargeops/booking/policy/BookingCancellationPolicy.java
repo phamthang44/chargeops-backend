@@ -1,6 +1,6 @@
 package com.thang.chargeops.booking.policy;
 
-import com.thang.chargeops.booking.Booking;
+import com.thang.chargeops.booking.entity.Booking;
 import com.thang.chargeops.booking.policy.model.CancellationPolicySummary;
 import com.thang.chargeops.booking.policy.model.CancellationRefundDecision;
 

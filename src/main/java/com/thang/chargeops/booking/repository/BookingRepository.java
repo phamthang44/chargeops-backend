@@ -1,6 +1,6 @@
 package com.thang.chargeops.booking.repository;
 
-import com.thang.chargeops.booking.Booking;
+import com.thang.chargeops.booking.entity.Booking;
 import com.thang.chargeops.common.enums.BookingStatus;
 import com.thang.chargeops.booking.projection.BookingTimeRangeProjection;
 import org.springframework.data.jpa.repository.JpaRepository;

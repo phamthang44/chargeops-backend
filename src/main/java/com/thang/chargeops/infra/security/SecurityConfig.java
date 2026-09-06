@@ -14,7 +14,12 @@ import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.config.http.SessionCreationPolicy;
+import org.springframework.security.oauth2.core.DelegatingOAuth2TokenValidator;
+import org.springframework.security.oauth2.core.OAuth2TokenValidator;
+import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.security.oauth2.jwt.JwtClaimValidator;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
+import org.springframework.security.oauth2.jwt.JwtTimestampValidator;
 import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
 import org.springframework.security.oauth2.server.resource.web.authentication.BearerTokenAuthenticationFilter;
@@ -72,7 +77,15 @@ public class SecurityConfig {
     @Bean
     @Profile("!test")
     public JwtDecoder jwtDecoder() {
-        return NimbusJwtDecoder.withIssuerLocation(issuerUri).build();
+        String jwkSetUri = issuerUri.replaceAll("/+$", "") + "/protocol/openid-connect/certs";
+        NimbusJwtDecoder decoder = NimbusJwtDecoder.withJwkSetUri(jwkSetUri).build();
+
+        OAuth2TokenValidator<Jwt> validator = new DelegatingOAuth2TokenValidator<>(
+                new JwtTimestampValidator(),
+                new JwtClaimValidator<String>("iss", iss -> iss != null && (iss.equals(issuerUri) || iss.contains("/realms/chargeops")))
+        );
+        decoder.setJwtValidator(validator);
+        return decoder;
     }
 
     private JwtAuthenticationConverter jwtAuthenticationConverter() {

@@ -1,6 +1,6 @@
 package com.thang.chargeops.booking.policy;
 
-import com.thang.chargeops.booking.Booking;
+import com.thang.chargeops.booking.entity.Booking;
 import com.thang.chargeops.booking.enums.CancellationRefundTier;
 import com.thang.chargeops.booking.exception.BookingCancellationDomainException;
 import com.thang.chargeops.booking.exception.violation.BookingCancellationViolation;

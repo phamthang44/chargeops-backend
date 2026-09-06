@@ -1,6 +1,6 @@
 package com.thang.chargeops.payment;
 
-import com.thang.chargeops.booking.Booking;
+import com.thang.chargeops.booking.entity.Booking;
 import com.thang.chargeops.common.entity.AuditableEntity;
 import com.thang.chargeops.common.enums.PaymentMethod;
 import com.thang.chargeops.common.enums.PaymentStatus;

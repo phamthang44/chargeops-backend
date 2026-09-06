@@ -1,4 +1,4 @@
-package com.thang.chargeops.booking;
+package com.thang.chargeops.booking.entity;
 
 import com.thang.chargeops.common.entity.AuditableEntity;
 import com.thang.chargeops.common.enums.BookingStatus;
