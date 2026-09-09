@@ -6,7 +6,5 @@ package com.thang.chargeops.booking.enums;
  */
 public enum CancellationRefundTier {
     GRACE,
-    FULL,
-    PARTIAL,
     NONE
 }

@@ -66,6 +66,7 @@ public final class ErrorMessage {
     private static final class RegistryHolder {
         private static final Map<String, Template> TEMPLATES_BY_KEY = Stream.of(
                         CommonErrorMessage.templates(),
+                        SystemConfigErrorMessage.templates(),
                         AuthErrorMessage.templates(),
                         ValidationErrorMessage.templates(),
                         ProfileErrorMessage.templates(),

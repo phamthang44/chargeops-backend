@@ -1,15 +1,18 @@
 package com.thang.chargeops.booking.policy.model;
 
-import java.util.List;
-
 /**
  * Dữ liệu read-only dùng để công bố cancellation policy cho Driver.
  */
 public record CancellationPolicySummary(
+        String policyVersion,
         int gracePeriodMinutes,
-        List<CancellationRefundRule> refundRules
+        String graceStartsAt,
+        boolean requiresBeforeBookingStart,
+        boolean requiresNotCheckedIn,
+        int withinGraceRefundPercent,
+        int afterGraceRefundPercent,
+        int noShowRefundPercent,
+        int verifiedStationFailureRefundPercent,
+        boolean stationFailureRequiresVerification
 ) {
-    public CancellationPolicySummary {
-        refundRules = List.copyOf(refundRules);
-    }
 }

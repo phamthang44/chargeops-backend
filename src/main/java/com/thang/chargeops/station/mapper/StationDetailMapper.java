@@ -70,16 +70,16 @@ public class StationDetailMapper {
             CancellationPolicySummary policy
     ) {
         return new StationDiscoveryDetailResponse.CancellationPolicyResponse(
+                policy.policyVersion(),
                 policy.gracePeriodMinutes(),
-                policy.refundRules().stream()
-                        .map(rule -> new StationDiscoveryDetailResponse.RefundRuleResponse(
-                                rule.tier().name(),
-                                rule.refundPercent(),
-                                rule.minMinutesBeforeStartInclusive(),
-                                rule.maxMinutesBeforeStartExclusive(),
-                                rule.appliesToNoShow()
-                        ))
-                        .toList()
+                policy.graceStartsAt(),
+                policy.requiresBeforeBookingStart(),
+                policy.requiresNotCheckedIn(),
+                policy.withinGraceRefundPercent(),
+                policy.afterGraceRefundPercent(),
+                policy.noShowRefundPercent(),
+                policy.verifiedStationFailureRefundPercent(),
+                policy.stationFailureRequiresVerification()
         );
     }
 

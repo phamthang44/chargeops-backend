@@ -1,8 +1,6 @@
 package com.thang.chargeops.station.mapper;
 
-import com.thang.chargeops.booking.enums.CancellationRefundTier;
 import com.thang.chargeops.booking.policy.model.CancellationPolicySummary;
-import com.thang.chargeops.booking.policy.model.CancellationRefundRule;
 import com.thang.chargeops.common.enums.ChargerType;
 import com.thang.chargeops.common.enums.ConnectorType;
 import com.thang.chargeops.common.enums.OperationalChargePointStatus;
@@ -134,10 +132,21 @@ class StationDetailMapperTest {
         assertThat(result.operatingHours().get(1).openTime())
                 .isEqualTo(LocalTime.of(8, 0));
         assertThat(result.operatingHours().get(2).enabled()).isFalse();
-        assertThat(result.cancellationPolicy().gracePeriodMinutes()).isEqualTo(5);
-        assertThat(result.cancellationPolicy().refundRules())
-                .extracting(StationDiscoveryDetailResponse.RefundRuleResponse::refundPercent)
-                .containsExactly(100, 50, 0);
+        assertThat(result.cancellationPolicy().policyVersion()).isEqualTo("booking-v4.9");
+        assertThat(result.cancellationPolicy().gracePeriodMinutes()).isEqualTo(10);
+        assertThat(result.cancellationPolicy().graceStartsAt()).isEqualTo("PAYMENT_CONFIRMED_AT");
+        assertThat(result.cancellationPolicy().requiresBeforeBookingStart()).isTrue();
+        assertThat(result.cancellationPolicy().requiresNotCheckedIn()).isTrue();
+        assertThat(result.cancellationPolicy().withinGraceRefundPercent()).isEqualTo(100);
+        assertThat(result.cancellationPolicy().afterGraceRefundPercent()).isZero();
+        assertThat(result.cancellationPolicy().noShowRefundPercent()).isZero();
+        assertThat(result.cancellationPolicy().verifiedStationFailureRefundPercent()).isEqualTo(100);
+        assertThat(result.cancellationPolicy().stationFailureRequiresVerification()).isTrue();
+        var json = tools.jackson.databind.json.JsonMapper.builder().build()
+                .valueToTree(result.cancellationPolicy());
+        assertThat(json.has("refundRules")).isFalse();
+        assertThat(json.get("graceStartsAt").asString()).isEqualTo("PAYMENT_CONFIRMED_AT");
+        assertThat(json.get("gracePeriodMinutes").asInt()).isEqualTo(10);
 
         assertThat(result.chargePoints()).singleElement().satisfies(point -> {
             assertThat(point.chargePointCode()).isEqualTo("CP-01");
@@ -205,30 +214,8 @@ class StationDetailMapperTest {
 
     private CancellationPolicySummary cancellationPolicySummary() {
         return new CancellationPolicySummary(
-                5,
-                List.of(
-                        new CancellationRefundRule(
-                                CancellationRefundTier.FULL,
-                                100,
-                                60,
-                                null,
-                                false
-                        ),
-                        new CancellationRefundRule(
-                                CancellationRefundTier.PARTIAL,
-                                50,
-                                15,
-                                60,
-                                false
-                        ),
-                        new CancellationRefundRule(
-                                CancellationRefundTier.NONE,
-                                0,
-                                null,
-                                15,
-                                true
-                        )
-                )
+                "booking-v4.9", 10, "PAYMENT_CONFIRMED_AT", true, true,
+                100, 0, 0, 100, true
         );
     }
 }

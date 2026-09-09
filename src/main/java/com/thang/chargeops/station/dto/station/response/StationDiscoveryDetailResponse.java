@@ -64,16 +64,16 @@ public record StationDiscoveryDetailResponse(
     ) {}
 
     public record CancellationPolicyResponse(
+            String policyVersion,
             int gracePeriodMinutes,
-            List<RefundRuleResponse> refundRules
-    ) {}
-
-    public record RefundRuleResponse(
-            String tier,
-            int refundPercent,
-            Integer minMinutesBeforeStartInclusive,
-            Integer maxMinutesBeforeStartExclusive,
-            boolean appliesToNoShow
+            String graceStartsAt,
+            boolean requiresBeforeBookingStart,
+            boolean requiresNotCheckedIn,
+            int withinGraceRefundPercent,
+            int afterGraceRefundPercent,
+            int noShowRefundPercent,
+            int verifiedStationFailureRefundPercent,
+            boolean stationFailureRequiresVerification
     ) {}
 
 }
