@@ -1,7 +1,7 @@
 <!-- gitnexus:start -->
 # GitNexus — Code Intelligence
 
-This project is indexed by GitNexus as **chargeops** (3740 symbols, 12588 relationships, 300 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
+This project is indexed by GitNexus as **chargeops** (3756 symbols, 12607 relationships, 300 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
 
 > If any GitNexus tool warns the index is stale, run `npx gitnexus analyze` in terminal first.
 
@@ -99,3 +99,18 @@ To check whether embeddings exist, inspect `.gitnexus/meta.json` — the `stats.
 | Index, status, clean, wiki CLI commands | `.claude/skills/gitnexus/gitnexus-cli/SKILL.md` |
 
 <!-- gitnexus:end -->
+
+---
+
+## ChargeOps Knowledge Base (Obsidian Vault) — Quy Tắc Bắt Buộc
+
+Toàn bộ tài liệu kiến trúc, đặc tả nghiệp vụ, API contract và chính sách hệ thống được quản lý tập trung tại **Obsidian Vault** (`chargeops/docs/ChargeOps`), được theo dõi bởi repository độc lập: `https://github.com/phamthang44/chargeops-vault.git`.
+
+1. **Vault-First**: Trước khi triển khai code mới hoặc refactor các tính năng liên quan đến logic nghiệp vụ, tính giá, đặt chỗ, duyệt trạm hay quản lý license, agent **PHẢI** đọc tài liệu trong `docs/ChargeOps/` trước (bắt đầu từ `00 - ChargeOps Knowledge Hub.md`).
+2. **Bắt buộc Commit & Push Thẳng Lên GitHub**: Mỗi lần chỉnh sửa, thêm mới hoặc cập nhật tài liệu trong `docs/ChargeOps/`, agent **BẮT BUỘC** phải commit và push thẳng lên repository `chargeops-vault` trên GitHub (`origin main`):
+   ```bash
+   cd docs/ChargeOps
+   git add .
+   git commit -m "docs(<scope>): <mô tả thay đổi rõ ràng>"
+   git push origin main
+   ```
