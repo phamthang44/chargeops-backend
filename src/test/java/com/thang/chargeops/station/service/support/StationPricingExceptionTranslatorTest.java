@@ -22,6 +22,10 @@ class StationPricingExceptionTranslatorTest {
                         StationPricingViolation.MIN_BOOKING_DURATION_INVALID,
                         StationErrorCode.PRICING_MIN_BOOKING_DURATION_INVALID
                 ),
+                entry(
+                        StationPricingViolation.MIN_BOOKING_DURATION_90_NOT_SUPPORTED,
+                        StationErrorCode.PRICING_MIN_BOOKING_DURATION_90_NOT_SUPPORTED
+                ),
                 entry(StationPricingViolation.BASE_PRICE_INVALID, StationErrorCode.PRICING_BASE_PRICE_INVALID),
                 entry(StationPricingViolation.OPERATING_WEEK_INVALID, StationErrorCode.PRICING_OPERATING_WEEK_INVALID),
                 entry(

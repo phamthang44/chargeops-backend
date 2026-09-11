@@ -16,10 +16,22 @@ public class AppException extends RuntimeException {
     @Serial
     private static final long serialVersionUID = 1L;
     private final BaseErrorCode errorCode;
+    private final Object details;
 
     public AppException(BaseErrorCode errorCode, Object... args) {
         super(resolveMessage(errorCode, args));
         this.errorCode = errorCode != null ? errorCode : CommonErrorCode.INTERNAL_ERROR;
+        this.details = null;
+    }
+
+    public AppException(BaseErrorCode errorCode, Object details, Object[] args) {
+        super(resolveMessage(errorCode, args));
+        this.errorCode = errorCode != null ? errorCode : CommonErrorCode.INTERNAL_ERROR;
+        this.details = details;
+    }
+
+    public static AppException withDetails(BaseErrorCode errorCode, Object details, Object... args) {
+        return new AppException(errorCode, details, args);
     }
 
     private static String resolveMessage(BaseErrorCode errorCode, Object... args) {

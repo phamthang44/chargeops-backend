@@ -256,6 +256,11 @@ public final class StationErrorMessage {
                     "error.station.pricing.minBookingDurationInvalid",
                     "Minimum booking duration must be exactly 30, 60, or 90 minutes"
             );
+    public static final ErrorMessage.Template PRICING_MIN_BOOKING_DURATION_90_NOT_SUPPORTED =
+            template(
+                    "error.station.pricing.minBookingDuration90NotSupported",
+                    "Minimum booking duration of 90 minutes is not supported"
+            );
     public static final ErrorMessage.Template PRICING_OPERATING_WEEK_INVALID =
             template(
                     "error.station.pricing.operatingWeekInvalid",
@@ -430,6 +435,7 @@ public final class StationErrorMessage {
                 STATION_NOT_ELIGIBLE_FOR_NEW_BUSINESS,
                 CONNECTOR_NOT_BOOKABLE,
                 PRICING_MIN_BOOKING_DURATION_INVALID,
+                PRICING_MIN_BOOKING_DURATION_90_NOT_SUPPORTED,
                 PRICING_OPERATING_WEEK_INVALID,
                 PRICING_CLOSED_DAY_TIME_PRESENT,
                 PRICING_OPEN_DAY_TIME_REQUIRED,

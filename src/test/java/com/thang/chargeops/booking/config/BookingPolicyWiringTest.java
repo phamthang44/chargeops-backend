@@ -35,6 +35,10 @@ class BookingPolicyWiringTest {
         seed(BookingPolicyConfig.KEY_OPERATING_GRID, "30");
         seed(BookingPolicyConfig.KEY_ADVANCE_BOOKING_DAYS, "2");
         seed(BookingPolicyConfig.KEY_CHECKIN_CUTOFF_BEFORE_END, "15");
+        seed(BookingPolicyConfig.KEY_DURATION_MIN, "30");
+        seed(BookingPolicyConfig.KEY_DURATION_STEP, "30");
+        seed(BookingPolicyConfig.KEY_DURATION_MAX, "180");
+        seed(BookingPolicyConfig.KEY_MAX_PENDING_PER_DRIVER, "1");
         when(repository.findByConfigKey(anyString())).thenAnswer(call -> Optional.ofNullable(rows.get(call.getArgument(0))));
     }
 
@@ -67,7 +71,9 @@ class BookingPolicyWiringTest {
             "booking.cancellation_grace_minutes,-5", "booking.cancellation_grace_minutes,abc",
             "booking.operating_grid_minutes,20", "booking.operating_grid_minutes,abc",
             "booking.advance_booking_days,0", "booking.advance_booking_days,2147483647",
-            "booking.checkin_cutoff_before_end_minutes,30", "booking.minimum_advance_minutes,-1"
+            "booking.checkin_cutoff_before_end_minutes,30", "booking.minimum_advance_minutes,-1",
+            "booking.duration_min_minutes,60", "booking.duration_step_minutes,15",
+            "booking.duration_max_minutes,240", "booking.max_pending_per_driver,0"
     })
     void rejectsInvalidWriteWithoutChangingPersistedValue(String key, String value) {
         String original = rows.get(key).getConfigValue();

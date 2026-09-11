@@ -2,6 +2,7 @@ package com.thang.chargeops.station.exception.violation;
 
 public enum StationPricingViolation {
     MIN_BOOKING_DURATION_INVALID,
+    MIN_BOOKING_DURATION_90_NOT_SUPPORTED,
     BASE_PRICE_INVALID,
     OPERATING_WEEK_INVALID,
     OPEN_24_HOURS_PERIOD_NOT_ALLOWED,

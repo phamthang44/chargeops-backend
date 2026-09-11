@@ -72,7 +72,10 @@ public final class ErrorMessage {
                         ProfileErrorMessage.templates(),
                         StationErrorMessage.templates(),
                         LicenseErrorMessage.templates(),
-                        ApprovalErrorMessage.templates()
+                        ApprovalErrorMessage.templates(),
+                        BookingErrorMessage.templates(),
+                        CommandErrorMessage.templates(),
+                        PaymentErrorMessage.templates()
                 )
                 .flatMap(List::stream)
                 .collect(toUnmodifiableMap(Template::key, Function.identity()));

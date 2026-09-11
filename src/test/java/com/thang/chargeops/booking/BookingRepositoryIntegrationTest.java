@@ -199,9 +199,9 @@ class BookingRepositoryIntegrationTest {
                     (id, driver_id, connector_id, start_at, end_at, status,
                      total_amount, station_name_snapshot, station_address_snapshot,
                      charge_point_code_snapshot, connector_code_snapshot,
-                     expires_at, created_at, updated_at)
+                     expires_at, version, created_at, updated_at)
                 VALUES (?, ?, ?, ?, ?, ?, ?, 'Station', '1 Le Loi',
-                        'CP-01', 'C-01', ?, ?, ?)
+                        'CP-01', 'C-01', ?, 0, ?, ?)
                 """,
                 UUID.randomUUID(),
                 driverId,

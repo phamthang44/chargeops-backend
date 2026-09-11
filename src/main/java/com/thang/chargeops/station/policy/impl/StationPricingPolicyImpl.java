@@ -37,7 +37,13 @@ public class StationPricingPolicyImpl implements StationPricingPolicy {
 
     @Override
     public void validateBookingSettings(int minDurationMinutes) {
-        if (minDurationMinutes != 30 && minDurationMinutes != 60 && minDurationMinutes != 90) {
+        if (minDurationMinutes == 90) {
+            throw new StationPricingDomainException(
+                    StationPricingViolation.MIN_BOOKING_DURATION_90_NOT_SUPPORTED,
+                    "Minimum booking duration of 90 minutes is not supported"
+            );
+        }
+        if (minDurationMinutes != 30 && minDurationMinutes != 60) {
             throw violation(
                     StationPricingViolation.MIN_BOOKING_DURATION_INVALID,
                     "Minimum booking duration must be 30, 60, or 90 minutes"

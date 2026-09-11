@@ -5,6 +5,7 @@ import com.thang.chargeops.booking.policy.model.CancellationPolicySummary;
 import com.thang.chargeops.common.service.SystemConfigService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -20,7 +21,7 @@ import java.util.HexFormat;
  */
 @Component
 @RequiredArgsConstructor
-@org.springframework.transaction.annotation.Transactional(
+@Transactional(
         readOnly = true, isolation = org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
 public class BookingPolicyConfig {
 
@@ -30,6 +31,10 @@ public class BookingPolicyConfig {
     public static final String KEY_OPERATING_GRID = "booking.operating_grid_minutes";
     public static final String KEY_ADVANCE_BOOKING_DAYS = "booking.advance_booking_days";
     public static final String KEY_CHECKIN_CUTOFF_BEFORE_END = "booking.checkin_cutoff_before_end_minutes";
+    public static final String KEY_DURATION_MIN = "booking.duration_min_minutes";
+    public static final String KEY_DURATION_STEP = "booking.duration_step_minutes";
+    public static final String KEY_DURATION_MAX = "booking.duration_max_minutes";
+    public static final String KEY_MAX_PENDING_PER_DRIVER = "booking.max_pending_per_driver";
 
     public static final String POLICY_VERSION = "booking-v4.9";
     public static final String TIMEZONE = "Asia/Ho_Chi_Minh";
@@ -58,6 +63,22 @@ public class BookingPolicyConfig {
 
     public int getCheckInCutoffBeforeEndMinutes() {
         return configService.getRequiredInt(KEY_CHECKIN_CUTOFF_BEFORE_END, null, "");
+    }
+
+    public int getMinDurationMinutes() {
+        return configService.getRequiredInt(KEY_DURATION_MIN, null, "");
+    }
+
+    public int getDurationStepMinutes() {
+        return configService.getRequiredInt(KEY_DURATION_STEP, null, "");
+    }
+
+    public int getMaxDurationMinutes() {
+        return configService.getRequiredInt(KEY_DURATION_MAX, null, "");
+    }
+
+    public int getMaxPendingPerDriver() {
+        return configService.getRequiredInt(KEY_MAX_PENDING_PER_DRIVER, null, "");
     }
 
     /**
@@ -106,8 +127,8 @@ public class BookingPolicyConfig {
                 lead,
                 dayOffsets,
                 grid,
-                30,
-                30,
+                getMinDurationMinutes(),
+                getDurationStepMinutes(),
                 hold,
                 grace,
                 cutoff,
@@ -169,6 +190,26 @@ public class BookingPolicyConfig {
             @Override
             public int getCheckInCutoffBeforeEndMinutes() {
                 return 15;
+            }
+
+            @Override
+            public int getMinDurationMinutes() {
+                return 30;
+            }
+
+            @Override
+            public int getDurationStepMinutes() {
+                return 30;
+            }
+
+            @Override
+            public int getMaxDurationMinutes() {
+                return 180;
+            }
+
+            @Override
+            public int getMaxPendingPerDriver() {
+                return 1;
             }
         };
     }

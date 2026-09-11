@@ -16,6 +16,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.lenient;
 
 @ExtendWith(MockitoExtension.class)
 class BookingPolicyConfigTest {
@@ -37,6 +38,10 @@ class BookingPolicyConfigTest {
         when(configService.getRequiredInt(eq(BookingPolicyConfig.KEY_OPERATING_GRID), any(), any())).thenReturn(30);
         when(configService.getRequiredInt(eq(BookingPolicyConfig.KEY_ADVANCE_BOOKING_DAYS), any(), any())).thenReturn(2);
         when(configService.getRequiredInt(eq(BookingPolicyConfig.KEY_CHECKIN_CUTOFF_BEFORE_END), any(), any())).thenReturn(15);
+        when(configService.getRequiredInt(eq(BookingPolicyConfig.KEY_DURATION_MIN), any(), any())).thenReturn(30);
+        when(configService.getRequiredInt(eq(BookingPolicyConfig.KEY_DURATION_STEP), any(), any())).thenReturn(30);
+        lenient().when(configService.getRequiredInt(eq(BookingPolicyConfig.KEY_DURATION_MAX), any(), any())).thenReturn(180);
+        lenient().when(configService.getRequiredInt(eq(BookingPolicyConfig.KEY_MAX_PENDING_PER_DRIVER), any(), any())).thenReturn(1);
     }
 
     @Test
@@ -87,6 +92,10 @@ class BookingPolicyConfigTest {
         assertThat(defaults.getOperatingGridMinutes()).isEqualTo(30);
         assertThat(defaults.getAdvanceBookingDays()).isEqualTo(2);
         assertThat(defaults.getCheckInCutoffBeforeEndMinutes()).isEqualTo(15);
+        assertThat(defaults.getMinDurationMinutes()).isEqualTo(30);
+        assertThat(defaults.getDurationStepMinutes()).isEqualTo(30);
+        assertThat(defaults.getMaxDurationMinutes()).isEqualTo(180);
+        assertThat(defaults.getMaxPendingPerDriver()).isEqualTo(1);
         assertThat(defaults.getCancellationSummary().gracePeriodMinutes()).isEqualTo(10);
     }
 }

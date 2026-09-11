@@ -56,7 +56,7 @@ public class GlobalHandlerError {
         BaseErrorCode errorCode = e.getErrorCode();
         log.warn("Business error [{}]: {} - code={}", traceId, e.getMessage(), e.getErrorCodeStr());
         return ResponseEntity.status(e.getHttpStatus())
-                .body(ApiResult.error(errorCode.getCode(), errorCode.getMessageKey(), e.getMessage(), traceId));
+                .body(ApiResult.error(errorCode.getCode(), errorCode.getMessageKey(), e.getMessage(), traceId, e.getDetails()));
     }
 
     @ExceptionHandler(ChargePointDomainException.class)

@@ -12,6 +12,8 @@ public class StationPricingExceptionTranslator {
         StationErrorCode errorCode = switch (exception.getViolation()) {
             case MIN_BOOKING_DURATION_INVALID ->
                     StationErrorCode.PRICING_MIN_BOOKING_DURATION_INVALID;
+            case MIN_BOOKING_DURATION_90_NOT_SUPPORTED ->
+                    StationErrorCode.PRICING_MIN_BOOKING_DURATION_90_NOT_SUPPORTED;
             case BASE_PRICE_INVALID -> StationErrorCode.PRICING_BASE_PRICE_INVALID;
             case OPERATING_WEEK_INVALID -> StationErrorCode.PRICING_OPERATING_WEEK_INVALID;
             case OPEN_24_HOURS_PERIOD_NOT_ALLOWED ->

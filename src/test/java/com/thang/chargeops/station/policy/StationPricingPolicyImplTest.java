@@ -26,7 +26,12 @@ class StationPricingPolicyImplTest {
     void acceptsOnlyExplicitMinimumDurationPresets() {
         assertThatCode(() -> policy.validateBookingSettings(30)).doesNotThrowAnyException();
         assertThatCode(() -> policy.validateBookingSettings(60)).doesNotThrowAnyException();
-        assertThatCode(() -> policy.validateBookingSettings(90)).doesNotThrowAnyException();
+        assertThatThrownBy(() -> policy.validateBookingSettings(90))
+                .isInstanceOfSatisfying(
+                        StationPricingDomainException.class,
+                        error -> assertThat(error.getViolation())
+                                .isEqualTo(StationPricingViolation.MIN_BOOKING_DURATION_90_NOT_SUPPORTED)
+                );
         assertThatThrownBy(() -> policy.validateBookingSettings(45))
                 .isInstanceOfSatisfying(
                         StationPricingDomainException.class,

@@ -18,6 +18,10 @@ public class BookingConfigValueValidator implements SystemConfigValueValidator {
             BookingPolicyConfig.KEY_OPERATING_GRID, v -> v == 15 || v == 30 || v == 60,
             BookingPolicyConfig.KEY_ADVANCE_BOOKING_DAYS, v -> v >= 1 && v <= 2,
             BookingPolicyConfig.KEY_CHECKIN_CUTOFF_BEFORE_END, v -> v >= 0 && v < 30
+            ,BookingPolicyConfig.KEY_DURATION_MIN, v -> v == 30
+            ,BookingPolicyConfig.KEY_DURATION_STEP, v -> v == 30
+            ,BookingPolicyConfig.KEY_DURATION_MAX, v -> v == 180
+            ,BookingPolicyConfig.KEY_MAX_PENDING_PER_DRIVER, v -> v >= 1
     );
 
     @Override
