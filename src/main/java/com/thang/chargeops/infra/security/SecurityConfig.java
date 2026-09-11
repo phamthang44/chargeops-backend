@@ -63,6 +63,10 @@ public class SecurityConfig {
                                 "/api/v1/stations",
                                 "/api/v1/stations/*"
                         ).permitAll()
+                        .requestMatchers(
+                                HttpMethod.POST,
+                                "/api/v1/webhooks/sepay"
+                        ).permitAll()
                         .anyRequest().authenticated())
                 .oauth2ResourceServer(oauth -> oauth
                         .jwt(jwt -> jwt.jwtAuthenticationConverter(jwtAuthenticationConverter())))

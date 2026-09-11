@@ -3,5 +3,7 @@ package com.thang.chargeops.common.enums;
 public enum PaymentMethod {
     VNPAY,
     MOMO,
-    ZALOPAY
+    ZALOPAY,
+    SIMULATOR,
+    BANK_TRANSFER
 }

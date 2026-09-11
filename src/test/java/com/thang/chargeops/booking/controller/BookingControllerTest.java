@@ -40,6 +40,9 @@ class BookingControllerTest {
     @MockitoBean
     private BookingPricingService bookingPricingService;
 
+    @MockitoBean
+    private com.thang.chargeops.booking.service.BookingService bookingService;
+
     @Test
     void previewBookingPriceReturnsNoStorePricePreview() throws Exception {
         UUID connectorId = UUID.randomUUID();

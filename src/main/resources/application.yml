@@ -109,3 +109,5 @@ app:
     public-key: ${IMAGEKIT_PUBLIC_KEY:}
     private-key: ${IMAGEKIT_PRIVATE_KEY:}
     url-endpoint: ${IMAGEKIT_URL_ENDPOINT:https://ik.imagekit.io/chargeops}
+  sepay:
+    webhook-secret: ${SEPAY_WEBHOOK_SECRET}

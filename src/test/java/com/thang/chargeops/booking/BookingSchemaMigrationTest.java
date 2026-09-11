@@ -33,13 +33,20 @@ class BookingSchemaMigrationTest {
             Flyway latest = Flyway.configure()
                     .dataSource(postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword())
                     .locations("classpath:db/migration")
+                    .target(MigrationVersion.fromVersion("30"))
                     .load();
             latest.migrate();
             latest.validate();
-            assertThat(latest.info().current().getVersion().getVersion()).isEqualTo("29");
+            assertThat(latest.info().current().getVersion().getVersion()).isEqualTo("30");
 
             try (Connection connection = DriverManager.getConnection(
                     postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword())) {
+                assertThat(count(connection, """
+                        SELECT count(*) FROM payment_migration_audit
+                        WHERE migration_version = '30' AND payment_count_before = 0
+                          AND payment_count_after = 0 AND expected_amount_before = 0
+                          AND expected_amount_after = 0 AND legacy_rows_requiring_reconciliation = 0
+                        """)).isEqualTo(1);
                 assertThat(count(connection, """
                         SELECT count(*)
                         FROM information_schema.columns

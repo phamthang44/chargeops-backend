@@ -2,6 +2,8 @@ package com.thang.chargeops.booking.service.impl;
 
 import com.thang.chargeops.booking.dto.request.CreateBookingRequest;
 import com.thang.chargeops.booking.dto.response.CreateBookingResponse;
+import com.thang.chargeops.booking.pricing.BookingPriceCalculator;
+import com.thang.chargeops.booking.pricing.PricePreview;
 import com.thang.chargeops.booking.repository.BookingRepository;
 import com.thang.chargeops.booking.service.BookingService;
 import com.thang.chargeops.station.policy.StationBusinessEligibilityPolicy;
@@ -19,14 +21,12 @@ public class BookingServiceImpl implements BookingService {
 
     private final BookingRepository bookingRepository;
     private final StationBusinessEligibilityPolicy stationBusinessEligibilityPolicy;
-
+    private final BookingPriceCalculator bookingPriceCalculator;
 
     @Transactional
     @Override
     public CreateBookingResponse createNewBooking(UUID connectorId, CreateBookingRequest request) {
-
-
-
+        // TODO: Sẽ hoàn thiện luồng createBooking chi tiết tại BKG-020
         return null;
     }
 }
