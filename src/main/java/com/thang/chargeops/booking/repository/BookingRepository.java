@@ -10,11 +10,23 @@ import org.springframework.stereotype.Repository;
 
 import java.time.Instant;
 import java.util.Collection;
+import java.util.EnumSet;
 import java.util.List;
 import java.util.UUID;
 
 @Repository
 public interface BookingRepository extends JpaRepository<Booking, UUID> {
+
+    /**
+     * Advisory check for preview: reuses availability's half-open overlap and hold-expiry rules.
+     * Creation must repeat the check under the connector lock; this read does not reserve a slot.
+     */
+    default boolean existsOverlappingBooking(UUID connectorId, Instant startAt, Instant endAt, Instant at) {
+        return !findBlockingRanges(connectorId, startAt, endAt, at, EnumSet.of(
+                BookingStatus.PENDING, BookingStatus.CONFIRMED,
+                BookingStatus.CHECKED_IN, BookingStatus.CHARGING
+        )).isEmpty();
+    }
 
     boolean existsByConnectorIdAndStatusIn(UUID connectorId, Collection<BookingStatus> statuses);
 

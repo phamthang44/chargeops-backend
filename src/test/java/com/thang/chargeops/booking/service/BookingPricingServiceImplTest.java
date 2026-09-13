@@ -5,21 +5,37 @@ import com.thang.chargeops.booking.dto.response.BookingPolicyResponse;
 import com.thang.chargeops.booking.dto.request.PricePreviewRequest;
 import com.thang.chargeops.booking.dto.response.PricePreviewResponse;
 import com.thang.chargeops.booking.pricing.BookingPriceCalculator;
+import com.thang.chargeops.booking.policy.BookingTimePolicy;
+import com.thang.chargeops.booking.repository.BookingRepository;
 import com.thang.chargeops.booking.service.impl.BookingPricingServiceImpl;
 import com.thang.chargeops.common.enums.ChargerType;
 import com.thang.chargeops.common.enums.ConnectorType;
 import com.thang.chargeops.common.enums.TouRatePeriodCode;
+import com.thang.chargeops.common.enums.RuntimeStatus;
+import com.thang.chargeops.exception.AppException;
+import com.thang.chargeops.exception.errorcode.StationErrorCode;
+import com.thang.chargeops.exception.errorcode.BookingErrorCode;
 import com.thang.chargeops.station.entity.ChargePoint;
 import com.thang.chargeops.station.entity.Connector;
 import com.thang.chargeops.station.entity.Station;
+import com.thang.chargeops.station.entity.StationOperatingSchedule;
+import com.thang.chargeops.station.entity.StationBookingSetting;
 import com.thang.chargeops.station.policy.ConnectorBookabilityPolicy;
+import com.thang.chargeops.station.policy.StationBusinessEligibilityPolicy;
+import com.thang.chargeops.station.policy.impl.ConnectorBookabilityPolicyImpl;
 import com.thang.chargeops.station.repository.ConnectorRepository;
+import com.thang.chargeops.station.repository.StationOperatingScheduleRepository;
+import com.thang.chargeops.station.repository.StationBookingSettingsRepository;
+import com.thang.chargeops.station.service.support.StationOperatingHoursResolver;
 import com.thang.chargeops.station.service.StationPricingService;
 import com.thang.chargeops.station.service.model.StationPriceRange;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
+import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.math.BigDecimal;
@@ -31,8 +47,12 @@ import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.mock;
 
 @ExtendWith(MockitoExtension.class)
 class BookingPricingServiceImplTest {
@@ -44,27 +64,39 @@ class BookingPricingServiceImplTest {
     @Mock
     private ConnectorBookabilityPolicy connectorBookabilityPolicy;
     @Mock
-    private StationPricingService stationPricingService;
+    private BookingRepository bookingRepository;
     @Mock
-    private BookingPolicyConfig bookingPolicyConfig;
+    private StationPricingService stationPricingService;
+    @Spy
+    private BookingPolicyConfig bookingPolicyConfig = BookingPolicyConfig.defaults();
+    @Mock
+    private StationOperatingScheduleRepository scheduleRepository;
+    @Mock
+    private StationBookingSettingsRepository bookingSettingsRepository;
 
     private BookingPricingServiceImpl service;
 
     @BeforeEach
     void setUp() {
+        StationOperatingHoursResolver resolver = new StationOperatingHoursResolver(scheduleRepository);
         service = new BookingPricingServiceImpl(
                 connectorRepository,
                 connectorBookabilityPolicy,
+                bookingRepository,
                 stationPricingService,
                 new BookingPriceCalculator(),
                 bookingPolicyConfig,
-                Clock.fixed(NOW, ZoneOffset.UTC)
+                Clock.fixed(NOW, ZoneOffset.UTC),
+                new BookingTimePolicy(bookingPolicyConfig, resolver),
+                bookingSettingsRepository,
+                resolver
         );
     }
 
     @Test
     void buildsStatelessPricePreviewFromStationRangesAndCalculator() {
         UUID stationId = UUID.randomUUID();
+        allowSchedule(stationId);
         UUID connectorId = UUID.randomUUID();
         Instant startAt = Instant.parse("2026-09-10T09:30:00Z");
         Instant splitAt = Instant.parse("2026-09-10T10:00:00Z");
@@ -118,6 +150,174 @@ class BookingPricingServiceImplTest {
         assertThat(response.overlapWarnings()).isEmpty();
         verify(connectorBookabilityPolicy)
                 .requireBookableForNewBooking(connector, NOW);
+    }
+
+    @Test
+    void missingConnectorCannotProduceAQuote() {
+        UUID connectorId = UUID.randomUUID();
+        when(connectorRepository.findByIdWithChargePointAndStation(connectorId))
+                .thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.previewBookingPrice(
+                new PricePreviewRequest(connectorId, NOW.plusSeconds(3600), 60)))
+                .isInstanceOfSatisfying(AppException.class, exception ->
+                        assertThat(exception.getErrorCode())
+                                .isEqualTo(StationErrorCode.CONNECTOR_NOT_FOUND));
+        verifyNoInteractions(connectorBookabilityPolicy, stationPricingService, bookingPolicyConfig);
+    }
+
+    @Test
+    void rejectedBookabilityStopsBeforePricing() {
+        UUID connectorId = UUID.randomUUID();
+        Connector connector = connector(station(UUID.randomUUID()), connectorId);
+        when(connectorRepository.findByIdWithChargePointAndStation(connectorId))
+                .thenReturn(Optional.of(connector));
+        AppException rejection = new AppException(StationErrorCode.CONNECTOR_NOT_BOOKABLE, "C-01");
+        doThrow(rejection).when(connectorBookabilityPolicy)
+                .requireBookableForNewBooking(connector, NOW);
+
+        assertThatThrownBy(() -> service.previewBookingPrice(
+                new PricePreviewRequest(connectorId, NOW.plusSeconds(3600), 60)))
+                .isSameAs(rejection);
+        verifyNoInteractions(stationPricingService, bookingPolicyConfig);
+    }
+
+    @Test
+    void repeatedPreviewUsesCurrentTariffAndChangesConsentVersion() {
+        UUID stationId = UUID.randomUUID();
+        allowSchedule(stationId);
+        UUID connectorId = UUID.randomUUID();
+        Instant startAt = NOW.plusSeconds(3600);
+        Instant endAt = startAt.plusSeconds(3600);
+        when(connectorRepository.findByIdWithChargePointAndStation(connectorId))
+                .thenReturn(Optional.of(connector(station(stationId), connectorId)));
+        when(bookingPolicyConfig.toPolicyResponse())
+                .thenReturn(BookingPolicyConfig.defaults().toPolicyResponse());
+        List<StationPriceRange> original = List.of(new StationPriceRange(
+                startAt, endAt, BigDecimal.valueOf(3400), TouRatePeriodCode.NORMAL));
+        List<StationPriceRange> updated = List.of(new StationPriceRange(
+                startAt, endAt, BigDecimal.valueOf(4200), TouRatePeriodCode.NORMAL));
+        when(stationPricingService.resolvePriceRanges(stationId, NOW, startAt, endAt))
+                .thenReturn(original, original, updated);
+        PricePreviewRequest request = new PricePreviewRequest(connectorId, startAt, 60);
+
+        PricePreviewResponse first = service.previewBookingPrice(request);
+        PricePreviewResponse unchanged = service.previewBookingPrice(request);
+        PricePreviewResponse repriced = service.previewBookingPrice(request);
+
+        assertThat(first.totalAmount()).isEqualTo(126000L);
+        assertThat(unchanged.pricingVersion()).isEqualTo(first.pricingVersion());
+        assertThat(repriced.totalAmount()).isEqualTo(156000L);
+        assertThat(repriced.pricingVersion()).isNotEqualTo(first.pricingVersion());
+        assertThat(first.totalAmount()).isEqualTo(126000L);
+    }
+
+    @Test
+    void rejectsInsufficientLeadBeforeResolvingPrices() {
+        UUID stationId = UUID.randomUUID();
+        UUID connectorId = UUID.randomUUID();
+        when(connectorRepository.findByIdWithChargePointAndStation(connectorId))
+                .thenReturn(Optional.of(connector(station(stationId), connectorId)));
+        assertThatThrownBy(() -> service.previewBookingPrice(
+                new PricePreviewRequest(connectorId, NOW.plusSeconds(1800), 60)))
+                .isInstanceOfSatisfying(AppException.class, exception -> {
+                    assertThat(exception.getErrorCode()).isEqualTo(BookingErrorCode.TIME_INVALID);
+                    assertThat(((java.util.Map<?, ?>) exception.getDetails()).get("reason"))
+                            .isEqualTo("MINIMUM_ADVANCE_NOT_MET");
+                });
+        verifyNoInteractions(stationPricingService);
+    }
+
+    @Test
+    void missingScheduleCannotProduceAPricePreview() {
+        UUID connectorId = UUID.randomUUID();
+        when(connectorRepository.findByIdWithChargePointAndStation(connectorId))
+                .thenReturn(Optional.of(connector(station(UUID.randomUUID()), connectorId)));
+        assertThatThrownBy(() -> service.previewBookingPrice(
+                new PricePreviewRequest(connectorId, NOW.plusSeconds(3600), 60)))
+                .isInstanceOfSatisfying(AppException.class, exception ->
+                        assertThat(((java.util.Map<?, ?>) exception.getDetails()).get("reason"))
+                                .isEqualTo("OPERATING_SCHEDULE_NOT_CONFIGURED"));
+        verifyNoInteractions(stationPricingService);
+    }
+
+    @Test
+    void previewUsesTheStationMinimumDuration() {
+        UUID stationId = UUID.randomUUID();
+        UUID connectorId = UUID.randomUUID();
+        when(connectorRepository.findByIdWithChargePointAndStation(connectorId))
+                .thenReturn(Optional.of(connector(station(stationId), connectorId)));
+        when(bookingSettingsRepository.findByStationId(stationId))
+                .thenReturn(Optional.of(StationBookingSetting.builder().minDurationMinutes(60).build()));
+        assertThatThrownBy(() -> service.previewBookingPrice(
+                new PricePreviewRequest(connectorId, NOW.plusSeconds(3600), 30)))
+                .isInstanceOfSatisfying(AppException.class, exception ->
+                        assertThat(((java.util.Map<?, ?>) exception.getDetails()).get("reason"))
+                                .isEqualTo("DURATION_OUT_OF_RANGE"));
+        verifyNoInteractions(stationPricingService);
+    }
+
+    @Test
+    void overlappingBookingStopsPreviewBeforePricing() {
+        UUID stationId = UUID.randomUUID();
+        UUID connectorId = UUID.randomUUID();
+        Instant startAt = NOW.plusSeconds(3600);
+        Instant endAt = startAt.plusSeconds(3600);
+        allowSchedule(stationId);
+        when(connectorRepository.findByIdWithChargePointAndStation(connectorId))
+                .thenReturn(Optional.of(connector(station(stationId), connectorId)));
+        when(bookingRepository.existsOverlappingBooking(connectorId, startAt, endAt, NOW))
+                .thenReturn(true);
+
+        assertThatThrownBy(() -> service.previewBookingPrice(new PricePreviewRequest(connectorId, startAt, 60)))
+                .isInstanceOfSatisfying(AppException.class, exception -> {
+                    assertThat(exception.getErrorCode()).isEqualTo(BookingErrorCode.SLOT_UNAVAILABLE);
+                    assertThat(exception.getHttpStatus().value()).isEqualTo(409);
+                });
+        verifyNoInteractions(stationPricingService);
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void inUseConnectorReachesFutureOverlapCheckWithRealBookabilityPolicy(boolean overlaps) {
+        UUID stationId = UUID.randomUUID();
+        UUID connectorId = UUID.randomUUID();
+        Instant startAt = NOW.plusSeconds(86400);
+        Instant endAt = startAt.plusSeconds(3600);
+        Connector connector = connector(station(stationId), connectorId);
+        connector.updateRuntimeStatus(RuntimeStatus.IN_USE);
+        allowSchedule(stationId);
+        when(connectorRepository.findByIdWithChargePointAndStation(connectorId))
+                .thenReturn(Optional.of(connector));
+        when(bookingRepository.existsOverlappingBooking(connectorId, startAt, endAt, NOW)).thenReturn(overlaps);
+        StationBusinessEligibilityPolicy businessPolicy = mock(StationBusinessEligibilityPolicy.class);
+        StationOperatingHoursResolver resolver = new StationOperatingHoursResolver(scheduleRepository);
+        BookingPricingServiceImpl realPolicyService = new BookingPricingServiceImpl(
+                connectorRepository, new ConnectorBookabilityPolicyImpl(businessPolicy), bookingRepository,
+                stationPricingService, new BookingPriceCalculator(), bookingPolicyConfig,
+                Clock.fixed(NOW, ZoneOffset.UTC), new BookingTimePolicy(bookingPolicyConfig, resolver),
+                bookingSettingsRepository, resolver);
+        PricePreviewRequest request = new PricePreviewRequest(connectorId, startAt, 60);
+
+        if (overlaps) {
+            assertThatThrownBy(() -> realPolicyService.previewBookingPrice(request))
+                    .isInstanceOfSatisfying(AppException.class, exception ->
+                            assertThat(exception.getErrorCode()).isEqualTo(BookingErrorCode.SLOT_UNAVAILABLE));
+            verifyNoInteractions(stationPricingService);
+        } else {
+            when(stationPricingService.resolvePriceRanges(stationId, NOW, startAt, endAt))
+                    .thenReturn(List.of(new StationPriceRange(startAt, endAt,
+                            BigDecimal.valueOf(3400), TouRatePeriodCode.NORMAL)));
+            assertThat(realPolicyService.previewBookingPrice(request).totalAmount()).isEqualTo(126000L);
+        }
+        verify(businessPolicy).requireEligibleForNewBusiness(connector.getChargePoint().getStation(), NOW);
+        verify(bookingRepository).existsOverlappingBooking(connectorId, startAt, endAt, NOW);
+    }
+
+    private void allowSchedule(UUID stationId) {
+        when(scheduleRepository.findActiveByStationId(stationId, NOW)).thenReturn(Optional.of(
+                StationOperatingSchedule.builder().open24Hours(true)
+                        .effectiveFrom(NOW.minusSeconds(86400)).build()));
     }
 
     private Station station(UUID stationId) {

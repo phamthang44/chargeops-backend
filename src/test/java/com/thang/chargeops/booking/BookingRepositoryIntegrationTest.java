@@ -4,6 +4,8 @@ import com.thang.chargeops.booking.repository.BookingRepository;
 import com.thang.chargeops.common.enums.BookingStatus;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -103,6 +105,58 @@ class BookingRepositoryIntegrationTest {
                         rangeStart.minusSeconds(1800) + "/" + rangeStart.plusSeconds(1800),
                         rangeStart.plusSeconds(3600) + "/" + rangeStart.plusSeconds(5400)
                 );
+    }
+
+    @ParameterizedTest
+    @EnumSource(value = BookingStatus.class, names = {"PENDING", "CONFIRMED", "CHECKED_IN", "CHARGING"})
+    void activeBookingStatesBlockTheSameConnector(BookingStatus status) {
+        Instant start = NOW.plusSeconds(86400);
+        insertBooking(status, start, start.plusSeconds(3600), NOW.plusSeconds(600));
+        assertThat(bookingRepository.existsOverlappingBooking(connectorId, start, start.plusSeconds(1800), NOW))
+                .isTrue();
+        assertThat(bookingRepository.existsOverlappingBooking(UUID.randomUUID(), start, start.plusSeconds(1800), NOW))
+                .isFalse();
+    }
+
+    @ParameterizedTest
+    @EnumSource(value = BookingStatus.class, names = {"COMPLETED", "EXPIRED", "CANCELLED"})
+    void terminalBookingStatesDoNotBlock(BookingStatus status) {
+        Instant start = NOW.plusSeconds(86400);
+        insertBooking(status, start, start.plusSeconds(3600), null);
+        assertThat(bookingRepository.existsOverlappingBooking(connectorId, start, start.plusSeconds(3600), NOW))
+                .isFalse();
+    }
+
+    @Test
+    void pendingStopsBlockingExactlyAtExpiryWithoutWaitingForScheduler() {
+        Instant start = NOW.plusSeconds(86400);
+        insertBooking(BookingStatus.PENDING, start, start.plusSeconds(3600), NOW.plusSeconds(600));
+        assertThat(bookingRepository.existsOverlappingBooking(connectorId, start, start.plusSeconds(3600), NOW.plusSeconds(599)))
+                .isTrue();
+        assertThat(bookingRepository.existsOverlappingBooking(connectorId, start, start.plusSeconds(3600), NOW.plusSeconds(600)))
+                .isFalse();
+        assertThat(bookingRepository.existsOverlappingBooking(connectorId, start, start.plusSeconds(3600), NOW.plusSeconds(601)))
+                .isFalse();
+    }
+
+    @Test
+    void touchingEndpointsAreFreeButPartialAndContainingRangesOverlap() {
+        Instant start = NOW.plusSeconds(86400);
+        Instant end = start.plusSeconds(3600);
+        insertBooking(BookingStatus.CONFIRMED, start, end, null);
+        assertThat(bookingRepository.existsOverlappingBooking(connectorId, start.minusSeconds(1800), start, NOW)).isFalse();
+        assertThat(bookingRepository.existsOverlappingBooking(connectorId, end, end.plusSeconds(1800), NOW)).isFalse();
+        assertThat(bookingRepository.existsOverlappingBooking(connectorId, start.minusSeconds(1800), start.plusSeconds(1800), NOW)).isTrue();
+        assertThat(bookingRepository.existsOverlappingBooking(connectorId, end.minusSeconds(1800), end.plusSeconds(1800), NOW)).isTrue();
+        assertThat(bookingRepository.existsOverlappingBooking(connectorId, start.minusSeconds(1800), end.plusSeconds(1800), NOW)).isTrue();
+    }
+
+    @Test
+    void overlapAcrossLocalMidnightUsesTheFullRequestedRange() {
+        Instant start = Instant.parse("2026-09-02T16:30:00Z"); // 23:30 in Vietnam
+        insertBooking(BookingStatus.CONFIRMED, start, start.plusSeconds(7200), null);
+        assertThat(bookingRepository.existsOverlappingBooking(connectorId, start.plusSeconds(1800), start.plusSeconds(3600), NOW))
+                .isTrue();
     }
 
     private UUID insertProfile(String email) {

@@ -31,7 +31,7 @@ public class ConnectorBookabilityPolicyImpl implements ConnectorBookabilityPolic
         boolean bookable = chargePoint.getProvisioningStatus() == ProvisioningStatus.ACTIVE
                 && chargePoint.getOperationalChargePointStatus()
                 == OperationalChargePointStatus.AVAILABLE
-                && connector.getRuntimeStatus() == RuntimeStatus.AVAILABLE;
+                && (connector.getRuntimeStatus() == RuntimeStatus.AVAILABLE || connector.getRuntimeStatus() == RuntimeStatus.IN_USE);
         if (!bookable) {
             throw new AppException(
                     StationErrorCode.CONNECTOR_NOT_BOOKABLE,
