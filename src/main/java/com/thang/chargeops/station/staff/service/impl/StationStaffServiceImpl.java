@@ -62,7 +62,6 @@ public class StationStaffServiceImpl implements StationStaffService {
         if (candidate == null) {
             return new StaffLookupResponse(
                     false,
-                    null,
                     normalizedEmail,
                     null,
                     null,
@@ -214,7 +213,6 @@ public class StationStaffServiceImpl implements StationStaffService {
     private StaffLookupResponse buildLookUpResponse(UserProfile userProfile, StaffLookupStatus status) {
         return new StaffLookupResponse(
                 true,
-                userProfile.getId(),
                 userProfile.getEmail(),
                 userProfile.getDisplayName(),
                 maskPhoneNumber(userProfile.getPhone()),

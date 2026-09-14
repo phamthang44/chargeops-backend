@@ -92,7 +92,6 @@ class StationStaffServiceImplTest {
         StaffLookupResponse response = service.lookUpEmail("  DRIVER@ChargeOps.vn ", stationId);
 
         assertThat(response.exists()).isTrue();
-        assertThat(response.userId()).isEqualTo(candidate.getId());
         assertThat(response.email()).isEqualTo("driver@chargeops.vn");
         assertThat(response.maskedPhone()).isEqualTo("098****321");
         assertThat(response.assignable()).isTrue();
