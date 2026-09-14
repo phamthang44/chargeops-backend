@@ -1,5 +1,8 @@
 package com.thang.chargeops.booking.service.impl;
 
+import com.thang.chargeops.booking.config.BookingPolicyConfig;
+import com.thang.chargeops.booking.pricing.PriceBasis;
+import com.thang.chargeops.booking.policy.BookingTimePolicy;
 import com.thang.chargeops.booking.repository.BookingRepository;
 import com.thang.chargeops.booking.mapper.StationAvailabilityMapper;
 import com.thang.chargeops.booking.projection.BookingTimeRangeProjection;
@@ -8,6 +11,7 @@ import com.thang.chargeops.booking.service.model.StationAvailabilitySnapshot;
 import com.thang.chargeops.common.constant.SystemConstant;
 import com.thang.chargeops.common.enums.BookingStatus;
 import com.thang.chargeops.exception.AppException;
+import com.thang.chargeops.exception.errorcode.BookingErrorCode;
 import com.thang.chargeops.exception.errorcode.StationErrorCode;
 import com.thang.chargeops.station.dto.station.filter.StationAvailabilityQuery;
 import com.thang.chargeops.station.dto.station.response.StationAvailabilityResponse;
@@ -27,6 +31,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.util.EnumSet;
@@ -56,6 +61,8 @@ public class StationAvailabilityServiceImpl implements StationAvailabilityServic
     private final StationOperatingHoursResolver operatingHoursResolver;
     private final StationPricingService stationPricingService;
     private final StationAvailabilityMapper availabilityMapper;
+    private final BookingTimePolicy bookingTimePolicy;
+    private final BookingPolicyConfig bookingPolicyConfig;
     private final Clock applicationClock;
 
     @Override
@@ -65,6 +72,8 @@ public class StationAvailabilityServiceImpl implements StationAvailabilityServic
             StationAvailabilityQuery query
     ) {
         Instant generatedAt = applicationClock.instant();
+        bookingTimePolicy.validateBookingDate(query.getDate(), generatedAt);
+
         Connector connector = requireStationConnector(
                 stationId,
                 query.getConnectorId()
@@ -74,6 +83,7 @@ public class StationAvailabilityServiceImpl implements StationAvailabilityServic
                 generatedAt
         );
 
+        Instant earliestStartAt = bookingTimePolicy.earliestStartAt(generatedAt);
         Instant dayStart = query.getDate()
                 .atStartOfDay(SYSTEM_ZONE_ID)
                 .toInstant();
@@ -82,29 +92,49 @@ public class StationAvailabilityServiceImpl implements StationAvailabilityServic
                 .atStartOfDay(SYSTEM_ZONE_ID)
                 .toInstant();
 
+        int maxDurationMinutes = bookingPolicyConfig.getMaxDurationMinutes();
+        int durationStepMinutes = bookingPolicyConfig.getDurationStepMinutes();
+        Instant coverageStartAt = dayStart;
+        Instant coverageEndAt = dayEnd.plus(Duration.ofMinutes(maxDurationMinutes));
+
         Station station = connector.getChargePoint().getStation();
         StationOperatingSchedule schedule = operatingHoursResolver
                 .findActiveSchedule(stationId, generatedAt);
         List<OperatingWindow> operatingWindows = operatingHoursResolver
-                .resolveOperatingWindows(schedule, query.getDate());
+                .resolveOperatingWindows(
+                        schedule,
+                        query.getDate(),
+                        coverageStartAt,
+                        coverageEndAt
+                );
         List<BookingTimeRangeProjection> busyRanges = bookingRepository
                 .findBlockingRanges(
                         connector.getId(),
-                        dayStart,
-                        dayEnd,
+                        coverageStartAt,
+                        coverageEndAt,
                         generatedAt,
                         BLOCKING_STATUSES
                 );
         StationBookingSetting settings = bookingSettingsRepository
                 .findByStationId(stationId)
-                .orElseGet(() -> StationBookingSetting.createDefault(station));
+                .orElseThrow(() -> new AppException(
+                        BookingErrorCode.PRICING_NOT_CONFIGURED,
+                        stationId
+                ));
+        int minDurationMinutes = Math.max(
+                bookingPolicyConfig.getMinDurationMinutes(),
+                settings.getMinDurationMinutes()
+        );
         List<StationPriceRange> priceRanges = stationPricingService
                 .resolvePriceRanges(
                         stationId,
                         generatedAt,
-                        dayStart,
-                        dayEnd
+                        coverageStartAt,
+                        coverageEndAt
                 );
+
+        String policyVersion = bookingPolicyConfig.toPolicyResponse().policyVersion();
+        PriceBasis pricingEstimateParameters = PriceBasis.fixedPackage(connector.getPowerKw());
 
         return availabilityMapper.toResponse(
                 StationAvailabilitySnapshot.builder()
@@ -112,12 +142,20 @@ public class StationAvailabilityServiceImpl implements StationAvailabilityServic
                         .connectorId(connector.getId())
                         .date(query.getDate())
                         .generatedAt(generatedAt)
+                        .earliestStartAt(earliestStartAt)
                         .dayStart(dayStart)
                         .dayEnd(dayEnd)
+                        .coverageStartAt(coverageStartAt)
+                        .coverageEndAt(coverageEndAt)
+                        .minDurationMinutes(minDurationMinutes)
+                        .durationStepMinutes(durationStepMinutes)
+                        .maxDurationMinutes(maxDurationMinutes)
                         .settings(settings)
                         .operatingWindows(operatingWindows)
                         .busyRanges(busyRanges)
                         .priceRanges(priceRanges)
+                        .policyVersion(policyVersion)
+                        .pricingEstimateParameters(pricingEstimateParameters)
                         .build()
         );
     }

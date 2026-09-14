@@ -102,18 +102,29 @@ class StationDiscoveryControllerTest {
     void delegatesAvailabilityToBookingOwnedService() throws Exception {
         UUID stationId = UUID.randomUUID();
         UUID connectorId = UUID.randomUUID();
+        java.time.Instant generatedAt = java.time.Instant.parse("2026-09-01T05:00:00Z");
+        java.time.Instant earliestStartAt = java.time.Instant.parse("2026-09-01T06:00:00Z");
+        java.time.Instant coverageStartAt = java.time.Instant.parse("2026-09-02T00:00:00Z");
+        java.time.Instant coverageEndAt = java.time.Instant.parse("2026-09-03T03:00:00Z");
+        com.thang.chargeops.booking.pricing.PriceBasis priceBasis =
+                com.thang.chargeops.booking.pricing.PriceBasis.fixedPackage(new java.math.BigDecimal("60.00"));
         StationAvailabilityResponse response = new StationAvailabilityResponse(
                 stationId,
                 connectorId,
                 java.time.LocalDate.parse("2026-09-02"),
                 "Asia/Ho_Chi_Minh",
-                java.time.Instant.parse("2026-09-01T05:00:00Z"),
+                generatedAt,
+                earliestStartAt,
+                coverageStartAt,
+                coverageEndAt,
                 30,
                 30,
                 180,
                 List.of(),
                 List.of(),
-                List.of()
+                List.of(),
+                "booking-v4.9",
+                priceBasis
         );
         when(stationAvailabilityService.getAvailability(eq(stationId), any()))
                 .thenReturn(response);
@@ -124,7 +135,12 @@ class StationDiscoveryControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.stationId").value(stationId.toString()))
                 .andExpect(jsonPath("$.data.connectorId").value(connectorId.toString()))
-                .andExpect(jsonPath("$.data.timezone").value("Asia/Ho_Chi_Minh"));
+                .andExpect(jsonPath("$.data.timezone").value("Asia/Ho_Chi_Minh"))
+                .andExpect(jsonPath("$.data.earliestStartAt").value("2026-09-01T06:00:00Z"))
+                .andExpect(jsonPath("$.data.coverageStartAt").value("2026-09-02T00:00:00Z"))
+                .andExpect(jsonPath("$.data.coverageEndAt").value("2026-09-03T03:00:00Z"))
+                .andExpect(jsonPath("$.data.policyVersion").value("booking-v4.9"))
+                .andExpect(jsonPath("$.data.pricingEstimateParameters.powerKw").value(60.0));
 
         verify(stationAvailabilityService).getAvailability(eq(stationId), any());
     }

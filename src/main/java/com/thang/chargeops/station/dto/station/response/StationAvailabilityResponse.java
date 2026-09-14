@@ -1,5 +1,6 @@
 package com.thang.chargeops.station.dto.station.response;
 
+import com.thang.chargeops.booking.pricing.PriceBasis;
 import com.thang.chargeops.common.enums.TouRatePeriodCode;
 
 import java.math.BigDecimal;
@@ -14,12 +15,17 @@ public record StationAvailabilityResponse(
         LocalDate date,
         String timezone,
         Instant generatedAt,
+        Instant earliestStartAt,
+        Instant coverageStartAt,
+        Instant coverageEndAt,
         int minDurationMinutes,
         int durationStepMinutes,
         int maxDurationMinutes,
         List<TimeRangeResponse> operatingWindows,
         List<TimeRangeResponse> busyRanges,
-        List<PriceRangeResponse> priceRanges
+        List<PriceRangeResponse> priceRanges,
+        String policyVersion,
+        PriceBasis pricingEstimateParameters
 ) {
     public record TimeRangeResponse(
             Instant startAt,

@@ -18,9 +18,12 @@ public class StationAvailabilityMapper {
                 snapshot.date(),
                 SystemConstant.SYSTEM_REGION_TIMEZONE,
                 snapshot.generatedAt(),
-                snapshot.settings().getMinDurationMinutes(),
-                snapshot.settings().getDurationStepMinutes(),
-                snapshot.settings().getMaxDurationMinutes(),
+                snapshot.earliestStartAt(),
+                snapshot.coverageStartAt(),
+                snapshot.coverageEndAt(),
+                snapshot.minDurationMinutes(),
+                snapshot.durationStepMinutes(),
+                snapshot.maxDurationMinutes(),
                 snapshot.operatingWindows().stream()
                         .map(window -> new StationAvailabilityResponse.TimeRangeResponse(
                                 window.startAt(),
@@ -30,8 +33,8 @@ public class StationAvailabilityMapper {
                 snapshot.busyRanges().stream()
                         .map(range -> clippedBusyRange(
                                 range,
-                                snapshot.dayStart(),
-                                snapshot.dayEnd()
+                                snapshot.coverageStartAt(),
+                                snapshot.coverageEndAt()
                         ))
                         .filter(range -> range.startAt().isBefore(range.endAt()))
                         .toList(),
@@ -42,20 +45,22 @@ public class StationAvailabilityMapper {
                                 range.rateVndPerKwh(),
                                 range.periodCode()
                         ))
-                        .toList()
+                        .toList(),
+                snapshot.policyVersion(),
+                snapshot.pricingEstimateParameters()
         );
     }
 
     private StationAvailabilityResponse.TimeRangeResponse clippedBusyRange(
             BookingTimeRangeProjection range,
-            Instant dayStart,
-            Instant dayEnd
+            Instant rangeStart,
+            Instant rangeEnd
     ) {
-        Instant startAt = range.getStartAt().isBefore(dayStart)
-                ? dayStart
+        Instant startAt = range.getStartAt().isBefore(rangeStart)
+                ? rangeStart
                 : range.getStartAt();
-        Instant endAt = range.getEndAt().isAfter(dayEnd)
-                ? dayEnd
+        Instant endAt = range.getEndAt().isAfter(rangeEnd)
+                ? rangeEnd
                 : range.getEndAt();
         return new StationAvailabilityResponse.TimeRangeResponse(startAt, endAt);
     }

@@ -38,6 +38,22 @@ public class BookingTimePolicy {
                 config.getMinimumAdvanceMinutes(), config.getOperatingGridMinutes());
     }
 
+    /** Kiểm tra ngày yêu cầu bắt đầu sạc có thuộc Today/Tomorrow hay không (BR-BOK-10). */
+    public void validateBookingDate(LocalDate queryDate, Instant now) {
+        validateDateOffset("date", queryDate, now);
+    }
+
+    private void validateDateOffset(String field, LocalDate queryDate, Instant now) {
+        Objects.requireNonNull(queryDate, "Query date is required");
+        Objects.requireNonNull(now, "Server time is required");
+        LocalDate today = now.atZone(ZONE).toLocalDate();
+        long dayOffset = ChronoUnit.DAYS.between(today, queryDate);
+        if (dayOffset < 0 || dayOffset >= config.getAdvanceBookingDays()) {
+            Instant earliest = earliestStartAt(now);
+            throw invalid(field, "START_DATE_OUT_OF_RANGE", earliest);
+        }
+    }
+
     /** Validates [startAt, endAt) against the current schedule and returns its exclusive end. */
     public Instant validate(
             Instant startAt, int durationMin, int stationMinDurationMin,
@@ -51,11 +67,7 @@ public class BookingTimePolicy {
         }
 
         ZonedDateTime localStart = startAt.atZone(ZONE);
-        LocalDate today = now.atZone(ZONE).toLocalDate();
-        long dayOffset = ChronoUnit.DAYS.between(today, localStart.toLocalDate());
-        if (dayOffset < 0 || dayOffset >= config.getAdvanceBookingDays()) {
-            throw invalid("startAt", "START_DATE_OUT_OF_RANGE", earliest);
-        }
+        validateDateOffset("startAt", localStart.toLocalDate(), now);
         if (localStart.getSecond() != 0 || localStart.getNano() != 0
                 || localStart.toLocalTime().toSecondOfDay() / 60 % grid != 0) {
             throw invalid("startAt", "START_NOT_ON_GRID", earliest);
@@ -83,33 +95,10 @@ public class BookingTimePolicy {
                 || (schedule.getEffectiveTo() != null && schedule.getEffectiveTo().isBefore(endAt))) {
             throw invalid("startAt", "OUTSIDE_OPERATING_HOURS", earliest);
         }
-        if (!coversWholeSession(schedule, startAt, endAt)) {
+        if (!operatingHoursResolver.coversInterval(schedule, startAt, endAt)) {
             throw invalid("startAt", "OUTSIDE_OPERATING_HOURS", earliest);
         }
         return endAt;
-    }
-
-    private boolean coversWholeSession(StationOperatingSchedule schedule, Instant startAt, Instant endAt) {
-        Instant coveredUntil = startAt;
-        LocalDate date = startAt.atZone(ZONE).toLocalDate();
-        // Resolve every intersecting local day, including the day after Tomorrow.
-        // Advancing a cursor merges adjacent/overlapping windows but never bridges a closed gap.
-        while (date.atStartOfDay(ZONE).toInstant().isBefore(endAt)) {
-            for (OperatingWindow window : operatingHoursResolver.resolveOperatingWindows(schedule, date)) {
-                if (!window.endAt().isAfter(coveredUntil)) {
-                    continue;
-                }
-                if (window.startAt().isAfter(coveredUntil)) {
-                    return false;
-                }
-                coveredUntil = window.endAt();
-                if (!coveredUntil.isBefore(endAt)) {
-                    return true;
-                }
-            }
-            date = date.plusDays(1);
-        }
-        return false;
     }
 
     private Instant ceilToGrid(Instant now, int leadMinutes, int gridMinutes) {

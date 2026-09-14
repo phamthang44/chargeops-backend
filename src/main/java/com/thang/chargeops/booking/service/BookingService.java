@@ -9,5 +9,4 @@ public interface BookingService {
 
     CreateBookingResponse createNewBooking(UUID connectorId, CreateBookingRequest request);
 
-
 }

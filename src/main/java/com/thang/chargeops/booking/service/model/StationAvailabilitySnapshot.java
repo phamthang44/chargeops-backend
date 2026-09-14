@@ -1,5 +1,6 @@
 package com.thang.chargeops.booking.service.model;
 
+import com.thang.chargeops.booking.pricing.PriceBasis;
 import com.thang.chargeops.booking.projection.BookingTimeRangeProjection;
 import com.thang.chargeops.station.entity.StationBookingSetting;
 import com.thang.chargeops.station.service.model.OperatingWindow;
@@ -22,12 +23,20 @@ public record StationAvailabilitySnapshot(
         UUID connectorId,
         LocalDate date,
         Instant generatedAt,
+        Instant earliestStartAt,
         Instant dayStart,
         Instant dayEnd,
+        Instant coverageStartAt,
+        Instant coverageEndAt,
+        int minDurationMinutes,
+        int durationStepMinutes,
+        int maxDurationMinutes,
         StationBookingSetting settings,
         List<OperatingWindow> operatingWindows,
         List<BookingTimeRangeProjection> busyRanges,
-        List<StationPriceRange> priceRanges
+        List<StationPriceRange> priceRanges,
+        String policyVersion,
+        PriceBasis pricingEstimateParameters
 ) {
     public StationAvailabilitySnapshot {
         operatingWindows = List.copyOf(operatingWindows);

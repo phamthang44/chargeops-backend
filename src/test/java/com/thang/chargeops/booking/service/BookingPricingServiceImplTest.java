@@ -54,6 +54,13 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.mock;
 
+import com.thang.chargeops.booking.entity.Booking;
+import com.thang.chargeops.profile.entity.UserProfile;
+import com.thang.chargeops.profile.support.CurrentProfileProvider;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.lenient;
+
 @ExtendWith(MockitoExtension.class)
 class BookingPricingServiceImplTest {
 
@@ -73,11 +80,18 @@ class BookingPricingServiceImplTest {
     private StationOperatingScheduleRepository scheduleRepository;
     @Mock
     private StationBookingSettingsRepository bookingSettingsRepository;
+    @Mock
+    private CurrentProfileProvider currentProfileProvider;
 
     private BookingPricingServiceImpl service;
+    private UserProfile defaultDriver;
 
     @BeforeEach
     void setUp() {
+        defaultDriver = new UserProfile();
+        defaultDriver.setId(UUID.randomUUID());
+        defaultDriver.setEmail("driver@chargeops.vn");
+        lenient().when(currentProfileProvider.requireProfile()).thenReturn(defaultDriver);
         StationOperatingHoursResolver resolver = new StationOperatingHoursResolver(scheduleRepository);
         service = new BookingPricingServiceImpl(
                 connectorRepository,
@@ -89,7 +103,8 @@ class BookingPricingServiceImplTest {
                 Clock.fixed(NOW, ZoneOffset.UTC),
                 new BookingTimePolicy(bookingPolicyConfig, resolver),
                 bookingSettingsRepository,
-                resolver
+                resolver,
+                currentProfileProvider
         );
     }
 
@@ -296,7 +311,7 @@ class BookingPricingServiceImplTest {
                 connectorRepository, new ConnectorBookabilityPolicyImpl(businessPolicy), bookingRepository,
                 stationPricingService, new BookingPriceCalculator(), bookingPolicyConfig,
                 Clock.fixed(NOW, ZoneOffset.UTC), new BookingTimePolicy(bookingPolicyConfig, resolver),
-                bookingSettingsRepository, resolver);
+                bookingSettingsRepository, resolver, currentProfileProvider);
         PricePreviewRequest request = new PricePreviewRequest(connectorId, startAt, 60);
 
         if (overlaps) {
@@ -312,6 +327,93 @@ class BookingPricingServiceImplTest {
         }
         verify(businessPolicy).requireEligibleForNewBusiness(connector.getChargePoint().getStation(), NOW);
         verify(bookingRepository).existsOverlappingBooking(connectorId, startAt, endAt, NOW);
+    }
+
+    @Test
+    void returnsOverlapWarningWhenDriverHasConflictingBookingOnAnotherConnector() {
+        UUID stationId = UUID.randomUUID();
+        allowSchedule(stationId);
+        UUID connectorId = UUID.randomUUID();
+        Instant startAt = Instant.parse("2026-09-10T09:30:00Z");
+        Instant endAt = Instant.parse("2026-09-10T10:30:00Z");
+        Connector connector = connector(station(stationId), connectorId);
+
+        when(connectorRepository.findByIdWithChargePointAndStation(connectorId))
+                .thenReturn(Optional.of(connector));
+        when(stationPricingService.resolvePriceRanges(stationId, NOW, startAt, endAt))
+                .thenReturn(List.of(new StationPriceRange(startAt, endAt, BigDecimal.valueOf(3400), TouRatePeriodCode.NORMAL)));
+
+        Booking conflictingBooking = mock(Booking.class);
+        when(conflictingBooking.getBookingCode()).thenReturn("BK-CONFLICT-01");
+        when(conflictingBooking.getStartAt()).thenReturn(startAt);
+        when(conflictingBooking.getEndAt()).thenReturn(endAt);
+        when(bookingRepository.findOverlappingDriverBookings(
+                eq(defaultDriver.getId()),
+                eq(connectorId),
+                eq(startAt),
+                eq(endAt),
+                eq(NOW),
+                any()
+        )).thenReturn(List.of(conflictingBooking));
+
+        PricePreviewResponse response = service.previewBookingPrice(new PricePreviewRequest(connectorId, startAt, 60));
+
+        assertThat(response.overlapWarnings()).hasSize(1);
+        assertThat(response.overlapWarnings().getFirst()).contains("BK-CONFLICT-01");
+    }
+
+    @Test
+    void returnsEmptyOverlapWarningsWhenDriverHasNoConflictingBookings() {
+        UUID stationId = UUID.randomUUID();
+        allowSchedule(stationId);
+        UUID connectorId = UUID.randomUUID();
+        Instant startAt = Instant.parse("2026-09-10T09:30:00Z");
+        Instant endAt = Instant.parse("2026-09-10T10:30:00Z");
+        Connector connector = connector(station(stationId), connectorId);
+
+        when(connectorRepository.findByIdWithChargePointAndStation(connectorId))
+                .thenReturn(Optional.of(connector));
+        when(stationPricingService.resolvePriceRanges(stationId, NOW, startAt, endAt))
+                .thenReturn(List.of(new StationPriceRange(startAt, endAt, BigDecimal.valueOf(3400), TouRatePeriodCode.NORMAL)));
+        when(bookingRepository.findOverlappingDriverBookings(any(), any(), any(), any(), any(), any()))
+                .thenReturn(List.of());
+
+        PricePreviewResponse response = service.previewBookingPrice(new PricePreviewRequest(connectorId, startAt, 60));
+
+        assertThat(response.overlapWarnings()).isEmpty();
+    }
+
+    @Test
+    void warningsDoNotAlterPricingHashOrTotalAmount() {
+        UUID stationId = UUID.randomUUID();
+        allowSchedule(stationId);
+        UUID connectorId = UUID.randomUUID();
+        Instant startAt = Instant.parse("2026-09-10T09:30:00Z");
+        Instant endAt = Instant.parse("2026-09-10T10:30:00Z");
+        Connector connector = connector(station(stationId), connectorId);
+
+        when(connectorRepository.findByIdWithChargePointAndStation(connectorId))
+                .thenReturn(Optional.of(connector));
+        when(stationPricingService.resolvePriceRanges(stationId, NOW, startAt, endAt))
+                .thenReturn(List.of(new StationPriceRange(startAt, endAt, BigDecimal.valueOf(3400), TouRatePeriodCode.NORMAL)));
+
+        when(bookingRepository.findOverlappingDriverBookings(any(), any(), any(), any(), any(), any()))
+                .thenReturn(List.of());
+        PricePreviewResponse cleanResponse = service.previewBookingPrice(new PricePreviewRequest(connectorId, startAt, 60));
+
+        Booking conflictingBooking = mock(Booking.class);
+        when(conflictingBooking.getBookingCode()).thenReturn("BK-CONFLICT-01");
+        when(conflictingBooking.getStartAt()).thenReturn(startAt);
+        when(conflictingBooking.getEndAt()).thenReturn(endAt);
+        when(bookingRepository.findOverlappingDriverBookings(any(), any(), any(), any(), any(), any()))
+                .thenReturn(List.of(conflictingBooking));
+        PricePreviewResponse warnedResponse = service.previewBookingPrice(new PricePreviewRequest(connectorId, startAt, 60));
+
+        assertThat(warnedResponse.pricingVersion()).isEqualTo(cleanResponse.pricingVersion());
+        assertThat(warnedResponse.totalAmount()).isEqualTo(cleanResponse.totalAmount());
+        assertThat(warnedResponse.policy()).isEqualTo(cleanResponse.policy());
+        assertThat(warnedResponse.overlapWarnings()).hasSize(1);
+        assertThat(cleanResponse.overlapWarnings()).isEmpty();
     }
 
     private void allowSchedule(UUID stationId) {

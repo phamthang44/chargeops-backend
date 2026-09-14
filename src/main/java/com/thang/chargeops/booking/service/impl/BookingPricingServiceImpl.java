@@ -1,6 +1,7 @@
 package com.thang.chargeops.booking.service.impl;
 
 import com.thang.chargeops.booking.config.BookingPolicyConfig;
+import com.thang.chargeops.booking.entity.Booking;
 import com.thang.chargeops.booking.policy.BookingTimePolicy;
 import com.thang.chargeops.booking.dto.response.BookingPolicyResponse;
 import com.thang.chargeops.booking.dto.request.PricePreviewRequest;
@@ -13,9 +14,12 @@ import com.thang.chargeops.booking.pricing.PriceSegmentMapper;
 import com.thang.chargeops.booking.pricing.PricingVersionHelper;
 import com.thang.chargeops.booking.repository.BookingRepository;
 import com.thang.chargeops.booking.service.BookingPricingService;
+import com.thang.chargeops.common.enums.BookingStatus;
 import com.thang.chargeops.exception.AppException;
 import com.thang.chargeops.exception.errorcode.BookingErrorCode;
 import com.thang.chargeops.exception.errorcode.StationErrorCode;
+import com.thang.chargeops.profile.entity.UserProfile;
+import com.thang.chargeops.profile.support.CurrentProfileProvider;
 import com.thang.chargeops.station.entity.Connector;
 import com.thang.chargeops.station.policy.ConnectorBookabilityPolicy;
 import com.thang.chargeops.station.repository.ConnectorRepository;
@@ -31,15 +35,22 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Clock;
 import java.time.Instant;
-import java.util.List;
-import java.util.UUID;
+import java.util.*;
+
 
 @Service
 @RequiredArgsConstructor
 public class BookingPricingServiceImpl implements BookingPricingService {
 
     private static final String CURRENCY = "VND";
-
+    private static final Set<BookingStatus> BLOCKING_STATUSES = Set.copyOf(
+            EnumSet.of(
+                    BookingStatus.PENDING,
+                    BookingStatus.CONFIRMED,
+                    BookingStatus.CHECKED_IN,
+                    BookingStatus.CHARGING
+            )
+    );
     private final ConnectorRepository connectorRepository;
     private final ConnectorBookabilityPolicy connectorBookabilityPolicy;
     private final BookingRepository bookingRepository;
@@ -50,11 +61,13 @@ public class BookingPricingServiceImpl implements BookingPricingService {
     private final BookingTimePolicy bookingTimePolicy;
     private final StationBookingSettingsRepository bookingSettingsRepository;
     private final StationOperatingHoursResolver operatingHoursResolver;
+    private final CurrentProfileProvider currentProfileProvider;
 
     @Override
     @Transactional(readOnly = true)
     public PricePreviewResponse previewBookingPrice(PricePreviewRequest request) {
         Instant generatedAt = applicationClock.instant();
+        UserProfile driver = currentProfileProvider.requireProfile();
         Connector connector = requireConnector(request.connectorId());
         connectorBookabilityPolicy.requireBookableForNewBooking(
                 connector,
@@ -74,7 +87,22 @@ public class BookingPricingServiceImpl implements BookingPricingService {
                     BookingErrorCode.SLOT_UNAVAILABLE
             );
         }
-
+        List<Booking> overlappingBookings = bookingRepository.findOverlappingDriverBookings(
+                driver.getId(),
+                connector.getId(),
+                request.startAt(),
+                endAt,
+                generatedAt,
+                BLOCKING_STATUSES
+        );
+        List<String> overlapWarnings = overlappingBookings.stream()
+                .map(b -> String.format(
+                        "Bạn đã có lịch sạc #%s tại trạm khác/cổng khác trùng giờ (%s - %s).",
+                        b.getBookingCode() != null ? b.getBookingCode() : b.getId().toString().substring(0, 8),
+                        b.getStartAt(),
+                        b.getEndAt()
+                ))
+                .toList();
         List<StationPriceRange> ranges = stationPricingService.resolvePriceRanges(
                 stationId,
                 generatedAt,
@@ -108,7 +136,7 @@ public class BookingPricingServiceImpl implements BookingPricingService {
                 preview.priceLines(),
                 preview.pricingBasis(),
                 policy,
-                List.of() //TODO
+                overlapWarnings
         );
     }
 
