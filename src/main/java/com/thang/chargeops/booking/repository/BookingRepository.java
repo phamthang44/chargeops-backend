@@ -59,4 +59,46 @@ public interface BookingRepository extends JpaRepository<Booking, UUID> {
             @Param("at") Instant at,
             @Param("blockingStatuses") Collection<BookingStatus> blockingStatuses
     );
+
+    @Query("""
+        SELECT b.startAt AS startAt, b.endAt AS endAt
+        FROM Booking b
+        WHERE b.connector.chargePoint.station.id = :stationId
+          AND b.status IN :blockingStatuses
+          AND b.endAt > :now
+          AND (b.status <> com.thang.chargeops.common.enums.BookingStatus.PENDING
+               OR b.expiresAt IS NULL
+               OR b.expiresAt > :now)
+        ORDER BY b.startAt ASC
+    """)
+    List<BookingTimeRangeProjection> findActiveBlockingRangesByStationId(
+            @Param("stationId") UUID stationId,
+            @Param("now") Instant now,
+            @Param("blockingStatuses") Collection<BookingStatus> blockingStatuses
+    );
+
+    @Query("""
+        SELECT b
+        FROM Booking b
+        WHERE b.driver.id = :driverId
+          AND b.connector.id <> :connectorId
+          AND b.status IN :blockingStatuses
+          AND b.startAt < :endAt
+          AND b.endAt > :startAt
+          AND (
+                b.status <> com.thang.chargeops.common.enums.BookingStatus.PENDING
+                OR b.expiresAt IS NULL
+                OR b.expiresAt > :now
+              )
+        ORDER BY b.startAt ASC
+    """)
+    List<Booking> findOverlappingDriverBookings(
+            @Param("driverId") UUID driverId,
+            @Param("connectorId") UUID connectorId,
+            @Param("startAt") Instant startAt,
+            @Param("endAt") Instant endAt,
+            @Param("now") Instant now,
+            @Param("blockingStatuses") Collection<BookingStatus> blockingStatuses
+    );
+
 }

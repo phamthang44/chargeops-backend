@@ -47,6 +47,10 @@ class StationPricingExceptionTranslatorTest {
                 entry(
                         StationPricingViolation.CONFIGURATION_CONFLICT,
                         StationErrorCode.PRICING_CONFIGURATION_CONFLICT
+                ),
+                entry(
+                        StationPricingViolation.SCHEDULE_CONFLICT_WITH_BOOKINGS,
+                        StationErrorCode.STATION_SCHEDULE_CONFLICT_WITH_EXISTING_BOOKINGS
                 )
         );
 

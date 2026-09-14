@@ -25,6 +25,8 @@ import com.thang.chargeops.station.repository.StationRepository;
 import com.thang.chargeops.station.repository.TouRateRepository;
 import com.thang.chargeops.station.service.impl.StationConfigurationServiceImpl;
 import com.thang.chargeops.station.service.support.StationPricingExceptionTranslator;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.LockModeType;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -67,6 +69,8 @@ class StationConfigurationServiceImplTest {
     private StationPricingPolicy pricingPolicy;
     @Mock
     private UserProfileService userProfileService;
+    @Mock
+    private EntityManager entityManager;
 
     private StationConfigurationServiceImpl service;
 
@@ -82,7 +86,8 @@ class StationConfigurationServiceImplTest {
                 new StationPricingMapper(),
                 new StationPricingExceptionTranslator(),
                 Clock.fixed(NOW, ZoneOffset.UTC),
-                userProfileService
+                userProfileService,
+                entityManager
         );
     }
 
@@ -129,7 +134,8 @@ class StationConfigurationServiceImplTest {
                         LocalTime.of(23, 0),
                         LocalTime.of(5, 0),
                         new BigDecimal("2800.00")
-                ))
+                )),
+                0L
         );
 
         when(stationRepository.findByIdForPricingUpdate(stationId))
@@ -186,7 +192,8 @@ class StationConfigurationServiceImplTest {
                 BigDecimal.ONE,
                 true,
                 List.of(),
-                List.of()
+                List.of(),
+                0L
         );
 
         when(stationRepository.findByIdForPricingUpdate(stationId))
@@ -252,5 +259,128 @@ class StationConfigurationServiceImplTest {
         assertThat(history.get(0).open24Hours()).isTrue();
         assertThat(history.get(1).status()).isEqualTo("EXPIRED");
         assertThat(history.get(1).effectiveTo()).isEqualTo(activeFrom);
+    }
+
+    @Test
+    void throwsConflictWhenStaleVersionProvidedForExistingSettings() {
+        UUID stationId = UUID.randomUUID();
+        UUID ownerId = UUID.randomUUID();
+        Station station = new Station();
+        StationBookingSetting existing = StationBookingSetting.builder()
+                .station(station)
+                .minDurationMinutes(30)
+                .basePriceVnd(new BigDecimal("3400.00"))
+                .version(1L)
+                .build();
+        UpdateStationPricingRequest request = new UpdateStationPricingRequest(
+                30,
+                new BigDecimal("3500.00"),
+                true,
+                List.of(),
+                List.of(),
+                1L // settings.version = 1 -> commercial version = 2, so 1L is stale
+        );
+
+        when(stationRepository.findByIdForPricingUpdate(stationId))
+                .thenReturn(Optional.of(station));
+        when(currentProfileProvider.requireProfileId()).thenReturn(ownerId);
+        when(settingsRepository.findByStationId(stationId))
+                .thenReturn(Optional.of(existing));
+
+        assertThatThrownBy(() -> service.updateConfiguration(stationId, request))
+                .isInstanceOfSatisfying(
+                        AppException.class,
+                        exception -> assertThat(exception.getErrorCode())
+                                .isEqualTo(StationErrorCode.PRICING_CONFIGURATION_CONFLICT)
+                );
+    }
+
+    @Test
+    void throwsConflictWhenNonZeroVersionProvidedForUnconfiguredStation() {
+        UUID stationId = UUID.randomUUID();
+        UUID ownerId = UUID.randomUUID();
+        Station station = new Station();
+        UpdateStationPricingRequest request = new UpdateStationPricingRequest(
+                30,
+                new BigDecimal("3500.00"),
+                true,
+                List.of(),
+                List.of(),
+                5L // Unconfigured station expects version 0L
+        );
+
+        when(stationRepository.findByIdForPricingUpdate(stationId))
+                .thenReturn(Optional.of(station));
+        when(currentProfileProvider.requireProfileId()).thenReturn(ownerId);
+        when(settingsRepository.findByStationId(stationId))
+                .thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.updateConfiguration(stationId, request))
+                .isInstanceOfSatisfying(
+                        AppException.class,
+                        exception -> assertThat(exception.getErrorCode())
+                                .isEqualTo(StationErrorCode.PRICING_CONFIGURATION_CONFLICT)
+                );
+    }
+
+    @Test
+    void forcesOptimisticLockIncrementWhenUpdatingExistingSettings() {
+        UUID stationId = UUID.randomUUID();
+        UUID ownerId = UUID.randomUUID();
+        Station station = new Station();
+        StationBookingSetting existing = StationBookingSetting.builder()
+                .station(station)
+                .minDurationMinutes(30)
+                .basePriceVnd(new BigDecimal("3400.00"))
+                .version(0L)
+                .build();
+        UpdateStationPricingRequest request = new UpdateStationPricingRequest(
+                60,
+                new BigDecimal("3600.00"),
+                true,
+                List.of(),
+                List.of(),
+                1L // JPA version = 0 -> commercial version = 1
+        );
+
+        when(stationRepository.findByIdForPricingUpdate(stationId))
+                .thenReturn(Optional.of(station));
+        when(currentProfileProvider.requireProfileId()).thenReturn(ownerId);
+        when(settingsRepository.findByStationId(stationId))
+                .thenReturn(Optional.of(existing));
+        when(scheduleRepository.findActiveByStationId(stationId, NOW))
+                .thenReturn(Optional.empty());
+        when(touRateRepository.findActiveByStationId(stationId, NOW))
+                .thenReturn(List.of());
+
+        StationPricingResponse response = service.updateConfiguration(stationId, request);
+
+        verify(entityManager).lock(existing, LockModeType.OPTIMISTIC_FORCE_INCREMENT);
+        assertThat(response.version()).isEqualTo(1L); // 0 + 1
+        assertThat(response.scheduleStatus()).isEqualTo("ACTIVE");
+    }
+
+    @Test
+    void getConfigurationReturnsUnconfiguredStatusWhenSettingsDoNotExist() {
+        UUID stationId = UUID.randomUUID();
+        UUID ownerId = UUID.randomUUID();
+        Station station = new Station();
+        station.setId(stationId);
+
+        when(stationRepository.findById(stationId))
+                .thenReturn(Optional.of(station));
+        when(currentProfileProvider.requireProfileId()).thenReturn(ownerId);
+        when(settingsRepository.findByStationId(stationId))
+                .thenReturn(Optional.empty());
+        when(scheduleRepository.findActiveByStationId(stationId, NOW))
+                .thenReturn(Optional.empty());
+        when(touRateRepository.findActiveByStationId(stationId, NOW))
+                .thenReturn(List.of());
+
+        StationPricingResponse response = service.getConfiguration(stationId);
+
+        assertThat(response.scheduleStatus()).isEqualTo("UNCONFIGURED");
+        assertThat(response.version()).isEqualTo(0L);
+        assertThat(response.basePriceVnd()).isNull();
     }
 }

@@ -29,6 +29,8 @@ public class StationPricingExceptionTranslator {
             case TOU_RATE_INVALID -> StationErrorCode.PRICING_TOU_RATE_INVALID;
             case TOU_RULES_OVERLAP -> StationErrorCode.PRICING_TOU_RULES_OVERLAP;
             case CONFIGURATION_CONFLICT -> StationErrorCode.PRICING_CONFIGURATION_CONFLICT;
+            case SCHEDULE_CONFLICT_WITH_BOOKINGS ->
+                    StationErrorCode.STATION_SCHEDULE_CONFLICT_WITH_EXISTING_BOOKINGS;
         };
         return new AppException(errorCode);
     }

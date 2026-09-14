@@ -346,6 +346,11 @@ public final class StationErrorMessage {
                     "error.station.operationalStatusReasonRequired",
                     "A reason is required when pausing or maintaining a station"
             );
+    public static final ErrorMessage.Template STATION_SCHEDULE_CONFLICT_WITH_EXISTING_BOOKINGS =
+            template(
+                    "error.station.scheduleConflictWithExistingBookings",
+                    "New operating schedule conflicts with active or confirmed bookings"
+            );
 
     static List<ErrorMessage.Template> templates() {
         return List.of(
@@ -452,7 +457,8 @@ public final class StationErrorMessage {
                 STATION_OPERATING_SCHEDULE_REQUIRED,
                 STATION_OPERATIONAL_STATUS_REQUIRED_VALIDATION,
                 STATION_OPERATIONAL_STATUS_REQUIRED,
-                STATION_OPERATIONAL_STATUS_REASON_REQUIRED
+                STATION_OPERATIONAL_STATUS_REASON_REQUIRED,
+                STATION_SCHEDULE_CONFLICT_WITH_EXISTING_BOOKINGS
         );
     }
 }

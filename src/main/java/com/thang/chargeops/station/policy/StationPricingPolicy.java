@@ -3,7 +3,9 @@ package com.thang.chargeops.station.policy;
 import com.thang.chargeops.station.dto.station.request.UpdateStationPricingRequest.OperatingHourRequest;
 import com.thang.chargeops.station.dto.station.request.UpdateStationPricingRequest.TouRuleRequest;
 import com.thang.chargeops.station.entity.Station;
+import com.thang.chargeops.station.entity.StationOperatingSchedule;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 
@@ -20,4 +22,7 @@ public interface StationPricingPolicy {
 
      // 4. Validate TOU rates không bị chồng chéo (Overlapping) và giá hợp lệ
     void validateTouRules(List<TouRuleRequest> touRules);
+
+    // 5. Validate guard bổ sung cho booking
+    void validateOperatingHoursNotConflictingWithActiveBookings(UUID stationId,StationOperatingSchedule newSchedule, Instant now);
 }

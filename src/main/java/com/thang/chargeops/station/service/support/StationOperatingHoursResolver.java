@@ -125,6 +125,38 @@ public class StationOperatingHoursResolver {
         return mergeWindows(windows);
     }
 
+    /**
+     * Chuyển schedule hiện tại thành các cửa sổ hoạt động mở rộng cho khoảng coverage [coverageStartAt, coverageEndAt).
+     * Tự động nối liền các ca làm việc qua đêm và giữ đúng các khoảng đóng cửa thực tế.
+     */
+    public List<OperatingWindow> resolveOperatingWindows(
+            StationOperatingSchedule schedule,
+            LocalDate date,
+            Instant coverageStartAt,
+            Instant coverageEndAt
+    ) {
+        if (schedule == null || date == null || coverageStartAt == null || coverageEndAt == null
+                || !coverageStartAt.isBefore(coverageEndAt)) {
+            return List.of();
+        }
+        if (schedule.isOpen24Hours()) {
+            return List.of(new OperatingWindow(coverageStartAt, coverageEndAt));
+        }
+
+        List<OperatingWindow> combined = new ArrayList<>();
+        combined.addAll(resolveOperatingWindows(schedule, date));
+        combined.addAll(resolveOperatingWindows(schedule, date.plusDays(1)));
+        List<OperatingWindow> merged = mergeWindows(combined);
+
+        return merged.stream()
+                .map(w -> new OperatingWindow(
+                        w.startAt().isBefore(coverageStartAt) ? coverageStartAt : w.startAt(),
+                        w.endAt().isAfter(coverageEndAt) ? coverageEndAt : w.endAt()
+                ))
+                .filter(w -> w.startAt().isBefore(w.endAt()))
+                .toList();
+    }
+
     private StationOperatingPeriod enabledPeriod(
             StationOperatingSchedule schedule,
             StationDayOfWeek day
@@ -238,5 +270,41 @@ public class StationOperatingHoursResolver {
                 && !currentTime.isBefore(openTime))
                 || (period.getDayOfWeek() == yesterday
                 && currentTime.isBefore(closeTime));
+    }
+
+    /**
+     * Kiểm tra xem một khoảng thời gian [startAt, endAt) có nằm trọn vẹn trong các cửa sổ hoạt động
+     * của schedule hay không (xử lý cả ca qua đêm và giao thoa nhiều ngày).
+     */
+    public boolean coversInterval(
+            StationOperatingSchedule schedule,
+            Instant startAt,
+            Instant endAt
+    ) {
+        if (schedule == null || startAt == null || endAt == null || !startAt.isBefore(endAt)) {
+            return false;
+        }
+        if (schedule.isOpen24Hours()) {
+            return true;
+        }
+
+        Instant coveredUntil = startAt;
+        LocalDate date = startAt.atZone(SYSTEM_ZONE_ID).toLocalDate();
+        while (date.atStartOfDay(SYSTEM_ZONE_ID).toInstant().isBefore(endAt)) {
+            for (OperatingWindow window : resolveOperatingWindows(schedule, date)) {
+                if (!window.endAt().isAfter(coveredUntil)) {
+                    continue;
+                }
+                if (window.startAt().isAfter(coveredUntil)) {
+                    return false;
+                }
+                coveredUntil = window.endAt();
+                if (!coveredUntil.isBefore(endAt)) {
+                    return true;
+                }
+            }
+            date = date.plusDays(1);
+        }
+        return false;
     }
 }

@@ -2,6 +2,7 @@ package com.thang.chargeops.station.service.impl;
 
 import com.thang.chargeops.common.constant.SystemConstant;
 import com.thang.chargeops.exception.AppException;
+import com.thang.chargeops.exception.errorcode.CommonErrorCode;
 import com.thang.chargeops.exception.errorcode.StationErrorCode;
 import com.thang.chargeops.profile.entity.UserProfile;
 import com.thang.chargeops.profile.service.UserProfileService;
@@ -22,6 +23,8 @@ import com.thang.chargeops.station.repository.StationRepository;
 import com.thang.chargeops.station.repository.TouRateRepository;
 import com.thang.chargeops.station.service.StationConfigurationService;
 import com.thang.chargeops.station.service.support.StationPricingExceptionTranslator;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.LockModeType;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -47,6 +50,7 @@ public class StationConfigurationServiceImpl implements StationConfigurationServ
     private final StationPricingExceptionTranslator stationPricingExceptionTranslator;
     private final Clock applicationClock;
     private final UserProfileService userProfileService;
+    private final EntityManager entityManager;
 
     @Override
     @Transactional(readOnly = true)
@@ -132,17 +136,14 @@ public class StationConfigurationServiceImpl implements StationConfigurationServ
         Instant effectiveAt = applicationClock.instant();
         StationBookingSetting settings = stationBookingSettingsRepository
                 .findByStationId(stationId)
-                .orElseGet(() -> StationBookingSetting.createDefault(station));
-        settings.updatePricing(
-                request.minBookingDurationMin(),
-                request.basePriceVnd()
-        );
-        stationBookingSettingsRepository.save(settings);
+                .orElse(null);
 
-        stationOperatingScheduleRepository
-                .findActiveByStationId(stationId, effectiveAt)
-                .ifPresent(active -> active.expireAt(effectiveAt));
-        stationOperatingScheduleRepository.flush();
+        long currentVersion = settings != null ? settings.getVersion() + 1L : 0L;
+        long expectedVersion = request.version() != null ? request.version() : 0L;
+
+        if (expectedVersion != currentVersion) {
+            throw new AppException(StationErrorCode.PRICING_CONFIGURATION_CONFLICT);
+        }
 
         StationOperatingSchedule schedule = StationOperatingSchedule.create(
                 station,
@@ -157,6 +158,30 @@ public class StationConfigurationServiceImpl implements StationConfigurationServ
                     hour.enabled()
             ));
         }
+
+        stationPricingPolicy.validateOperatingHoursNotConflictingWithActiveBookings(
+                stationId,
+                schedule,
+                effectiveAt
+        );
+
+        if (settings == null) {
+            settings = StationBookingSetting.createDefault(station);
+        } else {
+            entityManager.lock(settings, LockModeType.OPTIMISTIC_FORCE_INCREMENT);
+        }
+
+        settings.updatePricing(
+                request.minBookingDurationMin(),
+                request.basePriceVnd()
+        );
+        stationBookingSettingsRepository.save(settings);
+
+        stationOperatingScheduleRepository
+                .findActiveByStationId(stationId, effectiveAt)
+                .ifPresent(active -> active.expireAt(effectiveAt));
+        stationOperatingScheduleRepository.flush();
+
         stationOperatingScheduleRepository.save(schedule);
 
         List<TouRate> previousRates = touRateRepository
@@ -190,7 +215,7 @@ public class StationConfigurationServiceImpl implements StationConfigurationServ
     private StationPricingResponse buildResponse(Station station, Instant at) {
         StationBookingSetting settings = stationBookingSettingsRepository
                 .findByStationId(station.getId())
-                .orElseGet(() -> StationBookingSetting.createDefault(station));
+                .orElse(null);
         StationOperatingSchedule schedule = stationOperatingScheduleRepository
                 .findActiveByStationId(station.getId(), at)
                 .orElse(null);

@@ -1,26 +1,48 @@
 package com.thang.chargeops.station.policy;
 
+import com.thang.chargeops.booking.projection.BookingTimeRangeProjection;
+import com.thang.chargeops.booking.repository.BookingRepository;
 import com.thang.chargeops.common.enums.StationDayOfWeek;
 import com.thang.chargeops.common.enums.TouRateDayType;
 import com.thang.chargeops.common.enums.TouRatePeriodCode;
 import com.thang.chargeops.station.dto.station.request.UpdateStationPricingRequest;
+import com.thang.chargeops.station.entity.StationOperatingSchedule;
 import com.thang.chargeops.station.exception.StationPricingDomainException;
 import com.thang.chargeops.station.exception.violation.StationPricingViolation;
 import com.thang.chargeops.station.policy.impl.StationPricingPolicyImpl;
+import com.thang.chargeops.station.service.support.StationOperatingHoursResolver;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.time.LocalTime;
 import java.util.Arrays;
 import java.util.List;
+import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.when;
 
+@ExtendWith(MockitoExtension.class)
 class StationPricingPolicyImplTest {
 
-    private final StationPricingPolicyImpl policy = new StationPricingPolicyImpl();
+    @Mock
+    private BookingRepository bookingRepository;
+    @Mock
+    private StationOperatingHoursResolver operatingHoursResolver;
+
+    @InjectMocks
+    private StationPricingPolicyImpl policy;
 
     @Test
     void acceptsOnlyExplicitMinimumDurationPresets() {
@@ -130,6 +152,84 @@ class StationPricingPolicyImplTest {
                 LocalTime.parse(start),
                 LocalTime.parse(end),
                 new BigDecimal("4200.00")
+        );
+    }
+
+    @Test
+    void allowsScheduleUpdateWhenScheduleIsOpen24Hours() {
+        UUID stationId = UUID.randomUUID();
+        Instant now = Instant.parse("2026-09-01T00:00:00Z");
+        StationOperatingSchedule schedule = mock(StationOperatingSchedule.class);
+        when(schedule.isOpen24Hours()).thenReturn(true);
+
+        assertThatCode(() -> policy.validateOperatingHoursNotConflictingWithActiveBookings(
+                stationId, schedule, now
+        )).doesNotThrowAnyException();
+
+        verifyNoInteractions(bookingRepository, operatingHoursResolver);
+    }
+
+    @Test
+    void allowsScheduleUpdateWhenNoActiveBookings() {
+        UUID stationId = UUID.randomUUID();
+        Instant now = Instant.parse("2026-09-01T00:00:00Z");
+        StationOperatingSchedule schedule = mock(StationOperatingSchedule.class);
+        when(schedule.isOpen24Hours()).thenReturn(false);
+        when(bookingRepository.findActiveBlockingRangesByStationId(eq(stationId), eq(now), any()))
+                .thenReturn(List.of());
+
+        assertThatCode(() -> policy.validateOperatingHoursNotConflictingWithActiveBookings(
+                stationId, schedule, now
+        )).doesNotThrowAnyException();
+
+        verifyNoInteractions(operatingHoursResolver);
+    }
+
+    @Test
+    void allowsScheduleUpdateWhenAllActiveBookingsAreCoveredByNewSchedule() {
+        UUID stationId = UUID.randomUUID();
+        Instant now = Instant.parse("2026-09-01T00:00:00Z");
+        Instant startAt = Instant.parse("2026-09-01T08:00:00Z");
+        Instant endAt = Instant.parse("2026-09-01T09:00:00Z");
+        StationOperatingSchedule schedule = mock(StationOperatingSchedule.class);
+        BookingTimeRangeProjection booking = mock(BookingTimeRangeProjection.class);
+        when(booking.getStartAt()).thenReturn(startAt);
+        when(booking.getEndAt()).thenReturn(endAt);
+
+        when(schedule.isOpen24Hours()).thenReturn(false);
+        when(bookingRepository.findActiveBlockingRangesByStationId(eq(stationId), eq(now), any()))
+                .thenReturn(List.of(booking));
+        when(operatingHoursResolver.coversInterval(schedule, startAt, endAt))
+                .thenReturn(true);
+
+        assertThatCode(() -> policy.validateOperatingHoursNotConflictingWithActiveBookings(
+                stationId, schedule, now
+        )).doesNotThrowAnyException();
+    }
+
+    @Test
+    void rejectsScheduleUpdateWhenAnyBookingFallsOutsideNewSchedule() {
+        UUID stationId = UUID.randomUUID();
+        Instant now = Instant.parse("2026-09-01T00:00:00Z");
+        Instant startAt = Instant.parse("2026-09-01T21:00:00Z");
+        Instant endAt = Instant.parse("2026-09-01T22:00:00Z");
+        StationOperatingSchedule schedule = mock(StationOperatingSchedule.class);
+        BookingTimeRangeProjection booking = mock(BookingTimeRangeProjection.class);
+        when(booking.getStartAt()).thenReturn(startAt);
+        when(booking.getEndAt()).thenReturn(endAt);
+
+        when(schedule.isOpen24Hours()).thenReturn(false);
+        when(bookingRepository.findActiveBlockingRangesByStationId(eq(stationId), eq(now), any()))
+                .thenReturn(List.of(booking));
+        when(operatingHoursResolver.coversInterval(schedule, startAt, endAt))
+                .thenReturn(false);
+
+        assertThatThrownBy(() -> policy.validateOperatingHoursNotConflictingWithActiveBookings(
+                stationId, schedule, now
+        )).isInstanceOfSatisfying(
+                StationPricingDomainException.class,
+                error -> assertThat(error.getViolation())
+                        .isEqualTo(StationPricingViolation.SCHEDULE_CONFLICT_WITH_BOOKINGS)
         );
     }
 }

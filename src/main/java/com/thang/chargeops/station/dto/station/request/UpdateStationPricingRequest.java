@@ -27,7 +27,9 @@ public record UpdateStationPricingRequest(
         List<OperatingHourRequest> hours, // Đủ 7 ngày trong tuần
         @NotNull
         @Valid
-        List<TouRuleRequest> touRules     // Danh sách khung giá TOU (có thể rỗng nếu chỉ dùng base price)
+        List<TouRuleRequest> touRules,     // Danh sách khung giá TOU (có thể rỗng nếu chỉ dùng base price)
+        @NotNull
+        Long version
 ) {
     public record OperatingHourRequest(
             @NotNull
@@ -43,8 +45,8 @@ public record UpdateStationPricingRequest(
     public record TouRuleRequest(
             UUID id,                       // null nếu tạo mới, có UUID nếu sửa rule cũ
 
-            @NotBlank(message = "TOU rule name is required")
-            @Size(max = 100, message = "TOU rule name cannot exceed 100 characters")
+            @NotBlank
+            @Size(max = 100)
             String name,
 
             @NotNull

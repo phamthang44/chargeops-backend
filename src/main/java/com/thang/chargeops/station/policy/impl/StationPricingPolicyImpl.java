@@ -1,18 +1,24 @@
 package com.thang.chargeops.station.policy.impl;
 
+import com.thang.chargeops.booking.projection.BookingTimeRangeProjection;
+import com.thang.chargeops.booking.repository.BookingRepository;
+import com.thang.chargeops.common.enums.BookingStatus;
 import com.thang.chargeops.common.enums.StationDayOfWeek;
 import com.thang.chargeops.common.enums.TouRateDayType;
 import com.thang.chargeops.exception.AppException;
 import com.thang.chargeops.exception.errorcode.StationErrorCode;
 import com.thang.chargeops.station.dto.station.request.UpdateStationPricingRequest;
 import com.thang.chargeops.station.entity.Station;
+import com.thang.chargeops.station.entity.StationOperatingSchedule;
 import com.thang.chargeops.station.exception.StationPricingDomainException;
 import com.thang.chargeops.station.exception.violation.StationPricingViolation;
 import com.thang.chargeops.station.policy.StationPricingPolicy;
+import com.thang.chargeops.station.service.support.StationOperatingHoursResolver;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 import java.time.DayOfWeek;
+import java.time.Instant;
 import java.time.LocalTime;
 import java.util.ArrayList;
 import java.util.EnumSet;
@@ -25,6 +31,17 @@ import java.util.UUID;
 @Component
 @RequiredArgsConstructor
 public class StationPricingPolicyImpl implements StationPricingPolicy {
+
+    private final BookingRepository bookingRepository;
+    private final StationOperatingHoursResolver operatingHoursResolver;
+    private static final Set<BookingStatus> BLOCKING_STATUSES = Set.copyOf(
+            EnumSet.of(
+                    BookingStatus.PENDING,
+                    BookingStatus.CONFIRMED,
+                    BookingStatus.CHECKED_IN,
+                    BookingStatus.CHARGING
+            )
+    );
 
     @Override
     public void validateStationOwnershipAndStatus(Station station, UUID currentOwnerId) {
@@ -146,6 +163,33 @@ public class StationPricingPolicyImpl implements StationPricingPolicy {
                     );
                 }
                 occupied.add(candidate);
+            }
+        }
+    }
+
+    @Override
+    public void validateOperatingHoursNotConflictingWithActiveBookings(
+            UUID stationId,
+            StationOperatingSchedule newSchedule,
+            Instant now
+    ) {
+        if (newSchedule == null || newSchedule.isOpen24Hours()) {
+            return;
+        }
+
+        List<BookingTimeRangeProjection> busyRanges = bookingRepository
+                .findActiveBlockingRangesByStationId(
+                        stationId,
+                        now,
+                        BLOCKING_STATUSES
+                );
+
+        for (BookingTimeRangeProjection booking : busyRanges) {
+            if (!operatingHoursResolver.coversInterval(newSchedule, booking.getStartAt(), booking.getEndAt())) {
+                throw new StationPricingDomainException(
+                        StationPricingViolation.SCHEDULE_CONFLICT_WITH_BOOKINGS,
+                        "New operating schedule conflicts with active or confirmed bookings"
+                );
             }
         }
     }

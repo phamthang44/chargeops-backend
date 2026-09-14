@@ -47,10 +47,10 @@ public class StationPricingMapper {
 
         return new StationPricingResponse(
                 stationId,
-                settings.getMinDurationMinutes(),
+                settings != null ? settings.getMinDurationMinutes() : StationBookingSetting.DEFAULT_MIN_DURATION_MINUTES,
                 StationBookingSetting.DEFAULT_DURATION_STEP_MINUTES,
                 StationBookingSetting.DEFAULT_MAX_DURATION_MINUTES,
-                settings.getBasePriceVnd(),
+                settings != null ? settings.getBasePriceVnd() : null,
                 schedule != null && schedule.isOpen24Hours(),
                 operatingHours(schedule),
                 touRules,
@@ -62,7 +62,8 @@ public class StationPricingMapper {
                 ),
                 schedule != null ? schedule.getEffectiveFrom() : null,
                 schedule != null ? schedule.getEffectiveTo() : null,
-                schedule != null ? "ACTIVE" : "DEFAULT"
+                settings == null ? "UNCONFIGURED" : (schedule != null ? "ACTIVE" : "DEFAULT"),
+                settings != null ? settings.getVersion() + 1L : 0L
         );
     }
 

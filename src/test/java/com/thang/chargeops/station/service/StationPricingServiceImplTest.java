@@ -3,6 +3,8 @@ package com.thang.chargeops.station.service;
 import com.thang.chargeops.common.constant.SystemConstant;
 import com.thang.chargeops.common.enums.TouRateDayType;
 import com.thang.chargeops.common.enums.TouRatePeriodCode;
+import com.thang.chargeops.exception.AppException;
+import com.thang.chargeops.exception.errorcode.BookingErrorCode;
 import com.thang.chargeops.station.entity.Station;
 import com.thang.chargeops.station.entity.StationBookingSetting;
 import com.thang.chargeops.station.entity.TouRate;
@@ -27,6 +29,7 @@ import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -56,6 +59,10 @@ class StationPricingServiceImplTest {
     void returnsOneBasePriceRangeWhenNoTouRuleApplies() {
         UUID stationId = UUID.randomUUID();
         Station station = new Station();
+        StationBookingSetting settings = StationBookingSetting.builder()
+                .station(station)
+                .basePriceVnd(new BigDecimal("3400.00"))
+                .build();
         Instant rangeStart = localInstant(
                 LocalDate.of(2026, 9, 1),
                 LocalTime.MIDNIGHT
@@ -68,7 +75,7 @@ class StationPricingServiceImplTest {
         when(stationRepository.findById(stationId))
                 .thenReturn(Optional.of(station));
         when(settingsRepository.findByStationId(stationId))
-                .thenReturn(Optional.empty());
+                .thenReturn(Optional.of(settings));
         when(touRateRepository.findActiveByStationId(stationId, NOW))
                 .thenReturn(List.of());
 
@@ -147,6 +154,62 @@ class StationPricingServiceImplTest {
                 .isEqualTo(localInstant(date, LocalTime.of(21, 0)));
         assertThat(result.get(2).rateVndPerKwh())
                 .isEqualByComparingTo("3400.00");
+    }
+
+    @Test
+    void throwsConflictWhenStationPricingNotConfigured() {
+        UUID stationId = UUID.randomUUID();
+        Station station = new Station();
+        Instant targetTime = NOW;
+        Instant rangeStart = localInstant(LocalDate.of(2026, 9, 1), LocalTime.MIDNIGHT);
+        Instant rangeEnd = localInstant(LocalDate.of(2026, 9, 2), LocalTime.MIDNIGHT);
+
+        when(stationRepository.findById(stationId)).thenReturn(Optional.of(station));
+        when(settingsRepository.findByStationId(stationId)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.resolvePriceAt(stationId, targetTime))
+                .isInstanceOfSatisfying(
+                        AppException.class,
+                        exception -> assertThat(exception.getErrorCode())
+                                .isEqualTo(BookingErrorCode.PRICING_NOT_CONFIGURED)
+                );
+
+        assertThatThrownBy(() -> service.resolvePriceRanges(stationId, NOW, rangeStart, rangeEnd))
+                .isInstanceOfSatisfying(
+                        AppException.class,
+                        exception -> assertThat(exception.getErrorCode())
+                                .isEqualTo(BookingErrorCode.PRICING_NOT_CONFIGURED)
+                );
+    }
+
+    @Test
+    void throwsConflictWhenBasePriceIsZeroOrNegative() {
+        UUID stationId = UUID.randomUUID();
+        Station station = new Station();
+        StationBookingSetting zeroPriceSettings = StationBookingSetting.builder()
+                .station(station)
+                .basePriceVnd(BigDecimal.ZERO)
+                .build();
+        Instant targetTime = NOW;
+        Instant rangeStart = localInstant(LocalDate.of(2026, 9, 1), LocalTime.MIDNIGHT);
+        Instant rangeEnd = localInstant(LocalDate.of(2026, 9, 2), LocalTime.MIDNIGHT);
+
+        when(stationRepository.findById(stationId)).thenReturn(Optional.of(station));
+        when(settingsRepository.findByStationId(stationId)).thenReturn(Optional.of(zeroPriceSettings));
+
+        assertThatThrownBy(() -> service.resolvePriceAt(stationId, targetTime))
+                .isInstanceOfSatisfying(
+                        AppException.class,
+                        exception -> assertThat(exception.getErrorCode())
+                                .isEqualTo(BookingErrorCode.PRICING_NOT_CONFIGURED)
+                );
+
+        assertThatThrownBy(() -> service.resolvePriceRanges(stationId, NOW, rangeStart, rangeEnd))
+                .isInstanceOfSatisfying(
+                        AppException.class,
+                        exception -> assertThat(exception.getErrorCode())
+                                .isEqualTo(BookingErrorCode.PRICING_NOT_CONFIGURED)
+                );
     }
 
     private Instant localInstant(LocalDate date, LocalTime time) {

@@ -3,6 +3,7 @@ package com.thang.chargeops.station.service.impl;
 import com.thang.chargeops.common.constant.SystemConstant;
 import com.thang.chargeops.common.enums.TouRatePeriodCode;
 import com.thang.chargeops.exception.AppException;
+import com.thang.chargeops.exception.errorcode.BookingErrorCode;
 import com.thang.chargeops.exception.errorcode.StationErrorCode;
 import com.thang.chargeops.station.entity.Station;
 import com.thang.chargeops.station.entity.StationBookingSetting;
@@ -42,7 +43,17 @@ public class StationPricingServiceImpl implements StationPricingService {
         BigDecimal basePrice = stationBookingSettingsRepository
                 .findByStationId(stationId)
                 .map(StationBookingSetting::getBasePriceVnd)
-                .orElse(StationBookingSetting.DEFAULT_BASE_PRICE_VND);
+                .orElseThrow(() -> new AppException(
+                        BookingErrorCode.PRICING_NOT_CONFIGURED,
+                        stationId
+                ));
+
+        if (basePrice.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new AppException(
+                    BookingErrorCode.PRICING_NOT_CONFIGURED,
+                    stationId
+            );
+        }
 
         ZonedDateTime local = targetTime.atZone(
                 ZoneId.of(SystemConstant.SYSTEM_REGION_TIMEZONE)
@@ -77,7 +88,17 @@ public class StationPricingServiceImpl implements StationPricingService {
         BigDecimal basePrice = stationBookingSettingsRepository
                 .findByStationId(stationId)
                 .map(StationBookingSetting::getBasePriceVnd)
-                .orElse(StationBookingSetting.DEFAULT_BASE_PRICE_VND);
+                .orElseThrow(() -> new AppException(
+                        BookingErrorCode.PRICING_NOT_CONFIGURED,
+                        stationId
+                ));
+
+        if (basePrice.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new AppException(
+                    BookingErrorCode.PRICING_NOT_CONFIGURED,
+                    stationId
+            );
+        }
         List<TouRate> rates = touRateRepository.findActiveByStationId(
                 stationId,
                 effectiveAt

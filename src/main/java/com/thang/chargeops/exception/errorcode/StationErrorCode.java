@@ -113,7 +113,9 @@ public enum StationErrorCode implements BaseErrorCode {
     STATION_OPERATIONAL_STATUS_REQUIRED(
             HttpStatus.BAD_REQUEST, "STATION_055", StationErrorMessage.STATION_OPERATIONAL_STATUS_REQUIRED),
     STATION_OPERATIONAL_STATUS_REASON_REQUIRED(
-            HttpStatus.BAD_REQUEST, "STATION_056", StationErrorMessage.STATION_OPERATIONAL_STATUS_REASON_REQUIRED);
+            HttpStatus.BAD_REQUEST, "STATION_056", StationErrorMessage.STATION_OPERATIONAL_STATUS_REASON_REQUIRED),
+    STATION_SCHEDULE_CONFLICT_WITH_EXISTING_BOOKINGS(
+            HttpStatus.CONFLICT, "STATION_058", StationErrorMessage.STATION_SCHEDULE_CONFLICT_WITH_EXISTING_BOOKINGS);
 
     private final HttpStatus httpStatus;
     private final String code;

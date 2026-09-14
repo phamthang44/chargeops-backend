@@ -32,7 +32,8 @@ public record StationPricingResponse(
         // 5. Metadata phiên bản lịch đang áp dụng
         Instant scheduleEffectiveFrom,
         Instant scheduleEffectiveTo,
-        String scheduleStatus
+        String scheduleStatus,
+        Long version
 ) {
     // Giờ hoạt động từng ngày
     public record OperatingHourResponse(
