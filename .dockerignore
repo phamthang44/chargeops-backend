@@ -1,0 +1,11 @@
+target/
+.git/
+.idea/
+.vscode/
+*.log
+logs/
+node/
+.claude/
+.gitnexus/
+mvnw
+mvnw.cmd

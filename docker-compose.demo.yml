@@ -1,0 +1,140 @@
+# =============================================================================
+# ChargeOps — MÔI TRƯỜNG DEMO ĐÓNG GÓI TOÀN BỘ (FULL-STACK DOCKER COMPOSE)
+# =============================================================================
+# Sử dụng: TẮT TẤT CẢ IDE, chạy 1 lệnh để online toàn bộ hệ thống phục vụ demo:
+#   docker compose -f docker-compose.demo.yml up --build -d
+# =============================================================================
+
+services:
+  # 1. PostgreSQL + PostGIS (Dữ liệu trạm sạc & định vị không gian)
+  postgres:
+    image: postgis/postgis:16-3.4
+    container_name: chargeops-postgres-demo
+    ports:
+      - "5432:5432"
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-chargeops}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-chargeops}
+      POSTGRES_DB: ${POSTGRES_DB:-chargeops}
+      PGDATA: /var/lib/postgresql/data/pgdata
+    volumes:
+      - chargeops_postgres_data:/var/lib/postgresql/data
+      - ./init-db:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-chargeops} -d ${POSTGRES_DB:-chargeops}" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # 2. Redis Cache & Distributed Lock
+  redis:
+    image: redis:7-alpine
+    container_name: chargeops-redis-demo
+    ports:
+      - "6379:6379"
+    restart: unless-stopped
+    healthcheck:
+      test: [ "CMD", "redis-cli", "ping" ]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  # 3. Keycloak IAM Server (Xác thực người dùng, Google OAuth, Token JWT)
+  keycloak:
+    build:
+      context: ../../chargeops-frontend/chargeops-keycloak/account-console
+      dockerfile: Dockerfile
+    image: chargeops/keycloak:26.0.8
+    container_name: chargeops-keycloak-demo
+    command: start-dev --spi-theme-cache-themes=false --spi-theme-cache-templates=false --spi-theme-static-max-age=-1
+    ports:
+      - "8080:8080"
+    restart: unless-stopped
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: ${KC_ADMIN_USER:-admin}
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KC_ADMIN_PASSWORD:-admin}
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://postgres:5432/${KC_DB_NAME:-keycloak}
+      KC_DB_USERNAME: ${POSTGRES_USER:-chargeops}
+      KC_DB_PASSWORD: ${POSTGRES_PASSWORD:-chargeops}
+      KC_HOSTNAME_STRICT: "false"
+      KC_PROXY_HEADERS: xforwarded
+    volumes:
+      - ../../chargeops-frontend/chargeops-keycloak/themes/chargeops-driver:/opt/keycloak/themes/chargeops-driver:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: [ "CMD-SHELL", "exec 3<>/dev/tcp/127.0.0.1/8080" ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  # 4. Backend Spring Boot API (Resource Server, Webhook, Nghiệp vụ)
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: chargeops/backend:demo
+    container_name: chargeops-backend-demo
+    ports:
+      - "8081:8081"
+    restart: unless-stopped
+    environment:
+      - SPRING_PROFILES_ACTIVE=dev
+      - DATABASE_URL=jdbc:postgresql://postgres:5432/${POSTGRES_DB:-chargeops}
+      - POSTGRES_USER=${POSTGRES_USER:-chargeops}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-chargeops}
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - KEYCLOAK_ISSUER_URI=http://keycloak:8080/realms/chargeops
+      - KEYCLOAK_ADMIN_BASE_URL=http://keycloak:8080
+      - KEYCLOAK_ADMIN_REALM=${KEYCLOAK_ADMIN_REALM:-chargeops}
+      - KEYCLOAK_ADMIN_CLIENT_ID=${KEYCLOAK_ADMIN_CLIENT_ID:-chargeops-backend}
+      - KEYCLOAK_ADMIN_CLIENT_SECRET=${KEYCLOAK_ADMIN_CLIENT_SECRET}
+      - BACKEND_BASE_URL=${BACKEND_BASE_URL:-https://thang.tail704409.ts.net/api}
+      - FRONTEND_BASE_URL=${FRONTEND_BASE_URL:-https://thang.tail704409.ts.net:8443}
+      - CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS:-http://localhost:5173,http://localhost:8082,https://thang.tail704409.ts.net,https://thang.tail704409.ts.net:8443}
+      - SEPAY_WEBHOOK_SECRET=${SEPAY_WEBHOOK_SECRET}
+      - IMAGEKIT_PUBLIC_KEY=${IMAGEKIT_PUBLIC_KEY}
+      - IMAGEKIT_PRIVATE_KEY=${IMAGEKIT_PRIVATE_KEY}
+      - IMAGEKIT_URL_ENDPOINT=${IMAGEKIT_URL_ENDPOINT:-https://ik.imagekit.io/chargeops}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      keycloak:
+        condition: service_healthy
+
+  # 5. Frontend Web Portal (Admin / Owner / Staff Console chạy bằng Nginx)
+  web-portal:
+    build:
+      context: ../../chargeops-frontend/chargeops-web
+      dockerfile: Dockerfile
+      args:
+        - VITE_API_URL=${VITE_API_URL:-https://thang.tail704409.ts.net/api/v1}
+        - VITE_KEYCLOAK_URL=${VITE_KEYCLOAK_URL:-https://thang.tail704409.ts.net}
+        - VITE_KEYCLOAK_REALM=${VITE_KEYCLOAK_REALM:-chargeops}
+        - VITE_KEYCLOAK_CLIENT_ID=${VITE_KEYCLOAK_CLIENT_ID:-chargeops-web}
+        - VITE_USE_MOCKS=false
+    image: chargeops/web-portal:demo
+    container_name: chargeops-web-demo
+    ports:
+      - "5173:80"   # Ánh xạ vào port 5173 của máy host để script Tailscale Funnel bắt được ngay
+    restart: unless-stopped
+    depends_on:
+      - backend
+
+  # 6. Mailpit (Hộp thư ảo kiểm tra email kích hoạt, đổi mật khẩu)
+  mailpit:
+    image: axllent/mailpit:latest
+    container_name: chargeops-mailpit-demo
+    ports:
+      - "1025:1025"
+      - "8025:8025"
+    restart: unless-stopped
+
+volumes:
+  # Dùng chung named volume để giữ trọn vẹn dữ liệu trạm/user đã tạo lúc Dev
+  chargeops_postgres_data:

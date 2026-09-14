@@ -31,7 +31,10 @@ build/
 
 ### VS Code ###
 .vscode/
+### Environments & Secrets ###
 .env
+.env.*
+.env.demo.example
 .codex-tmp/
 outputs/
 logs/
