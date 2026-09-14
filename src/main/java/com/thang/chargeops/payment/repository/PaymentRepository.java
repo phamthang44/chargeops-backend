@@ -14,6 +14,11 @@ public interface PaymentRepository extends JpaRepository<Payment, UUID> {
 
     Optional<Payment> findByBookingId(UUID bookingId);
 
+    Optional<Payment> findByPaymentCode(String paymentCode);
+
+    Optional<Payment> findByProviderAndReceivingAccountRefAndProviderOrderRef(
+            String provider, String receivingAccountRef, String providerOrderRef);
+
     /**
      * Deadlock prevention: In flows involving both Booking/Connector and Payment,
      * ALWAYS acquire Connector/Booking lock first before acquiring Payment lock.

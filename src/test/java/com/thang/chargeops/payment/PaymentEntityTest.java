@@ -1,277 +1,144 @@
 package com.thang.chargeops.payment;
 
 import com.thang.chargeops.booking.entity.Booking;
-import com.thang.chargeops.common.enums.PaymentMethod;
-import com.thang.chargeops.common.enums.PaymentStatus;
+import com.thang.chargeops.common.enums.*;
 import com.thang.chargeops.exception.AppException;
-import com.thang.chargeops.exception.errorcode.PaymentErrorCode;
-import com.thang.chargeops.payment.entity.Payment;
-import com.thang.chargeops.payment.model.PendingPaymentSpec;
-import org.junit.jupiter.api.DisplayName;
-import org.junit.jupiter.api.Nested;
+import com.thang.chargeops.payment.entity.*;
+import com.thang.chargeops.payment.model.*;
 import org.junit.jupiter.api.Test;
-import org.mockito.Mockito;
-
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import java.math.BigDecimal;
 import java.time.Instant;
-
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.*;
+import static org.mockito.Mockito.*;
 
 class PaymentEntityTest {
+    static final Instant NOW = Instant.parse("2026-09-12T09:00:00Z");
+    static final Instant EXPIRY = NOW.plusSeconds(600);
 
-    private final Booking mockBooking = Mockito.mock(Booking.class);
-
-    private PendingPaymentSpec validSpec(BigDecimal amount) {
-        return new PendingPaymentSpec(
-                mockBooking,
-                amount,
-                PaymentMethod.BANK_TRANSFER,
-                "SEPAY",
-                "ACC-123456",
-                "VND"
-        );
+    static Payment pending() {
+        Booking booking = mock(Booking.class);
+        when(booking.getStatus()).thenReturn(BookingStatus.PENDING);
+        when(booking.getExpiresAt()).thenReturn(EXPIRY);
+        return Payment.createPending(new PendingPaymentSpec(booking, new BigDecimal("120000"), PaymentMethod.BANK_TRANSFER, "SEPAY", "merchant-test", "VND"));
+    }
+    static OrderCheckout checkout(Payment p) {
+        return new OrderCheckout("order-001", p.getPaymentCode(), "VA001", p.getAmount(), EXPIRY, "qr-data", "https://example.test/qr");
+    }
+    static Payment bound() {
+        Payment p = pending(); p.bindOrder(checkout(p), NOW); return p;
+    }
+    static PaymentTransaction receipt(Payment p, String ref, String amount, String code, String va) {
+        return PaymentTransaction.create(p, new NormalizedReceipt("SEPAY", "merchant-test", ref, new BigDecimal(amount), "VND", NOW, NOW, va, code, "arbitrary content", "{}"));
     }
 
-    @Nested
-    @DisplayName("1. Factory and Spec Validation")
-    class FactoryTests {
-
-        @Test
-        @DisplayName("createPending initializes PENDING status, zero projections, and valid metadata")
-        void createPending_initializesCorrectly() {
-            Payment payment = Payment.createPending(validSpec(BigDecimal.valueOf(120000)));
-
-            assertThat(payment.getBooking()).isSameAs(mockBooking);
-            assertThat(payment.getAmount()).isEqualByComparingTo(new BigDecimal("120000.00"));
-            assertThat(payment.getStatus()).isEqualTo(PaymentStatus.PENDING);
-            assertThat(payment.getMethod()).isEqualTo(PaymentMethod.BANK_TRANSFER);
-            assertThat(payment.getProvider()).isEqualTo("SEPAY");
-            assertThat(payment.getReceivingAccountRef()).isEqualTo("ACC-123456");
-            assertThat(payment.getCurrency()).isEqualTo("VND");
-            assertThat(payment.getVersion()).isEqualTo(0L);
-            assertThat(payment.isNeedsReconciliation()).isFalse();
-            assertThat(payment.getPaidAt()).isNull();
-            assertThat(payment.getGatewayTxnRef()).isNull();
-
-            assertThat(payment.getCollectedAmount()).isEqualByComparingTo(BigDecimal.ZERO);
-            assertThat(payment.getAppliedToPackageAmount()).isEqualByComparingTo(BigDecimal.ZERO);
-            assertThat(payment.getPackageRefundedAmount()).isEqualByComparingTo(BigDecimal.ZERO);
-            assertThat(payment.getExcessAmount()).isEqualByComparingTo(BigDecimal.ZERO);
-            assertThat(payment.getUnallocatedAmount()).isEqualByComparingTo(BigDecimal.ZERO);
-        }
-
-        @Test
-        @DisplayName("createPending rejects null spec or null booking")
-        void createPending_rejectsNullSpecOrBooking() {
-            assertThatThrownBy(() -> Payment.createPending(null))
-                    .isInstanceOf(AppException.class)
-                    .satisfies(e -> assertThat(((AppException) e).getErrorCode()).isEqualTo(PaymentErrorCode.AMOUNT_INVALID));
-
-            PendingPaymentSpec specNoBooking = new PendingPaymentSpec(
-                    null, BigDecimal.valueOf(100000), PaymentMethod.SIMULATOR, "SIMULATOR", "ACC-0", "VND"
-            );
-            assertThatThrownBy(() -> Payment.createPending(specNoBooking))
-                    .isInstanceOf(AppException.class)
-                    .satisfies(e -> assertThat(((AppException) e).getErrorCode()).isEqualTo(PaymentErrorCode.STATE_CONFLICT));
-        }
-
-        @Test
-        @DisplayName("createPending rejects negative or invalid decimal amounts")
-        void createPending_rejectsNegativeOrExcessiveDecimals() {
-            PendingPaymentSpec negativeSpec = new PendingPaymentSpec(
-                    mockBooking, BigDecimal.valueOf(-1), PaymentMethod.SIMULATOR, "SIMULATOR", "ACC-0", "VND"
-            );
-            assertThatThrownBy(() -> Payment.createPending(negativeSpec))
-                    .isInstanceOf(AppException.class)
-                    .satisfies(e -> assertThat(((AppException) e).getErrorCode()).isEqualTo(PaymentErrorCode.AMOUNT_INVALID));
-
-            PendingPaymentSpec threeDecimalsSpec = new PendingPaymentSpec(
-                    mockBooking, new BigDecimal("120000.123"), PaymentMethod.SIMULATOR, "SIMULATOR", "ACC-0", "VND"
-            );
-            assertThatThrownBy(() -> Payment.createPending(threeDecimalsSpec))
-                    .isInstanceOf(AppException.class)
-                    .satisfies(e -> assertThat(((AppException) e).getErrorCode()).isEqualTo(PaymentErrorCode.AMOUNT_INVALID));
-        }
-
-        @Test
-        @DisplayName("createPending rejects invalid currency or blank identity metadata")
-        void createPending_rejectsInvalidCurrencyOrIdentity() {
-            PendingPaymentSpec badCurrency = new PendingPaymentSpec(
-                    mockBooking, BigDecimal.valueOf(100000), PaymentMethod.SIMULATOR, "SIMULATOR", "ACC-0", "vnd"
-            );
-            assertThatThrownBy(() -> Payment.createPending(badCurrency))
-                    .isInstanceOf(AppException.class)
-                    .satisfies(e -> assertThat(((AppException) e).getErrorCode()).isEqualTo(PaymentErrorCode.AMOUNT_INVALID));
-
-            PendingPaymentSpec blankProvider = new PendingPaymentSpec(
-                    mockBooking, BigDecimal.valueOf(100000), PaymentMethod.SIMULATOR, "   ", "ACC-0", "VND"
-            );
-            assertThatThrownBy(() -> Payment.createPending(blankProvider))
-                    .isInstanceOf(AppException.class)
-                    .satisfies(e -> assertThat(((AppException) e).getErrorCode()).isEqualTo(PaymentErrorCode.AMOUNT_INVALID));
-
-            PendingPaymentSpec nullMethod = new PendingPaymentSpec(
-                    mockBooking, BigDecimal.valueOf(100000), null, "SIMULATOR", "ACC-0", "VND"
-            );
-            assertThatThrownBy(() -> Payment.createPending(nullMethod))
-                    .isInstanceOf(AppException.class)
-                    .satisfies(e -> assertThat(((AppException) e).getErrorCode()).isEqualTo(PaymentErrorCode.METHOD_INVALID));
-        }
+    @Test void createsLocalCodeBeforeProviderCall() {
+        Payment p = pending();
+        assertThat(p.getPaymentCode()).matches("[A-Z0-9]{6,50}");
+        assertThat(p.getPaymentCode()).isNotEqualTo(pending().getPaymentCode());
+        assertThat(p.getProviderOrderRef()).isNull();
+        assertThat(p.getVaNumber()).isNull();
+        assertThat(p.getStatus()).isEqualTo(PaymentStatus.PENDING);
+        assertThat(p.getRefundAmount()).isEqualByComparingTo("0");
+        assertThat(p.isNeedsReconciliation()).isFalse();
     }
 
-    @Nested
-    @DisplayName("2. Projections and Accounting Invariants")
-    class AccountingTests {
+    @ParameterizedTest @ValueSource(strings = {"0", "-1", "1.01", "1000000000000"})
+    void rejectsAmountsOutsideExactVnd(String amount) {
+        assertThatThrownBy(() -> Payment.createPending(new PendingPaymentSpec(mock(Booking.class), new BigDecimal(amount), PaymentMethod.BANK_TRANSFER, "SEPAY", "merchant-test", "VND")))
+            .isInstanceOf(AppException.class);
+    }
 
-        @Test
-        @DisplayName("Decimal equality: compareTo handles trailing zeros properly")
-        void decimalEquality_comparesProperly() {
-            Payment payment = Payment.createPending(validSpec(new BigDecimal("120000")));
-            assertThat(payment.getAmount()).isEqualByComparingTo(new BigDecimal("120000.00"));
-        }
+    @Test void rejectsInvalidFactoryMetadata() {
+        assertThatThrownBy(() -> Payment.createPending(null)).isInstanceOf(AppException.class);
+        for (var spec : new PendingPaymentSpec[] {
+                new PendingPaymentSpec(null, BigDecimal.ONE, PaymentMethod.BANK_TRANSFER, "SEPAY", "acc", "VND"),
+                new PendingPaymentSpec(mock(Booking.class), BigDecimal.ONE, PaymentMethod.VNPAY, "SEPAY", "acc", "VND"),
+                new PendingPaymentSpec(mock(Booking.class), BigDecimal.ONE, PaymentMethod.BANK_TRANSFER, "", "acc", "VND"),
+                new PendingPaymentSpec(mock(Booking.class), BigDecimal.ONE, PaymentMethod.BANK_TRANSFER, "SEPAY", " ", "VND"),
+                new PendingPaymentSpec(mock(Booking.class), BigDecimal.ONE, PaymentMethod.BANK_TRANSFER, "SEPAY", "acc", "USD")
+        }) assertThatThrownBy(() -> Payment.createPending(spec)).isInstanceOf(AppException.class);
+    }
 
-        @Test
-        @DisplayName("recordUnallocatedReceipt increases collectedAmount and unallocatedAmount only, stays PENDING")
-        void recordUnallocatedReceipt_updatesUnallocatedOnly() {
-            Payment payment = Payment.createPending(validSpec(BigDecimal.valueOf(120000)));
+    @Test void bindsOnceAndReplayDoesNotChangeExpiry() {
+        Payment p = pending(); OrderCheckout c = checkout(p);
+        p.bindOrder(c, NOW); p.bindOrder(c, NOW.plusSeconds(20));
+        assertThat(p.getProviderOrderRef()).isEqualTo("order-001");
+        assertThat(p.getProviderExpiresAt()).isEqualTo(EXPIRY);
+        assertThatThrownBy(() -> p.bindOrder(new OrderCheckout("other", p.getPaymentCode(), "VA002", p.getAmount(), EXPIRY, null, null), NOW))
+            .isInstanceOf(AppException.class);
+        assertThat(p.getVaNumber()).isEqualTo("VA001");
+    }
 
-            payment.recordUnallocatedReceipt(new BigDecimal("120000.00"));
+    @Test void wrongCheckoutDoesNotMutatePayment() {
+        Payment p = pending();
+        assertThatThrownBy(() -> p.bindOrder(new OrderCheckout("order", p.getPaymentCode(), "VA001", BigDecimal.ONE, EXPIRY, null, null), NOW))
+            .isInstanceOf(AppException.class);
+        assertThat(p.getProviderOrderRef()).isNull();
+        assertThatThrownBy(() -> p.bindOrder(checkout(p), EXPIRY)).isInstanceOf(AppException.class);
+    }
 
-            assertThat(payment.getCollectedAmount()).isEqualByComparingTo(new BigDecimal("120000.00"));
-            assertThat(payment.getUnallocatedAmount()).isEqualByComparingTo(new BigDecimal("120000.00"));
-            assertThat(payment.getAppliedToPackageAmount()).isEqualByComparingTo(BigDecimal.ZERO);
-            assertThat(payment.getStatus()).isEqualTo(PaymentStatus.PENDING);
-            assertThat(payment.getPaidAt()).isNull();
-        }
+    @Test void exactReceiptAppliesOnceAndContentDoesNotControlMatching() {
+        Payment p = bound();
+        PaymentTransaction tx = receipt(p, "TX1", "120000.00", p.getPaymentCode(), "VA001");
+        p.acceptReceipt(tx, NOW.plusSeconds(1));
+        assertThat(p.getStatus()).isEqualTo(PaymentStatus.PAID);
+        assertThat(tx.getApplicationClassification()).isEqualTo(PaymentApplicationClassification.APPLIED);
+        assertThat(tx.getApplicationReason()).isNull();
+        assertThatThrownBy(() -> p.acceptReceipt(tx, NOW.plusSeconds(2))).isInstanceOf(AppException.class);
+        assertThat(p.getPaidAt()).isEqualTo(NOW.plusSeconds(1));
+        assertThatThrownBy(() -> tx.noteUnapplied("LATE")).isInstanceOf(AppException.class);
+        assertThatThrownBy(p::markFailed).isInstanceOf(AppException.class);
+    }
 
-        @Test
-        @DisplayName("applyPackagePayment shifts funds from unallocated to applied, transitions to PAID, sets paidAt")
-        void applyPackagePayment_transitionsToPaid() {
-            Payment payment = Payment.createPending(validSpec(BigDecimal.valueOf(120000)));
-            payment.recordUnallocatedReceipt(new BigDecimal("120000.00"));
+    @ParameterizedTest @ValueSource(strings = {"100000", "200000"})
+    void wrongAmountStaysUnappliedWithoutSplitting(String amount) {
+        Payment p = bound(); PaymentTransaction tx = receipt(p, "TX1", amount, p.getPaymentCode(), "VA001");
+        assertThatThrownBy(() -> p.acceptReceipt(tx, NOW)).isInstanceOf(AppException.class);
+        assertThat(p.getStatus()).isEqualTo(PaymentStatus.PENDING);
+        assertThat(p.getPaidAt()).isNull();
+        assertThat(tx.getAmount()).isEqualByComparingTo(amount);
+        assertThat(tx.getApplicationClassification()).isEqualTo(PaymentApplicationClassification.UNAPPLIED);
+    }
 
-            Instant acceptedAt = Instant.parse("2026-09-11T10:00:00Z");
-            payment.applyPackagePayment(new BigDecimal("120000.00"), acceptedAt);
+    @Test void wrongOrderVaAccountCurrencyOrPaymentNeverApplies() {
+        Payment p = bound();
+        for (PaymentTransaction tx : new PaymentTransaction[] {
+            receipt(p, "TX1", "120000", "WRONGCODE", "VA001"),
+            receipt(p, "TX2", "120000", p.getPaymentCode(), "WRONGVA"),
+            receipt(pending(), "TX3", "120000", p.getPaymentCode(), "VA001"),
+            PaymentTransaction.create(p, new NormalizedReceipt("OTHER", "merchant-test", "TX4", p.getAmount(), "VND", NOW, NOW, "VA001", p.getPaymentCode(), null, null)),
+            PaymentTransaction.create(p, new NormalizedReceipt("SEPAY", "other-account", "TX5", p.getAmount(), "VND", NOW, NOW, "VA001", p.getPaymentCode(), null, null)),
+            PaymentTransaction.create(p, new NormalizedReceipt("SEPAY", "merchant-test", "TX6", p.getAmount(), "USD", NOW, NOW, "VA001", p.getPaymentCode(), null, null))
+        }) assertThatThrownBy(() -> p.acceptReceipt(tx, NOW)).isInstanceOf(AppException.class);
+        assertThat(p.getStatus()).isEqualTo(PaymentStatus.PENDING);
+    }
 
-            assertThat(payment.getStatus()).isEqualTo(PaymentStatus.PAID);
-            assertThat(payment.getPaidAt()).isEqualTo(acceptedAt);
-            assertThat(payment.getAppliedToPackageAmount()).isEqualByComparingTo(new BigDecimal("120000.00"));
-            assertThat(payment.getUnallocatedAmount()).isEqualByComparingTo(BigDecimal.ZERO);
-            assertThat(payment.getCollectedAmount()).isEqualByComparingTo(new BigDecimal("120000.00"));
-        }
+    @Test void lateReceiptOrCancelledBookingCannotBeAccepted() {
+        Payment p = bound(); var tx = receipt(p, "TX1", "120000", p.getPaymentCode(), "VA001");
+        assertThatThrownBy(() -> p.acceptReceipt(tx, EXPIRY)).isInstanceOf(AppException.class);
+        tx.noteUnapplied("LATE");
+        assertThat(tx.getApplicationReason()).isEqualTo("LATE");
+        when(p.getBooking().getStatus()).thenReturn(BookingStatus.CANCELLED);
+        assertThatThrownBy(() -> p.acceptReceipt(tx, NOW)).isInstanceOf(AppException.class);
+        assertThat(tx.getApplicationClassification()).isEqualTo(PaymentApplicationClassification.UNAPPLIED);
+    }
 
-        @Test
-        @DisplayName("applyPackagePayment rejects amount not matching package price or insufficient unallocated")
-        void applyPackagePayment_guards() {
-            Payment payment = Payment.createPending(validSpec(BigDecimal.valueOf(120000)));
-            payment.recordUnallocatedReceipt(new BigDecimal("60000.00"));
+    @Test void providerExpiryAndUnboundOrderAlsoBlockAcceptance() {
+        Payment p = pending(); var tx = receipt(p, "TX1", "120000", p.getPaymentCode(), "VA001");
+        assertThatThrownBy(() -> p.acceptReceipt(tx, NOW)).isInstanceOf(AppException.class);
+        p.bindOrder(new OrderCheckout("order", p.getPaymentCode(), "VA001", p.getAmount(), NOW.plusSeconds(10), null, null), NOW);
+        assertThatThrownBy(() -> p.acceptReceipt(tx, NOW.plusSeconds(10))).isInstanceOf(AppException.class);
+    }
 
-            Instant now = Instant.now();
-
-            // Mismatched amount
-            assertThatThrownBy(() -> payment.applyPackagePayment(new BigDecimal("60000.00"), now))
-                    .isInstanceOf(AppException.class)
-                    .satisfies(e -> assertThat(((AppException) e).getErrorCode()).isEqualTo(PaymentErrorCode.AMOUNT_INVALID));
-
-            // Insufficient unallocated funds
-            assertThatThrownBy(() -> payment.applyPackagePayment(new BigDecimal("120000.00"), now))
-                    .isInstanceOf(AppException.class)
-                    .satisfies(e -> assertThat(((AppException) e).getErrorCode()).isEqualTo(PaymentErrorCode.AMOUNT_INVALID));
-
-            // Failure atomicity: unallocated funds untouched
-            assertThat(payment.getUnallocatedAmount()).isEqualByComparingTo(new BigDecimal("60000.00"));
-            assertThat(payment.getStatus()).isEqualTo(PaymentStatus.PENDING);
-        }
-
-        @Test
-        @DisplayName("Single overpayment (120k package, 200k receipt): holds 200k unallocated without auto-confirming")
-        void singleOverpayment_holdsUnallocatedWithoutAutoConfirming() {
-            Payment payment = Payment.createPending(validSpec(BigDecimal.valueOf(120000)));
-            payment.recordUnallocatedReceipt(new BigDecimal("200000.00"));
-
-            assertThat(payment.getCollectedAmount()).isEqualByComparingTo(new BigDecimal("200000.00"));
-            assertThat(payment.getUnallocatedAmount()).isEqualByComparingTo(new BigDecimal("200000.00"));
-            assertThat(payment.getAppliedToPackageAmount()).isEqualByComparingTo(BigDecimal.ZERO);
-            assertThat(payment.getExcessAmount()).isEqualByComparingTo(BigDecimal.ZERO);
-            assertThat(payment.getStatus()).isEqualTo(PaymentStatus.PENDING);
-        }
-
-        @Test
-        @DisplayName("Two receipts scenario (120k package, TX1 120k + TX2 120k): excess classified, stays PAID")
-        void twoReceipts_excessScenario() {
-            Payment payment = Payment.createPending(validSpec(BigDecimal.valueOf(120000)));
-
-            // TX1 arrives: 120k
-            payment.recordUnallocatedReceipt(new BigDecimal("120000.00"));
-            payment.applyPackagePayment(new BigDecimal("120000.00"), Instant.parse("2026-09-11T10:00:00Z"));
-
-            assertThat(payment.getStatus()).isEqualTo(PaymentStatus.PAID);
-            assertThat(payment.getAppliedToPackageAmount()).isEqualByComparingTo(new BigDecimal("120000.00"));
-
-            // TX2 arrives: another 120k
-            payment.recordUnallocatedReceipt(new BigDecimal("120000.00"));
-            assertThat(payment.getCollectedAmount()).isEqualByComparingTo(new BigDecimal("240000.00"));
-            assertThat(payment.getUnallocatedAmount()).isEqualByComparingTo(new BigDecimal("120000.00"));
-
-            // Classify as excess
-            payment.classifyExcess(new BigDecimal("120000.00"));
-
-            assertThat(payment.getCollectedAmount()).isEqualByComparingTo(new BigDecimal("240000.00"));
-            assertThat(payment.getAppliedToPackageAmount()).isEqualByComparingTo(new BigDecimal("120000.00"));
-            assertThat(payment.getExcessAmount()).isEqualByComparingTo(new BigDecimal("120000.00"));
-            assertThat(payment.getUnallocatedAmount()).isEqualByComparingTo(BigDecimal.ZERO);
-
-            // Core Acceptance Criterion: package status remains PAID, packageRefundedAmount remains 0
-            assertThat(payment.getStatus()).isEqualTo(PaymentStatus.PAID);
-            assertThat(payment.getPackageRefundedAmount()).isEqualByComparingTo(BigDecimal.ZERO);
-        }
-
-        @Test
-        @DisplayName("Cumulative package refund transitions to PARTIALLY_REFUNDED and REFUNDED properly")
-        void cumulativePackageRefund_transitions() {
-            Payment payment = Payment.createPending(validSpec(BigDecimal.valueOf(120000)));
-            payment.recordUnallocatedReceipt(new BigDecimal("120000.00"));
-            payment.applyPackagePayment(new BigDecimal("120000.00"), Instant.parse("2026-09-11T10:00:00Z"));
-
-            // Partial refund 60k
-            payment.recordCumulativePackageRefund(new BigDecimal("60000.00"));
-            assertThat(payment.getStatus()).isEqualTo(PaymentStatus.PARTIALLY_REFUNDED);
-            assertThat(payment.getPackageRefundedAmount()).isEqualByComparingTo(new BigDecimal("60000.00"));
-            // Gross collected and applied do NOT decrease
-            assertThat(payment.getCollectedAmount()).isEqualByComparingTo(new BigDecimal("120000.00"));
-            assertThat(payment.getAppliedToPackageAmount()).isEqualByComparingTo(new BigDecimal("120000.00"));
-
-            // Replay same total is idempotent no-op
-            payment.recordCumulativePackageRefund(new BigDecimal("60000.00"));
-            assertThat(payment.getPackageRefundedAmount()).isEqualByComparingTo(new BigDecimal("60000.00"));
-
-            // Decreasing total is rejected
-            assertThatThrownBy(() -> payment.recordCumulativePackageRefund(new BigDecimal("50000.00")))
-                    .isInstanceOf(AppException.class)
-                    .satisfies(e -> assertThat(((AppException) e).getErrorCode()).isEqualTo(PaymentErrorCode.AMOUNT_INVALID));
-
-            // Exceeding applied is rejected
-            assertThatThrownBy(() -> payment.recordCumulativePackageRefund(new BigDecimal("130000.00")))
-                    .isInstanceOf(AppException.class)
-                    .satisfies(e -> assertThat(((AppException) e).getErrorCode()).isEqualTo(PaymentErrorCode.AMOUNT_INVALID));
-
-            // Full refund 120k
-            payment.recordCumulativePackageRefund(new BigDecimal("120000.00"));
-            assertThat(payment.getStatus()).isEqualTo(PaymentStatus.REFUNDED);
-            assertThat(payment.getPackageRefundedAmount()).isEqualByComparingTo(new BigDecimal("120000.00"));
-        }
-
-        @Test
-        @DisplayName("markFailed cannot downgrade PAID or REFUNDED payment")
-        void markFailed_cannotDowngradePaidOrRefunded() {
-            Payment payment = Payment.createPending(validSpec(BigDecimal.valueOf(120000)));
-            payment.recordUnallocatedReceipt(new BigDecimal("120000.00"));
-            payment.applyPackagePayment(new BigDecimal("120000.00"), Instant.parse("2026-09-11T10:00:00Z"));
-
-            assertThatThrownBy(payment::markFailed)
-                    .isInstanceOf(AppException.class)
-                    .satisfies(e -> assertThat(((AppException) e).getErrorCode()).isEqualTo(PaymentErrorCode.STATE_CONFLICT));
-        }
+    @Test void retryAfterFailureWithinOriginalHoldAndFullRefundOnly() {
+        Payment p = bound(); p.markFailed();
+        p.acceptReceipt(receipt(p, "TX1", "120000", p.getPaymentCode(), "VA001"), NOW);
+        assertThatThrownBy(() -> p.recordFullRefund(new BigDecimal("60000"))).isInstanceOf(AppException.class);
+        assertThat(p.getRefundAmount()).isEqualByComparingTo("0");
+        p.recordFullRefund(p.getAmount()); p.recordFullRefund(p.getAmount());
+        assertThat(p.getStatus()).isEqualTo(PaymentStatus.REFUNDED);
+        assertThat(p.getRefundAmount()).isEqualByComparingTo(p.getAmount());
     }
 }

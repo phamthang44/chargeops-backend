@@ -160,7 +160,7 @@ class PaymentJpaMappingTest {
                 "VND",
                 Instant.parse("2026-09-12T09:50:00Z"),
                 Instant.parse("2026-09-12T09:50:02Z"),
-                PaymentApplicationClassification.UNAPPLIED,
+                "VA001",
                 "BK-9999",
                 "Payment for booking BK-9999",
                 "{\"gateway\":\"SEPAY\",\"accountNumber\":\"ACC-VN-1\",\"transferAmount\":120000}"
@@ -178,7 +178,8 @@ class PaymentJpaMappingTest {
         assertThat(reloadedPayment.getCurrency()).isEqualTo("VND");
         assertThat(reloadedPayment.getVersion()).isEqualTo(0L);
         assertThat(reloadedPayment.isNeedsReconciliation()).isFalse();
-        assertThat(reloadedPayment.getCollectedAmount()).isEqualByComparingTo(BigDecimal.ZERO);
+        assertThat(reloadedPayment.getPaymentCode()).isEqualTo(payment.getPaymentCode());
+        assertThat(paymentRepository.findByPaymentCode(payment.getPaymentCode())).isPresent();
 
         PaymentTransaction reloadedTx = transactionRepository.findById(tx.getId()).orElseThrow();
         assertThat(reloadedTx.getTransactionRef()).isEqualTo("TX-SEPAY-001");
@@ -219,11 +220,9 @@ class PaymentJpaMappingTest {
         assertThat(legacyPayment.getProvider()).isNull();
         assertThat(legacyPayment.getReceivingAccountRef()).isNull();
         assertThat(legacyPayment.getCurrency()).isNull();
-        assertThat(legacyPayment.getCollectedAmount()).isNull();
-        assertThat(legacyPayment.getAppliedToPackageAmount()).isNull();
-        assertThat(legacyPayment.getPackageRefundedAmount()).isNull();
-        assertThat(legacyPayment.getExcessAmount()).isNull();
-        assertThat(legacyPayment.getUnallocatedAmount()).isNull();
+        assertThat(legacyPayment.getPaymentCode()).isNull();
+        assertThatThrownBy(legacyPayment::markFailed).isInstanceOf(com.thang.chargeops.exception.AppException.class);
+        assertThat(jdbcTemplate.queryForObject("SELECT collected_amount FROM payments WHERE id = ?", BigDecimal.class, legacyPaymentId)).isNull();
     }
 
     @Test
@@ -237,7 +236,7 @@ class PaymentJpaMappingTest {
                 "VND",
                 Instant.parse("2026-09-12T10:00:00Z"),
                 Instant.parse("2026-09-12T10:00:01Z"),
-                PaymentApplicationClassification.UNMATCHED,
+                null,
                 null,
                 "Unknown transfer",
                 "{}"
@@ -251,7 +250,7 @@ class PaymentJpaMappingTest {
                 .findByProviderAndReceivingAccountRefAndTransactionRef("SEPAY", "ACC-VN-2", "TX-UNMATCHED-001")
                 .orElseThrow();
         assertThat(reloaded.getPayment()).isNull();
-        assertThat(reloaded.getApplicationClassification()).isEqualTo(PaymentApplicationClassification.UNMATCHED);
+        assertThat(reloaded.getApplicationClassification()).isEqualTo(PaymentApplicationClassification.UNAPPLIED);
         assertThat(reloaded.getAmount()).isEqualByComparingTo(new BigDecimal("50000.00"));
     }
 
@@ -260,13 +259,13 @@ class PaymentJpaMappingTest {
     void compositeUniqueConstraint_enforced() {
         NormalizedReceipt receipt1 = new NormalizedReceipt(
                 "SEPAY", "ACC-DUP", "TX-DUP-1", new BigDecimal("100000.00"), "VND",
-                null, Instant.now(), PaymentApplicationClassification.UNMATCHED, null, null, null
+                null, Instant.now(), null, null, null, null
         );
         transactionRepository.saveAndFlush(PaymentTransaction.create(null, receipt1));
 
         NormalizedReceipt receipt2 = new NormalizedReceipt(
                 "SEPAY", "ACC-DUP", "TX-DUP-1", new BigDecimal("200000.00"), "VND",
-                null, Instant.now(), PaymentApplicationClassification.UNMATCHED, null, null, null
+                null, Instant.now(), null, null, null, null
         );
         PaymentTransaction duplicate = PaymentTransaction.create(null, receipt2);
         transactionRepository.save(duplicate);
@@ -295,7 +294,7 @@ class PaymentJpaMappingTest {
         // Tx1 loads and records receipt
         tx1.execute(status -> {
             Payment p1 = paymentRepository.findById(paymentId).orElseThrow();
-            p1.recordUnallocatedReceipt(new BigDecimal("120000.00"));
+            p1.bindOrder(new com.thang.chargeops.payment.model.OrderCheckout("order-opt", p1.getPaymentCode(), "VAOPT", p1.getAmount(), Instant.parse("2026-09-12T09:10:00Z"), null, null), Instant.parse("2026-09-12T09:00:00Z"));
             paymentRepository.saveAndFlush(p1);
             return null;
         });
@@ -305,7 +304,7 @@ class PaymentJpaMappingTest {
             Payment p2 = paymentRepository.findById(paymentId).orElseThrow();
             // Stale check by updating direct version back in DB
             jdbcTemplate.update("UPDATE payments SET version = version + 1 WHERE id = ?", paymentId);
-            p2.recordUnallocatedReceipt(new BigDecimal("10000.00"));
+            p2.markFailed();
             paymentRepository.saveAndFlush(p2);
             return null;
         })).isInstanceOf(OptimisticLockingFailureException.class);
@@ -385,7 +384,7 @@ class PaymentJpaMappingTest {
                     "SEPAY", "ACC-PAG", "TX-PAG-" + i, new BigDecimal("10000.00"), "VND",
                     Instant.parse("2026-09-12T10:00:0" + i + "Z"),
                     Instant.parse("2026-09-12T10:00:0" + i + "Z"),
-                    PaymentApplicationClassification.UNAPPLIED,
+                    "VA001",
                     "CODE-ABC", "Content " + i, null
             );
             transactionRepository.save(PaymentTransaction.create(payment, receipt));
