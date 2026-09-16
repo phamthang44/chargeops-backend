@@ -31,6 +31,7 @@ import com.thang.chargeops.station.service.StationPricingService;
 import com.thang.chargeops.station.service.model.StationPriceRange;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Clock;
@@ -43,6 +44,8 @@ import java.util.*;
 public class BookingPricingServiceImpl implements BookingPricingService {
 
     private static final String CURRENCY = "VND";
+    private static final String OVERLAP_WARNING_TEMPLATE =
+            "You have an existing booking #%s at another station/connector overlapping this time (%s - %s).";
     private static final Set<BookingStatus> BLOCKING_STATUSES = Set.copyOf(
             EnumSet.of(
                     BookingStatus.PENDING,
@@ -69,20 +72,56 @@ public class BookingPricingServiceImpl implements BookingPricingService {
         Instant generatedAt = applicationClock.instant();
         UserProfile driver = currentProfileProvider.requireProfile();
         Connector connector = requireConnector(request.connectorId());
+        return calculateCurrentPreview(
+                driver,
+                connector,
+                request.startAt(),
+                request.durationMin(),
+                generatedAt
+        );
+    }
+
+    @Override
+    @Transactional(propagation = Propagation.MANDATORY)
+    public PricePreviewResponse repriceUnderLock(UserProfile driver, Connector lockedConnector, Instant startAt, int durationMin, Instant decisionAt) {
+        return calculateCurrentPreview(
+                driver,
+                lockedConnector,
+                startAt,
+                durationMin,
+                decisionAt
+        );
+    }
+
+    private Connector requireConnector(UUID connectorId) {
+        return connectorRepository.findByIdWithChargePointAndStation(connectorId)
+                .orElseThrow(() -> new AppException(
+                        StationErrorCode.CONNECTOR_NOT_FOUND,
+                        connectorId
+                ));
+    }
+
+    private PricePreviewResponse calculateCurrentPreview(
+            UserProfile driver,
+            Connector connector,
+            Instant startAt,
+            int durationMin,
+            Instant decisionAt
+    ) {
         connectorBookabilityPolicy.requireBookableForNewBooking(
                 connector,
-                generatedAt
+                decisionAt
         );
 
         UUID stationId = connector.getChargePoint().getStation().getId();
         int stationMinDuration = bookingSettingsRepository.findByStationId(stationId)
                 .map(StationBookingSetting::getMinDurationMinutes)
                 .orElse(bookingPolicyConfig.getMinDurationMinutes());
-        StationOperatingSchedule schedule = operatingHoursResolver.findActiveSchedule(stationId, generatedAt);
+        StationOperatingSchedule schedule = operatingHoursResolver.findActiveSchedule(stationId, decisionAt);
         Instant endAt = bookingTimePolicy.validate(
-                request.startAt(), request.durationMin(), stationMinDuration, schedule, generatedAt);
+                startAt, durationMin, stationMinDuration, schedule, decisionAt);
 
-        if (bookingRepository.existsOverlappingBooking(connector.getId(), request.startAt(), endAt, generatedAt)) {
+        if (bookingRepository.existsOverlappingBooking(connector.getId(), startAt, endAt, decisionAt)) {
             throw new AppException(
                     BookingErrorCode.SLOT_UNAVAILABLE
             );
@@ -90,14 +129,14 @@ public class BookingPricingServiceImpl implements BookingPricingService {
         List<Booking> overlappingBookings = bookingRepository.findOverlappingDriverBookings(
                 driver.getId(),
                 connector.getId(),
-                request.startAt(),
+                startAt,
                 endAt,
-                generatedAt,
+                decisionAt,
                 BLOCKING_STATUSES
         );
         List<String> overlapWarnings = overlappingBookings.stream()
                 .map(b -> String.format(
-                        "Bạn đã có lịch sạc #%s tại trạm khác/cổng khác trùng giờ (%s - %s).",
+                        OVERLAP_WARNING_TEMPLATE,
                         b.getBookingCode() != null ? b.getBookingCode() : b.getId().toString().substring(0, 8),
                         b.getStartAt(),
                         b.getEndAt()
@@ -105,8 +144,8 @@ public class BookingPricingServiceImpl implements BookingPricingService {
                 .toList();
         List<StationPriceRange> ranges = stationPricingService.resolvePriceRanges(
                 stationId,
-                generatedAt,
-                request.startAt(),
+                decisionAt,
+                startAt,
                 endAt
         );
         List<PriceSegment> segments = PriceSegmentMapper
@@ -115,9 +154,9 @@ public class BookingPricingServiceImpl implements BookingPricingService {
         PricePreview preview = bookingPriceCalculator.calculate(basis, segments);
         String pricingVersion = PricingVersionHelper.computePricingVersion(
                 connector.getId(),
-                request.startAt(),
+                startAt,
                 endAt,
-                request.durationMin(),
+                durationMin,
                 CURRENCY,
                 preview.totalAmount(),
                 preview.pricingBasis(),
@@ -128,9 +167,9 @@ public class BookingPricingServiceImpl implements BookingPricingService {
         return new PricePreviewResponse(
                 pricingVersion,
                 connector.getId(),
-                request.startAt(),
+                startAt,
                 endAt,
-                request.durationMin(),
+                durationMin,
                 CURRENCY,
                 preview.totalAmount(),
                 preview.priceLines(),
@@ -138,13 +177,5 @@ public class BookingPricingServiceImpl implements BookingPricingService {
                 policy,
                 overlapWarnings
         );
-    }
-
-    private Connector requireConnector(UUID connectorId) {
-        return connectorRepository.findByIdWithChargePointAndStation(connectorId)
-                .orElseThrow(() -> new AppException(
-                        StationErrorCode.CONNECTOR_NOT_FOUND,
-                        connectorId
-                ));
     }
 }

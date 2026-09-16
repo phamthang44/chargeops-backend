@@ -6,6 +6,7 @@ import com.thang.chargeops.exception.errormessage.ErrorMessage;
 import com.thang.chargeops.exception.errormessage.ValidationErrorMessage;
 import com.thang.chargeops.exception.errorcode.AuthErrorCode;
 import com.thang.chargeops.exception.errorcode.BaseErrorCode;
+import com.thang.chargeops.exception.errorcode.BookingErrorCode;
 import com.thang.chargeops.exception.errorcode.CommonErrorCode;
 import com.thang.chargeops.exception.errorcode.LicenseErrorCode;
 import com.thang.chargeops.exception.errorcode.StationErrorCode;
@@ -35,8 +36,12 @@ import tools.jackson.core.JacksonException;
 import tools.jackson.core.exc.StreamReadException;
 import tools.jackson.databind.exc.InvalidFormatException;
 
+import java.util.Collections;
 import java.util.HashMap;
+import java.util.IdentityHashMap;
+import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -230,6 +235,18 @@ public class GlobalHandlerError {
     @ExceptionHandler(DataIntegrityViolationException.class)
     public ResponseEntity<ApiResult<?>> handleDataIntegrity(DataIntegrityViolationException ex) {
         String traceId = newTraceId();
+
+        if (isExclusionConstraintViolation(ex, "ex_bookings_no_overlap")) {
+            log.warn("Exclusion constraint conflict [{}]: {}", traceId, ex.getMessage());
+            return ResponseEntity.status(BookingErrorCode.SLOT_UNAVAILABLE.getHttpStatus())
+                    .body(ApiResult.error(
+                            BookingErrorCode.SLOT_UNAVAILABLE.getCode(),
+                            BookingErrorCode.SLOT_UNAVAILABLE.getMessageKey(),
+                            BookingErrorCode.SLOT_UNAVAILABLE.getMessage(),
+                            traceId
+                    ));
+        }
+
         String rootMsg = ex.getRootCause() != null ? ex.getRootCause().getMessage() : "";
         log.error("{} | Data integrity error [{}]: {}", LogConstant.SYS_ERROR, traceId, rootMsg);
         return ResponseEntity.status(CommonErrorCode.DATA_INTEGRITY_ERROR.getHttpStatus())
@@ -239,6 +256,25 @@ public class GlobalHandlerError {
                         CommonErrorCode.DATA_INTEGRITY_ERROR.getMessage(),
                         traceId
                 ));
+    }
+
+    private boolean isExclusionConstraintViolation(Throwable ex, String constraintName) {
+        Set<Throwable> visited = Collections.newSetFromMap(new IdentityHashMap<>());
+        Throwable current = ex;
+        while (current != null && visited.add(current)) {
+            if (current instanceof org.hibernate.exception.ConstraintViolationException cve) {
+                if (cve.getConstraintName() != null &&
+                    cve.getConstraintName().equalsIgnoreCase(constraintName)) {
+                    return true;
+                }
+            }
+            if (current.getMessage() != null &&
+                current.getMessage().toLowerCase(Locale.ROOT).contains(constraintName.toLowerCase(Locale.ROOT))) {
+                return true;
+            }
+            current = current.getCause();
+        }
+        return false;
     }
 
     @ExceptionHandler(Exception.class)

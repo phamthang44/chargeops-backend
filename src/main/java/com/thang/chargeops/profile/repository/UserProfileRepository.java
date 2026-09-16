@@ -1,7 +1,9 @@
 package com.thang.chargeops.profile.repository;
 
 import com.thang.chargeops.profile.entity.UserProfile;
+import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -29,4 +31,8 @@ public interface UserProfileRepository extends JpaRepository<UserProfile, UUID> 
     );
 
     Optional<UserProfile> findByEmail(String email);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT u FROM UserProfile u WHERE u.id = :id")
+    Optional<UserProfile> findByIdWithLock(@Param("id") UUID id);
 }

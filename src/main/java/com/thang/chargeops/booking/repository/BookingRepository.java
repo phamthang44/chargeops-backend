@@ -3,7 +3,9 @@ package com.thang.chargeops.booking.repository;
 import com.thang.chargeops.booking.entity.Booking;
 import com.thang.chargeops.common.enums.BookingStatus;
 import com.thang.chargeops.booking.projection.BookingTimeRangeProjection;
+import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
@@ -99,6 +101,31 @@ public interface BookingRepository extends JpaRepository<Booking, UUID> {
             @Param("endAt") Instant endAt,
             @Param("now") Instant now,
             @Param("blockingStatuses") Collection<BookingStatus> blockingStatuses
+    );
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("""
+        SELECT b FROM Booking b
+        WHERE b.connector.id = :connectorId
+          AND b.status = com.thang.chargeops.common.enums.BookingStatus.PENDING
+          AND b.expiresAt <= :now
+        ORDER BY b.id ASC
+    """)
+    List<Booking> findOverduePendingByConnectorForUpdate(
+            @Param("connectorId") UUID connectorId,
+            @Param("now") Instant now
+    );
+
+    @Query("""
+        SELECT count(b) > 0
+        FROM Booking b
+        WHERE b.driver.id = :driverId
+          AND b.status = com.thang.chargeops.common.enums.BookingStatus.PENDING
+          AND (b.expiresAt IS NULL OR b.expiresAt > :now)
+    """)
+    boolean existsActivePendingByDriver(
+            @Param("driverId") UUID driverId,
+            @Param("now") Instant now
     );
 
 }

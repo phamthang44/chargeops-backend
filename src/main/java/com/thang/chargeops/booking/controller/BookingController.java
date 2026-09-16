@@ -39,10 +39,14 @@ public class BookingController {
                 .body(ApiResult.success(response));
     }
 
-    @PostMapping("/{connectorId}")
+    @PostMapping
+    @PreAuthorize("hasRole('DRIVER')")
     public ResponseEntity<ApiResult<CreateBookingResponse>> createBooking(
-            @PathVariable UUID connectorId,
+            @RequestHeader("Idempotency-Key") UUID requestKey,
             @Valid @RequestBody CreateBookingRequest request) {
-        return ResponseEntity.status(HttpStatus.CREATED).body(ApiResult.success(bookingService.createNewBooking(connectorId, request)));
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(ApiResult.success(
+                        bookingService.createNewBooking(requestKey, request)
+                ));
     }
 }
