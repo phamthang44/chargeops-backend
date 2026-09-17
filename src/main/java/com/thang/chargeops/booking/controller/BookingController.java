@@ -1,10 +1,10 @@
 package com.thang.chargeops.booking.controller;
 
 
+import com.thang.chargeops.booking.dto.filter.DriverBookingHistoryFilter;
 import com.thang.chargeops.booking.dto.request.CreateBookingRequest;
 import com.thang.chargeops.booking.dto.request.PricePreviewRequest;
-import com.thang.chargeops.booking.dto.response.CreateBookingResponse;
-import com.thang.chargeops.booking.dto.response.PricePreviewResponse;
+import com.thang.chargeops.booking.dto.response.*;
 import com.thang.chargeops.booking.service.BookingPricingService;
 import com.thang.chargeops.booking.service.BookingService;
 import com.thang.chargeops.common.constant.SystemConstant;
@@ -17,6 +17,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
 import java.util.UUID;
 
 @RestController
@@ -27,6 +28,8 @@ public class BookingController {
     private final BookingPricingService bookingPricingService;
     private final BookingService bookingService;
 
+    private static final String CACHE_CONTROL_NO_STORE = "no-store";
+
     @PreAuthorize("isAuthenticated()")
     @PostMapping("/price-preview")
     public ResponseEntity<ApiResult<PricePreviewResponse>> previewBookingPrice(
@@ -35,7 +38,7 @@ public class BookingController {
         PricePreviewResponse response = bookingPricingService
                 .previewBookingPrice(request);
         return ResponseEntity.ok()
-                .header(HttpHeaders.CACHE_CONTROL, "no-store")
+                .header(HttpHeaders.CACHE_CONTROL, CACHE_CONTROL_NO_STORE)
                 .body(ApiResult.success(response));
     }
 
@@ -48,5 +51,61 @@ public class BookingController {
                 .body(ApiResult.success(
                         bookingService.createNewBooking(requestKey, request)
                 ));
+    }
+
+    @GetMapping("/active")
+    @PreAuthorize("hasRole('DRIVER')")
+    public ResponseEntity<ApiResult<?>> getMyActiveBookings(
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "20") int size
+
+    ) {
+        var response = bookingService.getMyActiveBookings(page, size);
+
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CACHE_CONTROL, CACHE_CONTROL_NO_STORE)
+                .body(ApiResult.successPage(response));
+    }
+
+    @GetMapping("/history")
+    @PreAuthorize("hasRole('DRIVER')")
+    public ResponseEntity<ApiResult<List<DriverBookingListItemResponse>>>
+    getMyBookingHistory(
+            @RequestParam(defaultValue = "") String query,
+            @RequestParam(defaultValue = "ALL")
+            DriverBookingHistoryFilter.HistoryStatus status,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "20") int size
+    ) {
+        var result = bookingService
+                .getMyBookingHistory(
+                        new DriverBookingHistoryFilter(query, status),
+                        page,
+                        size
+                );
+
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CACHE_CONTROL, CACHE_CONTROL_NO_STORE)
+                .body(ApiResult.successPage(
+                        result.page(),
+                        result.counts()
+                ));
+    }
+
+    @GetMapping("/{bookingId}")
+    @PreAuthorize("hasRole('DRIVER')")
+    public ResponseEntity<ApiResult<BookingDetailResponse>> getBookingDetail(@PathVariable UUID bookingId) {
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CACHE_CONTROL, CACHE_CONTROL_NO_STORE)
+                .body(ApiResult.success(bookingService.getMyBooking(bookingId)));
+    }
+
+    @GetMapping("/stats")
+    @PreAuthorize("hasRole('DRIVER')")
+    public ResponseEntity<ApiResult<BookingStatsResponse>> getMyBookingStats() {
+        BookingStatsResponse response = bookingService.getMyBookingStats();
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CACHE_CONTROL, CACHE_CONTROL_NO_STORE)
+                .body(ApiResult.success(response));
     }
 }

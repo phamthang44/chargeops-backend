@@ -6,31 +6,40 @@ import com.thang.chargeops.booking.command.BookingCommandPayloadHasher;
 import com.thang.chargeops.booking.command.BookingCommandRegistry;
 import com.thang.chargeops.booking.config.BookingPolicyConfig;
 import com.thang.chargeops.booking.dto.BookingPolicySnapshot;
+import com.thang.chargeops.booking.dto.filter.DriverBookingHistoryFilter;
 import com.thang.chargeops.booking.dto.request.CreateBookingRequest;
-import com.thang.chargeops.booking.dto.response.CreateBookingResponse;
-import com.thang.chargeops.booking.dto.response.PricePreviewResponse;
+import com.thang.chargeops.booking.dto.response.*;
 import com.thang.chargeops.booking.entity.Booking;
 import com.thang.chargeops.booking.entity.BookingPriceLine;
 import com.thang.chargeops.booking.history.BookingStatusActorType;
 import com.thang.chargeops.booking.history.BookingStatusHistoryRecorder;
 import com.thang.chargeops.booking.mapper.BookingMapper;
 import com.thang.chargeops.booking.mapper.BookingPriceLineMapper;
+import com.thang.chargeops.booking.policy.DriverBookingReadPolicy;
 import com.thang.chargeops.booking.pricing.PricePreview;
+import com.thang.chargeops.booking.projection.BookingCompletedSessionProjection;
 import com.thang.chargeops.booking.repository.BookingRepository;
+import com.thang.chargeops.booking.repository.specs.BookingSpecification;
 import com.thang.chargeops.booking.service.BookingHoldCoordinator;
 import com.thang.chargeops.booking.service.BookingPricingService;
 import com.thang.chargeops.booking.service.BookingService;
+import com.thang.chargeops.booking.service.model.BookingReadSnapshot;
 import com.thang.chargeops.booking.service.model.CanonicalPayload;
+import com.thang.chargeops.booking.service.model.DriverBookingHistoryResult;
 import com.thang.chargeops.booking.service.model.HoldPreparationContext;
 import com.thang.chargeops.common.constant.LogConstant;
+import com.thang.chargeops.common.enums.BookingStatus;
+import com.thang.chargeops.common.enums.PaymentApplicationClassification;
 import com.thang.chargeops.common.enums.PaymentMethod;
 import com.thang.chargeops.exception.AppException;
 import com.thang.chargeops.exception.errorcode.BookingErrorCode;
 import com.thang.chargeops.exception.errorcode.CommonErrorCode;
 import com.thang.chargeops.exception.errorcode.PaymentErrorCode;
 import com.thang.chargeops.payment.entity.Payment;
+import com.thang.chargeops.payment.entity.PaymentTransaction;
 import com.thang.chargeops.payment.model.PendingPaymentSpec;
 import com.thang.chargeops.payment.repository.PaymentRepository;
+import com.thang.chargeops.payment.repository.PaymentTransactionRepository;
 import com.thang.chargeops.profile.entity.UserProfile;
 import com.thang.chargeops.profile.support.CurrentProfileProvider;
 import com.thang.chargeops.station.entity.ChargePoint;
@@ -38,15 +47,22 @@ import com.thang.chargeops.station.entity.Connector;
 import com.thang.chargeops.station.entity.Station;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -67,7 +83,10 @@ public class BookingServiceImpl implements BookingService {
     private final BookingMapper bookingMapper;
     private final BookingPolicyConfig bookingPolicyConfig;
     private final PaymentRepository paymentRepository;
+    private final PaymentTransactionRepository paymentTransactionRepository;
+    private final DriverBookingReadPolicy driverBookingReadPolicy;
     private final BookingStatusHistoryRecorder bookingStatusHistoryRecorder;
+    private final Clock applicationClock;
 
     @Transactional
     @Override
@@ -158,6 +177,285 @@ public class BookingServiceImpl implements BookingService {
         );
         log.info(LogConstant.SERVICE_LOG_FORMAT, LogConstant.ACTION_SUCCESS, "createNewBooking", savedBooking.getId(), request);
         return bookingMapper.toCreateBookingResponse(savedBooking, savedPayment);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Page<DriverBookingListItemResponse> getMyActiveBookings(int page, int size) {
+        UserProfile driver = currentProfileProvider.requireProfile();
+        Instant evaluatedAt = applicationClock.instant();
+
+        log.info(
+                LogConstant.SERVICE_LOG_FORMAT,
+                LogConstant.ACTION_START,
+                "getMyActiveBookings",
+                driver.getId(),
+                null
+        );
+
+        Pageable pageable = PageRequest.of(
+                Math.max(0, page - 1),
+                size
+        );
+
+        Page<Booking> bookings = bookingRepository.findActiveForDriver(
+                driver.getId(),
+                evaluatedAt,
+                pageable
+        );
+
+        return bookings.map(booking ->
+                bookingMapper.toDriverBookingListItemResponse(
+                        booking,
+                        evaluatedAt
+                )
+        );
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public DriverBookingHistoryResult getMyBookingHistory(
+            DriverBookingHistoryFilter filter,
+            int page,
+            int size
+    ) {
+
+        UserProfile driver = currentProfileProvider.requireProfile();
+        Instant evaluatedAt = applicationClock.instant();
+        DriverBookingHistoryFilter normalizedFilter = filter == null
+                ? new DriverBookingHistoryFilter(
+                        "",
+                        DriverBookingHistoryFilter.HistoryStatus.ALL
+                )
+                : filter;
+
+        log.info(
+                LogConstant.SERVICE_LOG_FORMAT,
+                LogConstant.ACTION_START,
+                "getMyBookingHistory",
+                driver.getId(),
+                normalizedFilter
+        );
+
+        Specification<Booking> specification =
+                BookingSpecification.historyForDriver(
+                        driver.getId(),
+                        normalizedFilter,
+                        evaluatedAt
+                );
+
+        Pageable pageable = PageRequest.of(
+                Math.max(0, page - 1),
+                size,
+                Sort.by(
+                        Sort.Order.desc("startAt"),
+                        Sort.Order.desc("id")
+                )
+        );
+
+        Page<DriverBookingListItemResponse> bookings = bookingRepository
+                .findAll(specification, pageable)
+                .map(booking ->
+                        bookingMapper.toDriverBookingListItemResponse(
+                                booking,
+                                evaluatedAt
+                        )
+                );
+
+        long completed = bookingRepository.count(
+                BookingSpecification.historyForDriver(
+                        driver.getId(),
+                        normalizedFilter.withStatus(
+                                DriverBookingHistoryFilter.HistoryStatus.COMPLETED
+                        ),
+                        evaluatedAt
+                )
+        );
+        long cancelled = bookingRepository.count(
+                BookingSpecification.historyForDriver(
+                        driver.getId(),
+                        normalizedFilter.withStatus(
+                                DriverBookingHistoryFilter.HistoryStatus.CANCELLED
+                        ),
+                        evaluatedAt
+                )
+        );
+
+        return new DriverBookingHistoryResult(
+                bookings,
+                Map.of(
+                        "all", completed + cancelled,
+                        "completed", completed,
+                        "cancelled", cancelled
+                )
+        );
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public BookingDetailResponse getMyBooking(UUID bookingId) {
+        UserProfile driver = currentProfileProvider.requireProfile();
+        Instant evaluatedAt = applicationClock.instant();
+        Booking booking = bookingRepository.findByIdAndDriverId(bookingId, driver.getId())
+                .orElseThrow(() -> new AppException(
+                        CommonErrorCode.RESOURCE_NOT_FOUND,
+                        "Booking not found: " + bookingId
+                ));
+
+        Payment payment = paymentRepository.findByBookingId(bookingId)
+                .orElseThrow(() -> new AppException(
+                        CommonErrorCode.RESOURCE_NOT_FOUND,
+                        "Booking exists but payment was not found: " + bookingId
+                ));
+
+        BookingReadSnapshot snapshot = buildBookingReadSnapshot(
+                booking,
+                payment,
+                evaluatedAt
+        );
+
+        return bookingMapper.toBookingDetailResponse(
+                booking,
+                payment,
+                snapshot
+        );
+    }
+
+    /**
+     * Aggregates the request-time facts required by the Driver detail mapper.
+     * Repository access stays in the service; the mapper remains deterministic.
+     */
+    private BookingReadSnapshot buildBookingReadSnapshot(
+            Booking booking,
+            Payment payment,
+            Instant evaluatedAt
+    ) {
+        BookingReadSnapshot listSnapshot = driverBookingReadPolicy
+                .snapshotForList(booking, evaluatedAt);
+        List<PaymentTransaction> receipts = paymentTransactionRepository
+                .findByPaymentIdOrderByReceivedAtAscIdAsc(
+                        Objects.requireNonNull(
+                                payment.getId(),
+                                "payment id must not be null"
+                        )
+                );
+
+        return BookingReadSnapshot.builder()
+                .evaluatedAt(listSnapshot.evaluatedAt())
+                .stationAvailable(listSnapshot.stationAvailable())
+                .canReportIssue(listSnapshot.canReportIssue())
+                .currency(payment.getCurrency())
+                .collectedAmount(sumReceiptAmounts(receipts, null))
+                .appliedToPackageAmount(sumReceiptAmounts(
+                        receipts,
+                        PaymentApplicationClassification.APPLIED
+                ))
+                .packageRefundedAmount(amountOrZero(
+                        payment.getRefundAmount()
+                ))
+                // Order VA accepts the exact package amount. Receipts that
+                // cannot be applied remain UNAPPLIED; they are not silently
+                // reclassified as excess money.
+                .excessAmount(0L)
+                .unallocatedAmount(sumReceiptAmounts(
+                        receipts,
+                        PaymentApplicationClassification.UNAPPLIED
+                ))
+                .checkout(toCheckoutDetail(payment, evaluatedAt))
+                // Refund obligations/attempts are introduced by later tasks.
+                // refundAmount above only represents successful package refund.
+                .refunds(List.of())
+                .build();
+    }
+
+    private long sumReceiptAmounts(
+            List<PaymentTransaction> receipts,
+            PaymentApplicationClassification classification
+    ) {
+        return receipts.stream()
+                .filter(receipt -> classification == null
+                        || receipt.getApplicationClassification()
+                        == classification)
+                .map(PaymentTransaction::getAmount)
+                .filter(Objects::nonNull)
+                .reduce(BigDecimal.ZERO, BigDecimal::add)
+                .longValueExact();
+    }
+
+    private long amountOrZero(BigDecimal amount) {
+        return amount == null ? 0L : amount.longValueExact();
+    }
+
+    private BookingDetailResponse.CheckoutDetail toCheckoutDetail(
+            Payment payment,
+            Instant evaluatedAt
+    ) {
+        BookingDetailResponse.CheckoutState state;
+        if (payment.getProviderOrderRef() == null) {
+            state = BookingDetailResponse.CheckoutState.NOT_CREATED;
+        } else if (payment.getProviderExpiresAt() == null) {
+            state = BookingDetailResponse.CheckoutState.UNAVAILABLE;
+        } else if (!evaluatedAt.isBefore(payment.getProviderExpiresAt())) {
+            state = BookingDetailResponse.CheckoutState.EXPIRED;
+        } else {
+            state = BookingDetailResponse.CheckoutState.READY;
+        }
+
+        return new BookingDetailResponse.CheckoutDetail(
+                state,
+                payment.getMethod(),
+                payment.getProviderExpiresAt(),
+                null,
+                payment.getProviderOrderRef(),
+                payment.getQrCodeUrl()
+        );
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public BookingStatsResponse getMyBookingStats() {
+        UserProfile driver = currentProfileProvider.requireProfile();
+        UUID driverId = driver.getId();
+        Instant evaluatedAt = applicationClock.instant();
+
+        List<BookingCompletedSessionProjection> completedSessions =
+                bookingRepository.findCompletedSessionsByDriverId(driverId);
+
+        BigDecimal totalSpending = completedSessions.stream()
+                .map(BookingCompletedSessionProjection::getTotalAmount)
+                .filter(Objects::nonNull)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        long totalCompleted = completedSessions.size();
+
+        long totalMinutes = completedSessions.stream()
+                .filter(s -> s.getStartAt() != null && s.getEndAt() != null)
+                .mapToLong(s -> Duration.between(s.getStartAt(), s.getEndAt()).toMinutes())
+                .sum();
+
+        double totalHours = Math.round((totalMinutes / 60.0) * 10.0) / 10.0;
+
+        long totalBookings = bookingRepository.countByDriverId(driverId);
+
+        long totalCancelled = bookingRepository.count(
+                BookingSpecification.historyForDriver(
+                        driverId,
+                        new DriverBookingHistoryFilter(
+                                "",
+                                DriverBookingHistoryFilter.HistoryStatus.CANCELLED
+                        ),
+                        evaluatedAt
+                )
+        );
+
+        return BookingStatsResponse.of(
+                totalSpending,
+                totalCompleted,
+                totalBookings,
+                totalCompleted,
+                totalCancelled,
+                totalHours
+        );
     }
 
     private CreateBookingResponse loadReplayBooking(UUID bookingId) {

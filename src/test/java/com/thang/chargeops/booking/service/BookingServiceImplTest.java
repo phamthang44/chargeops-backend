@@ -4,20 +4,31 @@ import com.thang.chargeops.booking.command.BookingCommand;
 import com.thang.chargeops.booking.command.BookingCommandOperation;
 import com.thang.chargeops.booking.command.BookingCommandRegistry;
 import com.thang.chargeops.booking.config.BookingPolicyConfig;
+import com.thang.chargeops.booking.dto.filter.DriverBookingHistoryFilter;
 import com.thang.chargeops.booking.dto.request.CreateBookingRequest;
+import com.thang.chargeops.booking.dto.response.BookingDetailResponse;
 import com.thang.chargeops.booking.dto.response.BookingPolicyResponse;
+import com.thang.chargeops.booking.dto.response.BookingStatsResponse;
 import com.thang.chargeops.booking.dto.response.CreateBookingResponse;
+import com.thang.chargeops.booking.dto.response.DriverBookingListItemResponse;
 import com.thang.chargeops.booking.dto.response.PricePreviewResponse;
+import com.thang.chargeops.booking.projection.BookingCompletedSessionProjection;
 import com.thang.chargeops.booking.entity.Booking;
 import com.thang.chargeops.booking.history.BookingStatusActorType;
 import com.thang.chargeops.booking.history.BookingStatusHistoryRecorder;
 import com.thang.chargeops.booking.mapper.BookingMapper;
+import com.thang.chargeops.booking.policy.DriverBookingReadPolicy;
 import com.thang.chargeops.booking.repository.BookingRepository;
 import com.thang.chargeops.booking.service.impl.BookingServiceImpl;
+import com.thang.chargeops.booking.service.model.BookingReadSnapshot;
+import com.thang.chargeops.booking.service.model.DriverBookingHistoryResult;
 import com.thang.chargeops.booking.service.model.HoldPreparationContext;
 import com.thang.chargeops.common.enums.PaymentMethod;
+import com.thang.chargeops.common.enums.PaymentApplicationClassification;
 import com.thang.chargeops.payment.entity.Payment;
+import com.thang.chargeops.payment.entity.PaymentTransaction;
 import com.thang.chargeops.payment.repository.PaymentRepository;
+import com.thang.chargeops.payment.repository.PaymentTransactionRepository;
 import com.thang.chargeops.profile.entity.UserProfile;
 import com.thang.chargeops.profile.support.CurrentProfileProvider;
 import com.thang.chargeops.station.entity.ChargePoint;
@@ -29,9 +40,16 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.jpa.domain.Specification;
 
+import java.math.BigDecimal;
+import java.time.Clock;
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -62,7 +80,10 @@ class BookingServiceImplTest {
     @Mock private BookingMapper bookingMapper;
     @Mock private BookingPolicyConfig bookingPolicyConfig;
     @Mock private PaymentRepository paymentRepository;
+    @Mock private PaymentTransactionRepository paymentTransactionRepository;
+    @Mock private DriverBookingReadPolicy driverBookingReadPolicy;
     @Mock private BookingStatusHistoryRecorder bookingStatusHistoryRecorder;
+    @Mock private Clock applicationClock;
 
     private BookingServiceImpl service;
     private UserProfile driver;
@@ -83,7 +104,10 @@ class BookingServiceImplTest {
                 bookingMapper,
                 bookingPolicyConfig,
                 paymentRepository,
-                bookingStatusHistoryRecorder
+                paymentTransactionRepository,
+                driverBookingReadPolicy,
+                bookingStatusHistoryRecorder,
+                applicationClock
         );
 
         driver = mock(UserProfile.class);
@@ -198,6 +222,221 @@ class BookingServiceImplTest {
         verify(paymentRepository, never()).save(any());
         verify(bookingCommandRegistry, never()).recordSuccess(any(), any(), any(), any(), any(), any());
         verifyNoInteractions(bookingStatusHistoryRecorder);
+    }
+
+    @Test
+    void mapsActiveBookingsUsingOneEvaluationInstant() {
+        Booking booking = mock(Booking.class);
+        DriverBookingListItemResponse expected =
+                DriverBookingListItemResponse.builder()
+                        .bookingId(BOOKING_ID)
+                        .build();
+        PageRequest pageable = PageRequest.of(0, 20);
+
+        when(currentProfileProvider.requireProfile()).thenReturn(driver);
+        when(applicationClock.instant()).thenReturn(DECISION_AT);
+        when(bookingRepository.findActiveForDriver(
+                DRIVER_ID,
+                DECISION_AT,
+                pageable
+        )).thenReturn(new PageImpl<>(List.of(booking), pageable, 1));
+        when(bookingMapper.toDriverBookingListItemResponse(
+                booking,
+                DECISION_AT
+        )).thenReturn(expected);
+
+        var result = service.getMyActiveBookings(1, 20);
+
+        assertThat(result.getContent()).containsExactly(expected);
+        verify(bookingMapper).toDriverBookingListItemResponse(
+                booking,
+                DECISION_AT
+        );
+    }
+
+    @Test
+    void returnsHistoryPageAndQueryWideStatusCounts() {
+        Booking booking = mock(Booking.class);
+        DriverBookingListItemResponse expected =
+                DriverBookingListItemResponse.builder()
+                        .bookingId(BOOKING_ID)
+                        .build();
+        DriverBookingHistoryFilter filter = new DriverBookingHistoryFilter(
+                "alpha",
+                DriverBookingHistoryFilter.HistoryStatus.CANCELLED
+        );
+        PageRequest pageable = PageRequest.of(
+                0,
+                20,
+                Sort.by(
+                        Sort.Order.desc("startAt"),
+                        Sort.Order.desc("id")
+                )
+        );
+
+        when(currentProfileProvider.requireProfile()).thenReturn(driver);
+        when(applicationClock.instant()).thenReturn(DECISION_AT);
+        when(bookingRepository.findAll(
+                any(Specification.class),
+                eq(pageable)
+        )).thenReturn(new PageImpl<>(List.of(booking), pageable, 3));
+        when(bookingRepository.count(any(Specification.class)))
+                .thenReturn(1L, 2L);
+        when(bookingMapper.toDriverBookingListItemResponse(
+                booking,
+                DECISION_AT
+        )).thenReturn(expected);
+
+        DriverBookingHistoryResult result = service.getMyBookingHistory(
+                filter,
+                1,
+                20
+        );
+
+        assertThat(result.page().getContent()).containsExactly(expected);
+        assertThat(result.page().getNumber()).isZero();
+        assertThat(result.page().getTotalElements()).isOne();
+        assertThat(result.counts())
+                .isEqualTo(Map.of(
+                        "all", 3L,
+                        "completed", 1L,
+                        "cancelled", 2L
+                ));
+        verify(bookingRepository, times(2))
+                .count(any(Specification.class));
+        verify(bookingMapper).toDriverBookingListItemResponse(
+                booking,
+                DECISION_AT
+        );
+    }
+
+    @Test
+    void buildsDetailSnapshotFromPaymentAndReceipts() {
+        Booking booking = mock(Booking.class);
+        Payment payment = mock(Payment.class);
+        PaymentTransaction appliedReceipt = mock(PaymentTransaction.class);
+        PaymentTransaction unappliedReceipt = mock(PaymentTransaction.class);
+        UUID paymentId = UUID.randomUUID();
+        Instant checkoutExpiresAt = DECISION_AT.plusSeconds(300);
+        BookingReadSnapshot listSnapshot = BookingReadSnapshot.forList(
+                DECISION_AT,
+                true
+        );
+        BookingDetailResponse expected = BookingDetailResponse.builder()
+                .bookingId(BOOKING_ID)
+                .build();
+
+        when(currentProfileProvider.requireProfile()).thenReturn(driver);
+        when(applicationClock.instant()).thenReturn(DECISION_AT);
+        when(bookingRepository.findByIdAndDriverId(BOOKING_ID, DRIVER_ID))
+                .thenReturn(Optional.of(booking));
+        when(paymentRepository.findByBookingId(BOOKING_ID))
+                .thenReturn(Optional.of(payment));
+        when(payment.getId()).thenReturn(paymentId);
+        when(payment.getCurrency()).thenReturn("VND");
+        when(payment.getRefundAmount())
+                .thenReturn(BigDecimal.valueOf(20_000));
+        when(payment.getMethod()).thenReturn(PaymentMethod.BANK_TRANSFER);
+        when(payment.getProviderOrderRef()).thenReturn("ORDER-1");
+        when(payment.getProviderExpiresAt()).thenReturn(checkoutExpiresAt);
+        when(payment.getQrCodeUrl()).thenReturn("https://qr.example/order-1");
+        when(appliedReceipt.getAmount())
+                .thenReturn(BigDecimal.valueOf(126_000));
+        when(appliedReceipt.getApplicationClassification())
+                .thenReturn(PaymentApplicationClassification.APPLIED);
+        when(unappliedReceipt.getAmount())
+                .thenReturn(BigDecimal.valueOf(10_000));
+        when(unappliedReceipt.getApplicationClassification())
+                .thenReturn(PaymentApplicationClassification.UNAPPLIED);
+        when(paymentTransactionRepository
+                .findByPaymentIdOrderByReceivedAtAscIdAsc(paymentId))
+                .thenReturn(List.of(appliedReceipt, unappliedReceipt));
+        when(driverBookingReadPolicy.snapshotForList(booking, DECISION_AT))
+                .thenReturn(listSnapshot);
+        when(bookingMapper.toBookingDetailResponse(
+                eq(booking),
+                eq(payment),
+                any(BookingReadSnapshot.class)
+        )).thenReturn(expected);
+
+        BookingDetailResponse result = service.getMyBooking(BOOKING_ID);
+
+        assertThat(result).isSameAs(expected);
+        ArgumentCaptor<BookingReadSnapshot> snapshotCaptor =
+                ArgumentCaptor.forClass(BookingReadSnapshot.class);
+        verify(bookingMapper).toBookingDetailResponse(
+                eq(booking),
+                eq(payment),
+                snapshotCaptor.capture()
+        );
+        BookingReadSnapshot snapshot = snapshotCaptor.getValue();
+        assertThat(snapshot.evaluatedAt()).isEqualTo(DECISION_AT);
+        assertThat(snapshot.stationAvailable()).isTrue();
+        assertThat(snapshot.collectedAmount()).isEqualTo(136_000L);
+        assertThat(snapshot.appliedToPackageAmount()).isEqualTo(126_000L);
+        assertThat(snapshot.packageRefundedAmount()).isEqualTo(20_000L);
+        assertThat(snapshot.excessAmount()).isZero();
+        assertThat(snapshot.unallocatedAmount()).isEqualTo(10_000L);
+        assertThat(snapshot.checkout().status())
+                .isEqualTo(BookingDetailResponse.CheckoutState.READY);
+        assertThat(snapshot.checkout().expiresAt())
+                .isEqualTo(checkoutExpiresAt);
+    }
+
+    @Test
+    void getMyBookingStatsReturnsAggregatedStatsForCompletedAndCancelled() {
+        when(currentProfileProvider.requireProfile()).thenReturn(driver);
+        when(applicationClock.instant()).thenReturn(DECISION_AT);
+
+        BookingCompletedSessionProjection session1 = mock(BookingCompletedSessionProjection.class);
+        when(session1.getTotalAmount()).thenReturn(BigDecimal.valueOf(120_000));
+        when(session1.getStartAt()).thenReturn(START_AT);
+        when(session1.getEndAt()).thenReturn(START_AT.plusSeconds(3600)); // 60 mins
+
+        BookingCompletedSessionProjection session2 = mock(BookingCompletedSessionProjection.class);
+        when(session2.getTotalAmount()).thenReturn(BigDecimal.valueOf(60_000));
+        when(session2.getStartAt()).thenReturn(START_AT.plusSeconds(7200));
+        when(session2.getEndAt()).thenReturn(START_AT.plusSeconds(9000)); // 30 mins
+
+        when(bookingRepository.findCompletedSessionsByDriverId(DRIVER_ID))
+                .thenReturn(List.of(session1, session2));
+        when(bookingRepository.countByDriverId(DRIVER_ID)).thenReturn(5L);
+        when(bookingRepository.count(any(Specification.class))).thenReturn(2L);
+
+        BookingStatsResponse stats = service.getMyBookingStats();
+
+        assertThat(stats.totalSpending()).isEqualByComparingTo(BigDecimal.valueOf(180_000));
+        assertThat(stats.totalChargingSessions()).isEqualTo(2L);
+        assertThat(stats.totalBookings()).isEqualTo(5L);
+        assertThat(stats.totalCompletedBookings()).isEqualTo(2L);
+        assertThat(stats.totalCancelledBookings()).isEqualTo(2L);
+        assertThat(stats.totalHours()).isEqualTo(1.5);
+        assertThat(stats.spent()).isEqualByComparingTo(BigDecimal.valueOf(180_000));
+        assertThat(stats.sessions()).isEqualTo(2L);
+        assertThat(stats.hours()).isEqualTo(1.5);
+    }
+
+    @Test
+    void getMyBookingStatsReturnsZerosWhenDriverHasNoBookings() {
+        when(currentProfileProvider.requireProfile()).thenReturn(driver);
+        when(applicationClock.instant()).thenReturn(DECISION_AT);
+
+        when(bookingRepository.findCompletedSessionsByDriverId(DRIVER_ID))
+                .thenReturn(List.of());
+        when(bookingRepository.countByDriverId(DRIVER_ID)).thenReturn(0L);
+        when(bookingRepository.count(any(Specification.class))).thenReturn(0L);
+
+        BookingStatsResponse stats = service.getMyBookingStats();
+
+        assertThat(stats.totalSpending()).isEqualByComparingTo(BigDecimal.ZERO);
+        assertThat(stats.totalChargingSessions()).isZero();
+        assertThat(stats.totalBookings()).isZero();
+        assertThat(stats.totalCompletedBookings()).isZero();
+        assertThat(stats.totalCancelledBookings()).isZero();
+        assertThat(stats.totalHours()).isZero();
+        assertThat(stats.spent()).isEqualByComparingTo(BigDecimal.ZERO);
+        assertThat(stats.sessions()).isZero();
+        assertThat(stats.hours()).isZero();
     }
 
     private CreateBookingRequest request(long amount, String pricingVersion, String policyVersion) {

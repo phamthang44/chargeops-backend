@@ -2,22 +2,33 @@ package com.thang.chargeops.booking.repository;
 
 import com.thang.chargeops.booking.entity.Booking;
 import com.thang.chargeops.common.enums.BookingStatus;
+import com.thang.chargeops.booking.projection.BookingCompletedSessionProjection;
 import com.thang.chargeops.booking.projection.BookingTimeRangeProjection;
+import com.thang.chargeops.profile.entity.UserProfile;
 import jakarta.persistence.LockModeType;
-import org.springframework.data.jpa.repository.JpaRepository;
-import org.springframework.data.jpa.repository.Lock;
-import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.domain.Specification;
+import org.springframework.data.jpa.repository.*;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.time.Instant;
-import java.util.Collection;
-import java.util.EnumSet;
-import java.util.List;
-import java.util.UUID;
+import java.util.*;
 
 @Repository
-public interface BookingRepository extends JpaRepository<Booking, UUID> {
+public interface BookingRepository extends JpaRepository<Booking, UUID>, JpaSpecificationExecutor<Booking> {
+
+    @Override
+    @EntityGraph(attributePaths = {
+            "connector",
+            "connector.chargePoint",
+            "connector.chargePoint.station"
+    })
+    Page<Booking> findAll(
+            Specification<Booking> specification,
+            Pageable pageable
+    );
 
     /**
      * Advisory check for preview: reuses availability's half-open overlap and hold-expiry rules.
@@ -127,5 +138,53 @@ public interface BookingRepository extends JpaRepository<Booking, UUID> {
             @Param("driverId") UUID driverId,
             @Param("now") Instant now
     );
+
+    @EntityGraph(attributePaths = {
+            "connector",
+            "connector.chargePoint",
+            "connector.chargePoint.station"
+    })
+    @Query("""
+    SELECT booking
+    FROM Booking booking
+    WHERE booking.driver.id = :driverId
+      AND (
+            (
+                booking.status =
+                    com.thang.chargeops.common.enums.BookingStatus.PENDING
+                AND booking.expiresAt > :now
+            )
+            OR
+            (
+                booking.status =
+                    com.thang.chargeops.common.enums.BookingStatus.CONFIRMED
+                AND booking.checkInDeadline > :now
+            )
+            OR booking.status IN (
+                com.thang.chargeops.common.enums.BookingStatus.CHECKED_IN,
+                com.thang.chargeops.common.enums.BookingStatus.CHARGING
+            )
+      )
+    ORDER BY booking.startAt ASC, booking.id ASC
+    """)
+    Page<Booking> findActiveForDriver(
+            @Param("driverId") UUID driverId,
+            @Param("now") Instant now,
+            Pageable pageable
+    );
+
+    @Query("""
+        SELECT b.totalAmount AS totalAmount,
+               b.startAt AS startAt,
+               b.endAt AS endAt
+        FROM Booking b
+        WHERE b.driver.id = :driverId
+          AND b.status = com.thang.chargeops.common.enums.BookingStatus.COMPLETED
+    """)
+    List<BookingCompletedSessionProjection> findCompletedSessionsByDriverId(@Param("driverId") UUID driverId);
+
+    long countByDriverId(UUID driverId);
+
+    Optional<Booking> findByIdAndDriverId(UUID bookingId, UUID driverId);
 
 }

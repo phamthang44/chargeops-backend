@@ -1,6 +1,9 @@
 package com.thang.chargeops.booking;
 
+import com.thang.chargeops.booking.dto.filter.DriverBookingHistoryFilter;
+import com.thang.chargeops.booking.entity.Booking;
 import com.thang.chargeops.booking.repository.BookingRepository;
+import com.thang.chargeops.booking.repository.specs.BookingSpecification;
 import com.thang.chargeops.common.enums.BookingStatus;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -8,6 +11,8 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 import org.springframework.jdbc.core.JdbcTemplate;
 
 import java.math.BigDecimal;
@@ -159,6 +164,250 @@ class BookingRepositoryIntegrationTest {
                 .isTrue();
     }
 
+    @Test
+    void activeDriverPageUsesEffectiveStatusBoundaries() {
+        Instant firstStart = NOW.plusSeconds(3_600);
+        UUID checkedIn = insertBooking(
+                BookingStatus.CHECKED_IN,
+                firstStart,
+                firstStart.plusSeconds(3_600),
+                null,
+                null
+        );
+        UUID pending = insertBooking(
+                BookingStatus.PENDING,
+                firstStart.plusSeconds(3_600),
+                firstStart.plusSeconds(7_200),
+                NOW.plusSeconds(1),
+                null
+        );
+        UUID confirmed = insertBooking(
+                BookingStatus.CONFIRMED,
+                firstStart.plusSeconds(7_200),
+                firstStart.plusSeconds(10_800),
+                null,
+                NOW.plusSeconds(1)
+        );
+        UUID charging = insertBooking(
+                BookingStatus.CHARGING,
+                firstStart.plusSeconds(10_800),
+                firstStart.plusSeconds(14_400),
+                null,
+                null
+        );
+
+        insertBooking(
+                BookingStatus.PENDING,
+                firstStart.plusSeconds(14_400),
+                firstStart.plusSeconds(18_000),
+                NOW,
+                null
+        );
+        insertBooking(
+                BookingStatus.CONFIRMED,
+                firstStart.plusSeconds(18_000),
+                firstStart.plusSeconds(21_600),
+                null,
+                NOW
+        );
+        insertBooking(
+                BookingStatus.COMPLETED,
+                firstStart.plusSeconds(21_600),
+                firstStart.plusSeconds(25_200),
+                null,
+                null
+        );
+
+        var result = bookingRepository.findActiveForDriver(
+                driverId,
+                NOW,
+                PageRequest.of(0, 20)
+        );
+
+        assertThat(result.getContent())
+                .extracting(booking -> booking.getId())
+                .containsExactly(checkedIn, pending, confirmed, charging);
+    }
+
+    @Test
+    void historySpecificationPartitionsEffectiveStatusesAndScopesDriver() {
+        Instant firstStart = NOW.minusSeconds(25_200);
+        UUID completed = insertBooking(
+                BookingStatus.COMPLETED,
+                firstStart,
+                firstStart.plusSeconds(3_600),
+                null,
+                null
+        );
+        UUID cancelled = insertBooking(
+                BookingStatus.CANCELLED,
+                firstStart.plusSeconds(3_600),
+                firstStart.plusSeconds(7_200),
+                null,
+                null
+        );
+        UUID expired = insertBooking(
+                BookingStatus.EXPIRED,
+                firstStart.plusSeconds(7_200),
+                firstStart.plusSeconds(10_800),
+                null,
+                null
+        );
+        UUID stalePending = insertBooking(
+                BookingStatus.PENDING,
+                firstStart.plusSeconds(10_800),
+                firstStart.plusSeconds(14_400),
+                NOW,
+                null
+        );
+        UUID staleConfirmed = insertBooking(
+                BookingStatus.CONFIRMED,
+                firstStart.plusSeconds(14_400),
+                firstStart.plusSeconds(18_000),
+                null,
+                NOW
+        );
+        insertBooking(
+                BookingStatus.PENDING,
+                firstStart.plusSeconds(18_000),
+                firstStart.plusSeconds(21_600),
+                NOW.plusSeconds(1),
+                null
+        );
+        insertBooking(
+                BookingStatus.CONFIRMED,
+                firstStart.plusSeconds(21_600),
+                firstStart.plusSeconds(25_200),
+                null,
+                NOW.plusSeconds(1)
+        );
+
+        UUID otherDriver = insertProfile("other-driver@chargeops.test");
+        UUID otherBooking = insertBooking(
+                BookingStatus.COMPLETED,
+                firstStart.plusSeconds(25_200),
+                firstStart.plusSeconds(28_800),
+                null,
+                null
+        );
+        jdbcTemplate.update(
+                "UPDATE bookings SET driver_id = ? WHERE id = ?",
+                otherDriver,
+                otherBooking
+        );
+
+        var all = bookingRepository.findAll(
+                BookingSpecification.historyForDriver(
+                        driverId,
+                        new DriverBookingHistoryFilter(
+                                "",
+                                DriverBookingHistoryFilter.HistoryStatus.ALL
+                        ),
+                        NOW
+                ),
+                PageRequest.of(
+                        0,
+                        20,
+                        Sort.by(
+                                Sort.Order.desc("startAt"),
+                                Sort.Order.desc("id")
+                        )
+                )
+        );
+
+        assertThat(all.getContent())
+                .extracting(Booking::getId)
+                .containsExactly(
+                        staleConfirmed,
+                        stalePending,
+                        expired,
+                        cancelled,
+                        completed
+                );
+
+        long completedCount = bookingRepository.count(
+                BookingSpecification.historyForDriver(
+                        driverId,
+                        new DriverBookingHistoryFilter(
+                                "",
+                                DriverBookingHistoryFilter.HistoryStatus.COMPLETED
+                        ),
+                        NOW
+                )
+        );
+        long cancelledCount = bookingRepository.count(
+                BookingSpecification.historyForDriver(
+                        driverId,
+                        new DriverBookingHistoryFilter(
+                                "",
+                                DriverBookingHistoryFilter.HistoryStatus.CANCELLED
+                        ),
+                        NOW
+                )
+        );
+
+        assertThat(completedCount).isOne();
+        assertThat(cancelledCount).isEqualTo(4);
+    }
+
+    @Test
+    void historySpecificationSearchesImmutableSnapshotsAndEscapesWildcards() {
+        UUID matching = insertBooking(
+                BookingStatus.COMPLETED,
+                NOW.minusSeconds(7_200),
+                NOW.minusSeconds(3_600),
+                null,
+                null
+        );
+        UUID other = insertBooking(
+                BookingStatus.CANCELLED,
+                NOW.minusSeconds(14_400),
+                NOW.minusSeconds(10_800),
+                null,
+                null
+        );
+        jdbcTemplate.update(
+                """
+                UPDATE bookings
+                SET booking_code = 'BK-ALPHA-01',
+                    station_name_snapshot = 'Alpha Charging Hub'
+                WHERE id = ?
+                """,
+                matching
+        );
+        jdbcTemplate.update(
+                "UPDATE bookings SET booking_code = 'BK-BETA-01' WHERE id = ?",
+                other
+        );
+
+        var byName = bookingRepository.findAll(
+                BookingSpecification.historyForDriver(
+                        driverId,
+                        new DriverBookingHistoryFilter(
+                                " alpha ",
+                                DriverBookingHistoryFilter.HistoryStatus.ALL
+                        ),
+                        NOW
+                ),
+                PageRequest.of(0, 20)
+        );
+        long wildcardOnly = bookingRepository.count(
+                BookingSpecification.historyForDriver(
+                        driverId,
+                        new DriverBookingHistoryFilter(
+                                "%",
+                                DriverBookingHistoryFilter.HistoryStatus.ALL
+                        ),
+                        NOW
+                )
+        );
+
+        assertThat(byName.getContent())
+                .extracting(Booking::getId)
+                .containsExactly(matching);
+        assertThat(wildcardOnly).isZero();
+    }
+
     private UUID insertProfile(String email) {
         UUID profileId = UUID.randomUUID();
         jdbcTemplate.update(
@@ -241,23 +490,34 @@ class BookingRepositoryIntegrationTest {
         return id;
     }
 
-    private void insertBooking(
+    private UUID insertBooking(
             BookingStatus status,
             Instant startAt,
             Instant endAt,
             Instant expiresAt
     ) {
+        return insertBooking(status, startAt, endAt, expiresAt, null);
+    }
+
+    private UUID insertBooking(
+            BookingStatus status,
+            Instant startAt,
+            Instant endAt,
+            Instant expiresAt,
+            Instant checkInDeadline
+    ) {
+        UUID bookingId = UUID.randomUUID();
         jdbcTemplate.update(
                 """
                 INSERT INTO bookings
                     (id, driver_id, connector_id, start_at, end_at, status,
                      total_amount, station_name_snapshot, station_address_snapshot,
                      charge_point_code_snapshot, connector_code_snapshot,
-                     expires_at, version, created_at, updated_at)
+                     expires_at, check_in_deadline, version, created_at, updated_at)
                 VALUES (?, ?, ?, ?, ?, ?, ?, 'Station', '1 Le Loi',
-                        'CP-01', 'C-01', ?, 0, ?, ?)
+                        'CP-01', 'C-01', ?, ?, 0, ?, ?)
                 """,
-                UUID.randomUUID(),
+                bookingId,
                 driverId,
                 connectorId,
                 Timestamp.from(startAt),
@@ -265,8 +525,12 @@ class BookingRepositoryIntegrationTest {
                 status.name(),
                 new BigDecimal("100000.00"),
                 expiresAt == null ? null : Timestamp.from(expiresAt),
+                checkInDeadline == null
+                        ? null
+                        : Timestamp.from(checkInDeadline),
                 Timestamp.from(NOW),
                 Timestamp.from(NOW)
         );
+        return bookingId;
     }
 }

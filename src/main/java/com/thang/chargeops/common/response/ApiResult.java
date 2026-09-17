@@ -88,6 +88,9 @@ public class ApiResult<T> {
         /** Total number of pages. */
         private Integer totalPages;
 
+        /** Optional query-wide totals for faceted list filters. */
+        private Map<String, Long> counts;
+
         // --- Sort & filter (echoed back for the client) ---
         /** Applied sort expression, echoed back to the client. */
         private String sort;
@@ -210,6 +213,26 @@ public class ApiResult<T> {
      */
     public static <T> ApiResult<List<T>> successPage(Page<T> page) {
         return success(page.getContent(), page.getNumber() + 1, page.getSize(), page.getTotalElements());
+    }
+
+    /**
+     * Paginated success with query-wide facet counts, for filter badges that
+     * cannot be derived from the current page alone.
+     */
+    public static <T> ApiResult<List<T>> successPage(
+            Page<T> page,
+            Map<String, Long> counts
+    ) {
+        return ApiResult.<List<T>>builder()
+                .data(page.getContent())
+                .meta(Meta.builder()
+                        .page(page.getNumber() + 1)
+                        .size(page.getSize())
+                        .totalElements(page.getTotalElements())
+                        .totalPages(page.getTotalPages())
+                        .counts(counts == null ? null : Map.copyOf(counts))
+                        .build())
+                .build();
     }
 
     /**
