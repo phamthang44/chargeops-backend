@@ -9,7 +9,9 @@ import com.thang.chargeops.booking.dto.response.PricePreviewResponse;
 import com.thang.chargeops.booking.pricing.PriceBasis;
 import com.thang.chargeops.booking.service.BookingPricingService;
 import com.thang.chargeops.booking.service.model.DriverBookingHistoryResult;
+import com.thang.chargeops.exception.AppException;
 import com.thang.chargeops.exception.GlobalHandlerError;
+import com.thang.chargeops.exception.errorcode.BookingErrorCode;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
@@ -165,5 +167,21 @@ class BookingControllerTest {
                 .andExpect(jsonPath("$.data.hours").value(4.5));
 
         verify(bookingService).getMyBookingStats();
+    }
+
+    @Test
+    void bookingDetailReturnsDomainForbiddenWhenDriverDoesNotOwnBooking()
+            throws Exception {
+        UUID bookingId = UUID.randomUUID();
+        when(bookingService.getMyBooking(bookingId))
+                .thenThrow(new AppException(
+                        BookingErrorCode.BOOKING_NOT_ACCESS
+                ));
+
+        mockMvc.perform(get("/api/v1/bookings/{bookingId}", bookingId))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error.code").value("BKG_NOT_ACCESS"))
+                .andExpect(jsonPath("$.error.messageKey")
+                        .value("error.booking.notAccess"));
     }
 }

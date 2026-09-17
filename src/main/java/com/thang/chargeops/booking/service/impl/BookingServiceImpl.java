@@ -296,11 +296,7 @@ public class BookingServiceImpl implements BookingService {
     public BookingDetailResponse getMyBooking(UUID bookingId) {
         UserProfile driver = currentProfileProvider.requireProfile();
         Instant evaluatedAt = applicationClock.instant();
-        Booking booking = bookingRepository.findByIdAndDriverId(bookingId, driver.getId())
-                .orElseThrow(() -> new AppException(
-                        CommonErrorCode.RESOURCE_NOT_FOUND,
-                        "Booking not found: " + bookingId
-                ));
+        Booking booking = requireDriverBooking(bookingId, driver.getId());
 
         Payment payment = paymentRepository.findByBookingId(bookingId)
                 .orElseThrow(() -> new AppException(
@@ -318,6 +314,23 @@ public class BookingServiceImpl implements BookingService {
                 booking,
                 payment,
                 snapshot
+        );
+    }
+
+    private Booking requireDriverBooking(UUID bookingId, UUID driverId) {
+        Optional<Booking> booking = bookingRepository.findByIdAndDriverId(
+                bookingId,
+                driverId
+        );
+        if (booking.isPresent()) {
+            return booking.get();
+        }
+        if (bookingRepository.existsById(bookingId)) {
+            throw new AppException(BookingErrorCode.BOOKING_NOT_ACCESS);
+        }
+        throw new AppException(
+                CommonErrorCode.RESOURCE_NOT_FOUND,
+                "Booking not found: " + bookingId
         );
     }
 

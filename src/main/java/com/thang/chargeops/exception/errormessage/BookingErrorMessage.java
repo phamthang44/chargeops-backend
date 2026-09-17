@@ -21,11 +21,12 @@ public final class BookingErrorMessage {
     public static final ErrorMessage.Template CONNECTOR_MISMATCH = template("error.booking.connectorMismatch", "The QR code does not match this connector");
     public static final ErrorMessage.Template STATION_UNAVAILABLE = template("error.booking.stationUnavailable", "The station is unavailable");
     public static final ErrorMessage.Template PENDING_LIMIT_EXCEEDED = template("error.booking.pendingLimitExceeded", "The driver already has the maximum number of pending bookings");
+    public static final ErrorMessage.Template BOOKING_NOT_ACCESS = template("error.booking.notAccess", "You do not have access to this booking");
 
     static List<ErrorMessage.Template> templates() {
         return List.of(TIME_INVALID, SLOT_UNAVAILABLE, PRICE_CHANGED, PRICING_NOT_CONFIGURED,
                 CANCELLATION_CHANGED, STATE_CONFLICT, HOLD_EXPIRED, CHECK_IN_TOO_EARLY,
                 CHECK_IN_CLOSED, QR_INVALID, CONNECTOR_MISMATCH, STATION_UNAVAILABLE,
-                PENDING_LIMIT_EXCEEDED);
+                PENDING_LIMIT_EXCEEDED, BOOKING_NOT_ACCESS);
     }
 }

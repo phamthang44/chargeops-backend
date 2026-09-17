@@ -29,6 +29,9 @@ import com.thang.chargeops.payment.entity.Payment;
 import com.thang.chargeops.payment.entity.PaymentTransaction;
 import com.thang.chargeops.payment.repository.PaymentRepository;
 import com.thang.chargeops.payment.repository.PaymentTransactionRepository;
+import com.thang.chargeops.exception.AppException;
+import com.thang.chargeops.exception.errorcode.BookingErrorCode;
+import com.thang.chargeops.exception.errorcode.CommonErrorCode;
 import com.thang.chargeops.profile.entity.UserProfile;
 import com.thang.chargeops.profile.support.CurrentProfileProvider;
 import com.thang.chargeops.station.entity.ChargePoint;
@@ -381,6 +384,56 @@ class BookingServiceImplTest {
                 .isEqualTo(BookingDetailResponse.CheckoutState.READY);
         assertThat(snapshot.checkout().expiresAt())
                 .isEqualTo(checkoutExpiresAt);
+    }
+
+    @Test
+    void rejectsDetailAccessWhenBookingBelongsToAnotherDriver() {
+        when(currentProfileProvider.requireProfile()).thenReturn(driver);
+        when(applicationClock.instant()).thenReturn(DECISION_AT);
+        when(bookingRepository.findByIdAndDriverId(BOOKING_ID, DRIVER_ID))
+                .thenReturn(Optional.empty());
+        when(bookingRepository.existsById(BOOKING_ID)).thenReturn(true);
+
+        assertThatThrownBy(() -> service.getMyBooking(BOOKING_ID))
+                .isInstanceOfSatisfying(
+                        AppException.class,
+                        exception -> {
+                            assertThat(exception.getErrorCode())
+                                    .isEqualTo(BookingErrorCode.BOOKING_NOT_ACCESS);
+                            assertThat(exception.getHttpStatus().value())
+                                    .isEqualTo(403);
+                        }
+                );
+
+        verifyNoInteractions(
+                paymentRepository,
+                paymentTransactionRepository,
+                bookingMapper,
+                driverBookingReadPolicy
+        );
+    }
+
+    @Test
+    void returnsNotFoundWhenBookingIdDoesNotExist() {
+        when(currentProfileProvider.requireProfile()).thenReturn(driver);
+        when(applicationClock.instant()).thenReturn(DECISION_AT);
+        when(bookingRepository.findByIdAndDriverId(BOOKING_ID, DRIVER_ID))
+                .thenReturn(Optional.empty());
+        when(bookingRepository.existsById(BOOKING_ID)).thenReturn(false);
+
+        assertThatThrownBy(() -> service.getMyBooking(BOOKING_ID))
+                .isInstanceOfSatisfying(
+                        AppException.class,
+                        exception -> assertThat(exception.getErrorCode())
+                                .isEqualTo(CommonErrorCode.RESOURCE_NOT_FOUND)
+                );
+
+        verifyNoInteractions(
+                paymentRepository,
+                paymentTransactionRepository,
+                bookingMapper,
+                driverBookingReadPolicy
+        );
     }
 
     @Test

@@ -122,6 +122,7 @@ public class BookingMapper {
                 .checkInDeadline(booking.getCheckInDeadline())
                 .checkedInAt(booking.getCheckedInAt())
                 .chargingStartedAt(booking.getChargingStartedAt())
+                .createdAt(booking.getCreatedAt())
                 .actions(toActions(evaluation.capabilities()))
                 .build();
     }
@@ -171,6 +172,7 @@ public class BookingMapper {
                 .checkedInAt(booking.getCheckedInAt())
                 .chargingStartedAt(booking.getChargingStartedAt())
                 .completedAt(booking.getCompletedAt())
+                .createdAt(booking.getCreatedAt())
                 .payment(toPaymentDetail(payment, snapshot))
                 .checkout(snapshot.checkout())
                 .refunds(snapshot.refunds())

@@ -21,7 +21,8 @@ public enum BookingErrorCode implements BaseErrorCode {
     QR_INVALID(HttpStatus.CONFLICT, "BKG_QR_INVALID", BookingErrorMessage.QR_INVALID),
     CONNECTOR_MISMATCH(HttpStatus.CONFLICT, "BKG_CONNECTOR_MISMATCH", BookingErrorMessage.CONNECTOR_MISMATCH),
     STATION_UNAVAILABLE(HttpStatus.CONFLICT, "BKG_STATION_UNAVAILABLE", BookingErrorMessage.STATION_UNAVAILABLE),
-    PENDING_LIMIT_EXCEEDED(HttpStatus.CONFLICT, "BKG_PENDING_LIMIT_EXCEEDED", BookingErrorMessage.PENDING_LIMIT_EXCEEDED);
+    PENDING_LIMIT_EXCEEDED(HttpStatus.CONFLICT, "BKG_PENDING_LIMIT_EXCEEDED", BookingErrorMessage.PENDING_LIMIT_EXCEEDED),
+    BOOKING_NOT_ACCESS(HttpStatus.FORBIDDEN, "BKG_NOT_ACCESS", BookingErrorMessage.BOOKING_NOT_ACCESS);
 
     private final HttpStatus httpStatus;
     private final String code;

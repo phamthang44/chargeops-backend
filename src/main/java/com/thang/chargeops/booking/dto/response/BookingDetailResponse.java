@@ -45,6 +45,7 @@ public record BookingDetailResponse(
         Instant checkedInAt,
         Instant chargingStartedAt,
         Instant completedAt,
+        Instant createdAt,
         PaymentDetail payment,
         CheckoutDetail checkout,
         List<RefundSummary> refunds,
