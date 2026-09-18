@@ -26,6 +26,7 @@ import org.springframework.validation.FieldError;
 import org.springframework.validation.method.ParameterErrors;
 import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.bind.MissingRequestHeaderException;
 import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
@@ -95,6 +96,7 @@ public class GlobalHandlerError {
             HandlerMethodValidationException.class,
             ConstraintViolationException.class,
             MissingServletRequestParameterException.class,
+            MissingRequestHeaderException.class,
             IllegalArgumentException.class
     })
     public ResponseEntity<ApiResult<?>> handleValidationException(Exception e) {
@@ -122,6 +124,10 @@ public class GlobalHandlerError {
             messageKey = ValidationErrorMessage.REQUIRED_PARAMETER_KEY;
             message = ValidationErrorMessage.REQUIRED_PARAMETER.format(ex.getParameterName());
             details = Map.of(ex.getParameterName(), new ValidationFailure(messageKey, message));
+        } else if (e instanceof MissingRequestHeaderException ex) {
+            messageKey = ValidationErrorMessage.REQUIRED_PARAMETER_KEY;
+            message = ValidationErrorMessage.REQUIRED_PARAMETER.format(ex.getHeaderName());
+            details = Map.of(ex.getHeaderName(), new ValidationFailure(messageKey, message));
         } else if (e instanceof IllegalArgumentException ex) {
             messageKey = ValidationErrorMessage.INVALID_INPUT_KEY;
             message = hasText(ex.getMessage()) ? ex.getMessage() : ValidationErrorMessage.INVALID_INPUT.defaultMessage();

@@ -166,7 +166,7 @@ class PaymentJpaMappingTest {
                 "{\"gateway\":\"SEPAY\",\"accountNumber\":\"ACC-VN-1\",\"transferAmount\":120000}"
         );
         PaymentTransaction tx = PaymentTransaction.create(payment, receipt);
-        transactionRepository.saveAndFlush(tx);
+        tx = transactionRepository.saveAndFlush(tx);
 
         entityManager.clear();
 

@@ -2,13 +2,19 @@ package com.thang.chargeops.booking.controller;
 
 import com.thang.chargeops.booking.config.BookingPolicyConfig;
 import com.thang.chargeops.booking.dto.filter.DriverBookingHistoryFilter;
+import com.thang.chargeops.booking.dto.request.CreateBookingRequest;
 import com.thang.chargeops.booking.dto.request.PricePreviewRequest;
 import com.thang.chargeops.booking.dto.response.BookingStatsResponse;
+import com.thang.chargeops.booking.dto.response.CreateBookingResponse;
 import com.thang.chargeops.booking.dto.response.DriverBookingListItemResponse;
 import com.thang.chargeops.booking.dto.response.PricePreviewResponse;
 import com.thang.chargeops.booking.pricing.PriceBasis;
 import com.thang.chargeops.booking.service.BookingPricingService;
 import com.thang.chargeops.booking.service.model.DriverBookingHistoryResult;
+import com.thang.chargeops.common.enums.BookingStatus;
+import com.thang.chargeops.common.enums.CheckoutStatus;
+import com.thang.chargeops.common.enums.PaymentMethod;
+import com.thang.chargeops.common.enums.PaymentStatus;
 import com.thang.chargeops.exception.AppException;
 import com.thang.chargeops.exception.GlobalHandlerError;
 import com.thang.chargeops.exception.errorcode.BookingErrorCode;
@@ -183,5 +189,161 @@ class BookingControllerTest {
                 .andExpect(jsonPath("$.error.code").value("BKG_NOT_ACCESS"))
                 .andExpect(jsonPath("$.error.messageKey")
                         .value("error.booking.notAccess"));
+    }
+
+    @Test
+    void createBooking_success_returns201WithPendingBookingAndPayment() throws Exception {
+        UUID requestKey = UUID.randomUUID();
+        UUID bookingId = UUID.randomUUID();
+        UUID connectorId = UUID.randomUUID();
+        UUID paymentId = UUID.randomUUID();
+        Instant startAt = Instant.parse("2026-09-16T03:00:00Z");
+        Instant endAt = Instant.parse("2026-09-16T04:00:00Z");
+        Instant expiresAt = Instant.parse("2026-09-16T02:10:00Z");
+        String pricingVersion = "a".repeat(64);
+
+        CreateBookingResponse response = CreateBookingResponse.builder()
+                .bookingId(bookingId)
+                .bookingCode("BK-20260916-0001")
+                .status(BookingStatus.PENDING)
+                .version(0L)
+                .connectorId(connectorId)
+                .startAt(startAt)
+                .endAt(endAt)
+                .durationMin(60)
+                .totalAmount(126000L)
+                .currency("VND")
+                .paymentHoldExpiresAt(expiresAt)
+                .payment(new CreateBookingResponse.PaymentSummary(paymentId, PaymentStatus.PENDING, PaymentMethod.SIMULATOR))
+                .checkout(new CreateBookingResponse.CheckoutSummary(CheckoutStatus.NOT_CREATED))
+                .build();
+
+        when(bookingService.createNewBooking(eq(requestKey), any(CreateBookingRequest.class)))
+                .thenReturn(response);
+
+        mockMvc.perform(post("/api/v1/bookings")
+                        .header("Idempotency-Key", requestKey)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "connectorId": "%s",
+                                  "startAt": "2026-09-16T03:00:00Z",
+                                  "durationMin": 60,
+                                  "acceptedTotalAmount": 126000,
+                                  "acceptedPricingVersion": "%s",
+                                  "acceptedPolicyVersion": "booking-v4.9",
+                                  "paymentMethod": "SIMULATOR"
+                                }
+                                """.formatted(connectorId, pricingVersion)))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.data.bookingId").value(bookingId.toString()))
+                .andExpect(jsonPath("$.data.bookingCode").value("BK-20260916-0001"))
+                .andExpect(jsonPath("$.data.status").value("PENDING"))
+                .andExpect(jsonPath("$.data.totalAmount").value(126000))
+                .andExpect(jsonPath("$.data.payment.paymentId").value(paymentId.toString()))
+                .andExpect(jsonPath("$.data.payment.status").value("PENDING"))
+                .andExpect(jsonPath("$.data.checkout.status").value("NOT_CREATED"));
+    }
+
+    @Test
+    void createBooking_missingIdempotencyKey_returns400BadRequest() throws Exception {
+        UUID connectorId = UUID.randomUUID();
+        mockMvc.perform(post("/api/v1/bookings")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "connectorId": "%s",
+                                  "startAt": "2026-09-16T03:00:00Z",
+                                  "durationMin": 60,
+                                  "acceptedTotalAmount": 126000,
+                                  "acceptedPricingVersion": "%s",
+                                  "acceptedPolicyVersion": "booking-v4.9",
+                                  "paymentMethod": "SIMULATOR"
+                                }
+                                """.formatted(connectorId, "a".repeat(64))))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void createBooking_priceChanged_returns409ConflictWithLatestPricePreview() throws Exception {
+        UUID requestKey = UUID.randomUUID();
+        UUID connectorId = UUID.randomUUID();
+        Map<String, Object> latestPreview = Map.of(
+                "totalAmount", 156000,
+                "pricingVersion", "b".repeat(64)
+        );
+        when(bookingService.createNewBooking(eq(requestKey), any(CreateBookingRequest.class)))
+                .thenThrow(AppException.withDetails(
+                        BookingErrorCode.PRICE_CHANGED,
+                        Map.of("latestPricePreview", latestPreview)
+                ));
+
+        mockMvc.perform(post("/api/v1/bookings")
+                        .header("Idempotency-Key", requestKey)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "connectorId": "%s",
+                                  "startAt": "2026-09-16T03:00:00Z",
+                                  "durationMin": 60,
+                                  "acceptedTotalAmount": 126000,
+                                  "acceptedPricingVersion": "%s",
+                                  "acceptedPolicyVersion": "booking-v4.9",
+                                  "paymentMethod": "SIMULATOR"
+                                }
+                                """.formatted(connectorId, "a".repeat(64))))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error.code").value("BKG_PRICE_CHANGED"))
+                .andExpect(jsonPath("$.error.details.latestPricePreview.totalAmount").value(156000));
+    }
+
+    @Test
+    void createBooking_slotUnavailable_returns409Conflict() throws Exception {
+        UUID requestKey = UUID.randomUUID();
+        UUID connectorId = UUID.randomUUID();
+        when(bookingService.createNewBooking(eq(requestKey), any(CreateBookingRequest.class)))
+                .thenThrow(new AppException(BookingErrorCode.SLOT_UNAVAILABLE));
+
+        mockMvc.perform(post("/api/v1/bookings")
+                        .header("Idempotency-Key", requestKey)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "connectorId": "%s",
+                                  "startAt": "2026-09-16T03:00:00Z",
+                                  "durationMin": 60,
+                                  "acceptedTotalAmount": 126000,
+                                  "acceptedPricingVersion": "%s",
+                                  "acceptedPolicyVersion": "booking-v4.9",
+                                  "paymentMethod": "SIMULATOR"
+                                }
+                                """.formatted(connectorId, "a".repeat(64))))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error.code").value("BKG_SLOT_UNAVAILABLE"));
+    }
+
+    @Test
+    void createBooking_pendingLimitExceeded_returns409Conflict() throws Exception {
+        UUID requestKey = UUID.randomUUID();
+        UUID connectorId = UUID.randomUUID();
+        when(bookingService.createNewBooking(eq(requestKey), any(CreateBookingRequest.class)))
+                .thenThrow(new AppException(BookingErrorCode.PENDING_LIMIT_EXCEEDED));
+
+        mockMvc.perform(post("/api/v1/bookings")
+                        .header("Idempotency-Key", requestKey)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "connectorId": "%s",
+                                  "startAt": "2026-09-16T03:00:00Z",
+                                  "durationMin": 60,
+                                  "acceptedTotalAmount": 126000,
+                                  "acceptedPricingVersion": "%s",
+                                  "acceptedPolicyVersion": "booking-v4.9",
+                                  "paymentMethod": "SIMULATOR"
+                                }
+                                """.formatted(connectorId, "a".repeat(64))))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error.code").value("BKG_PENDING_LIMIT_EXCEEDED"));
     }
 }

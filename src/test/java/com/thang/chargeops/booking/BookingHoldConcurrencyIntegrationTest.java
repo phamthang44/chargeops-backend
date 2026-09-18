@@ -307,6 +307,61 @@ class BookingHoldConcurrencyIntegrationTest {
 
     @Test
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    void driverWithConfirmedPaidBooking_canBookAnotherConnectorWithoutPendingLimitError() {
+        Instant startAt = Instant.parse("2026-09-16T10:00:00Z");
+        Instant endAt = Instant.parse("2026-09-16T11:00:00Z");
+        UUID paidBookingId = UUID.randomUUID();
+
+        // 1. Driver A đã có sẵn 1 booking đã thanh toán (CONFIRMED) trên Connector 1
+        requiresNewTransaction().executeWithoutResult(status -> {
+            jdbcTemplate.update("""
+                    INSERT INTO bookings(id, driver_id, connector_id, start_at, end_at, status,
+                                         total_amount, station_name_snapshot, station_address_snapshot,
+                                         charge_point_code_snapshot, connector_code_snapshot, expires_at,
+                                         payment_confirmed_at, version, created_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?, 'CONFIRMED', 126000,
+                            'Station Concurrency', 'Address', 'CP-01', 'CON-01', NULL,
+                            ?, 0, ?, ?)
+                    """,
+                    paidBookingId, driverAId, connector1Id,
+                    Timestamp.from(startAt), Timestamp.from(endAt),
+                    Timestamp.from(NOW),
+                    Timestamp.from(NOW),
+                    Timestamp.from(NOW)
+            );
+        });
+
+        // 2. Driver A tiếp tục đặt một booking mới trên Connector 2 cùng khoảng thời gian
+        Booking newBooking = harness.attemptHold(driverAId, connector2Id, startAt, endAt, "BK-PAID-OVERLAP");
+
+        // 3. Nghiệm thu tiêu chí BKG-022:
+        // - Booking mới tạo thành công ở trạng thái PENDING
+        assertThat(newBooking).isNotNull();
+        assertThat(newBooking.getStatus()).isEqualTo(BookingStatus.PENDING);
+        assertThat(newBooking.getConnector().getId()).isEqualTo(connector2Id);
+
+        // - Driver A hiện có 2 booking: 1 CONFIRMED và 1 PENDING (không cấm booking đã trả bị chồng giờ ở cổng khác)
+        Long totalBookings = jdbcTemplate.queryForObject(
+                "SELECT count(*) FROM bookings WHERE driver_id = ?",
+                Long.class, driverAId
+        );
+        assertThat(totalBookings).isEqualTo(2L);
+
+        Long pendingBookings = jdbcTemplate.queryForObject(
+                "SELECT count(*) FROM bookings WHERE driver_id = ? AND status = 'PENDING'",
+                Long.class, driverAId
+        );
+        assertThat(pendingBookings).isEqualTo(1L);
+
+        Long confirmedBookings = jdbcTemplate.queryForObject(
+                "SELECT count(*) FROM bookings WHERE driver_id = ? AND status = 'CONFIRMED'",
+                Long.class, driverAId
+        );
+        assertThat(confirmedBookings).isEqualTo(1L);
+    }
+
+    @Test
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     void twoConsecutiveIntervals_touchingEndpoints_bothSucceedWithoutOverlapConflict() {
         Instant slot1Start = Instant.parse("2026-09-16T10:00:00Z");
         Instant slot1End = Instant.parse("2026-09-16T11:00:00Z");

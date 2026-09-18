@@ -416,6 +416,66 @@ class BookingPricingServiceImplTest {
         assertThat(cleanResponse.overlapWarnings()).isEmpty();
     }
 
+    @Test
+    void repriceUnderLock_whenTariffChangesToPeak_returnsNewPriceLinesAndDifferentVersion() {
+        UUID stationId = UUID.randomUUID();
+        allowSchedule(stationId);
+        UUID connectorId = UUID.randomUUID();
+        Instant startAt = NOW.plusSeconds(3600);
+        Instant endAt = startAt.plusSeconds(3600);
+        Connector connector = connector(station(stationId), connectorId);
+
+        when(bookingPolicyConfig.toPolicyResponse())
+                .thenReturn(BookingPolicyConfig.defaults().toPolicyResponse());
+
+        when(stationPricingService.resolvePriceRanges(stationId, NOW, startAt, endAt))
+                .thenReturn(List.of(new StationPriceRange(startAt, endAt, BigDecimal.valueOf(3400), TouRatePeriodCode.NORMAL)))
+                .thenReturn(List.of(new StationPriceRange(startAt, endAt, BigDecimal.valueOf(4500), TouRatePeriodCode.PEAK)));
+
+        PricePreviewResponse normal = service.repriceUnderLock(defaultDriver, connector, startAt, 60, NOW);
+        PricePreviewResponse peak = service.repriceUnderLock(defaultDriver, connector, startAt, 60, NOW);
+
+        assertThat(normal.totalAmount()).isEqualTo(126000L);
+        assertThat(peak.totalAmount()).isEqualTo(167000L);
+        assertThat(peak.pricingVersion()).isNotEqualTo(normal.pricingVersion());
+        assertThat(peak.priceLines().get(0).periodCode()).isEqualTo(TouRatePeriodCode.PEAK);
+    }
+
+    @Test
+    void previewBookingPrice_crossMidnightAcrossDayBoundary_splitsPriceLinesAccurately() {
+        UUID stationId = UUID.randomUUID();
+        allowSchedule(stationId);
+        UUID connectorId = UUID.randomUUID();
+        Instant startAt = Instant.parse("2026-09-10T16:30:00Z"); // 23:30 VN
+        Instant midnight = Instant.parse("2026-09-10T17:00:00Z"); // 00:00 VN
+        Instant endAt = Instant.parse("2026-09-10T18:00:00Z"); // 01:00 VN next day
+        Connector connector = connector(station(stationId), connectorId);
+
+        when(connectorRepository.findByIdWithChargePointAndStation(connectorId))
+                .thenReturn(Optional.of(connector));
+        when(bookingPolicyConfig.toPolicyResponse())
+                .thenReturn(BookingPolicyConfig.defaults().toPolicyResponse());
+
+        when(stationPricingService.resolvePriceRanges(stationId, NOW, startAt, endAt))
+                .thenReturn(List.of(
+                        new StationPriceRange(startAt, midnight, BigDecimal.valueOf(3400), TouRatePeriodCode.NORMAL),
+                        new StationPriceRange(midnight, endAt, BigDecimal.valueOf(2500), TouRatePeriodCode.OFF_PEAK)
+                ));
+
+        PricePreviewResponse response = service.previewBookingPrice(
+                new PricePreviewRequest(connectorId, startAt, 90)
+        );
+
+        assertThat(response.priceLines()).hasSize(2);
+        assertThat(response.priceLines().get(0).durationMin()).isEqualTo(30);
+        assertThat(response.priceLines().get(0).periodCode()).isEqualTo(TouRatePeriodCode.NORMAL);
+        assertThat(response.priceLines().get(1).durationMin()).isEqualTo(60);
+        assertThat(response.priceLines().get(1).periodCode()).isEqualTo(TouRatePeriodCode.OFF_PEAK);
+        long expectedTotal = response.priceLines().get(0).amount() + response.priceLines().get(1).amount();
+        assertThat(response.totalAmount()).isEqualTo(expectedTotal);
+        assertThat(response.pricingVersion()).hasSize(64);
+    }
+
     private void allowSchedule(UUID stationId) {
         when(scheduleRepository.findActiveByStationId(stationId, NOW)).thenReturn(Optional.of(
                 StationOperatingSchedule.builder().open24Hours(true)
