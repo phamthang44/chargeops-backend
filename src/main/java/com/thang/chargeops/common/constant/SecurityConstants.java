@@ -17,6 +17,7 @@ public final class SecurityConstants {
             "/error",
             "/api/v1/administrative-units/**",
             "/api/v1/legal-documents/**",
+            "/api/v1/legal-documents/terms-of-service",
             // Actuator (health/info/prometheus) — Prometheus scrapes without a token.
             // In prod keep these off the public Nginx route; Prometheus reaches them on the internal network.
             "/actuator/**"

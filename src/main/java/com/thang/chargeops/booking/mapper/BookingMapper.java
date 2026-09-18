@@ -122,7 +122,6 @@ public class BookingMapper {
                 .checkInDeadline(booking.getCheckInDeadline())
                 .checkedInAt(booking.getCheckedInAt())
                 .chargingStartedAt(booking.getChargingStartedAt())
-                .createdAt(booking.getCreatedAt())
                 .actions(toActions(evaluation.capabilities()))
                 .build();
     }

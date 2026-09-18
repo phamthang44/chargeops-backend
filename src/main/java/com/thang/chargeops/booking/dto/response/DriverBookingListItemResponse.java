@@ -40,7 +40,6 @@ public record DriverBookingListItemResponse(
         Instant checkInDeadline,
         Instant checkedInAt,
         Instant chargingStartedAt,
-        Instant createdAt,
 
         BookingActionsResponse actions
 ) {
