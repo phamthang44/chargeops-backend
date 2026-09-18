@@ -23,6 +23,7 @@ import java.util.UUID;
 
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @WebMvcTest(BookingController.class)
@@ -74,6 +75,9 @@ class BookingControllerSecurityTest {
         mockMvc.perform(get("/api/v1/bookings/{bookingId}", bookingId))
                 .andExpect(status().isForbidden());
         mockMvc.perform(get("/api/v1/bookings/stats"))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(post("/api/v1/bookings/{bookingId}/checkout", bookingId)
+                        .header("Idempotency-Key", UUID.randomUUID()))
                 .andExpect(status().isForbidden());
 
         verifyNoInteractions(bookingService);

@@ -1,6 +1,7 @@
 package com.thang.chargeops.booking.service.impl;
 
 import com.thang.chargeops.booking.command.BookingCommand;
+import com.thang.chargeops.booking.command.BookingCommandInFlightLock;
 import com.thang.chargeops.booking.command.BookingCommandOperation;
 import com.thang.chargeops.booking.command.BookingCommandPayloadHasher;
 import com.thang.chargeops.booking.command.BookingCommandRegistry;
@@ -21,6 +22,7 @@ import com.thang.chargeops.booking.projection.BookingCompletedSessionProjection;
 import com.thang.chargeops.booking.repository.BookingRepository;
 import com.thang.chargeops.booking.repository.specs.BookingSpecification;
 import com.thang.chargeops.booking.service.BookingHoldCoordinator;
+import com.thang.chargeops.booking.service.BookingCheckoutPersistence;
 import com.thang.chargeops.booking.service.BookingPricingService;
 import com.thang.chargeops.booking.service.BookingService;
 import com.thang.chargeops.booking.service.model.BookingReadSnapshot;
@@ -37,6 +39,8 @@ import com.thang.chargeops.exception.errorcode.CommonErrorCode;
 import com.thang.chargeops.exception.errorcode.PaymentErrorCode;
 import com.thang.chargeops.payment.entity.Payment;
 import com.thang.chargeops.payment.entity.PaymentTransaction;
+import com.thang.chargeops.payment.gateway.PaymentGatewayRegistry;
+import com.thang.chargeops.payment.model.OrderCheckout;
 import com.thang.chargeops.payment.model.PendingPaymentSpec;
 import com.thang.chargeops.payment.repository.PaymentRepository;
 import com.thang.chargeops.payment.repository.PaymentTransactionRepository;
@@ -86,13 +90,15 @@ public class BookingServiceImpl implements BookingService {
     private final PaymentTransactionRepository paymentTransactionRepository;
     private final DriverBookingReadPolicy driverBookingReadPolicy;
     private final BookingStatusHistoryRecorder bookingStatusHistoryRecorder;
+    private final PaymentGatewayRegistry paymentGatewayRegistry;
+    private final BookingCheckoutPersistence bookingCheckoutPersistence;
+    private final BookingCommandInFlightLock bookingCommandInFlightLock;
     private final Clock applicationClock;
 
     @Transactional
     @Override
     public CreateBookingResponse createNewBooking(UUID requestKey, CreateBookingRequest request) {
-        //Với phạm vi hiện tại, nên chỉ hỗ trợ SIMULATOR.
-        if (request.paymentMethod() != PaymentMethod.SIMULATOR) {
+        if (!paymentGatewayRegistry.supports(request.paymentMethod())) {
             throw new AppException(PaymentErrorCode.METHOD_INVALID);
         }
         UserProfile driver = currentProfileProvider.requireProfile();
@@ -177,6 +183,54 @@ public class BookingServiceImpl implements BookingService {
         );
         log.info(LogConstant.SERVICE_LOG_FORMAT, LogConstant.ACTION_SUCCESS, "createNewBooking", savedBooking.getId(), request);
         return bookingMapper.toCreateBookingResponse(savedBooking, savedPayment);
+    }
+
+    @Override
+    public CheckoutResponse createCheckout(UUID bookingId, UUID requestKey) {
+        UserProfile driver = currentProfileProvider.requireProfile();
+        String payloadHash = BookingCommandPayloadHasher.sha256(
+                "CHECKOUT:" + bookingId
+        );
+        Instant evaluatedAt = applicationClock.instant();
+
+        return bookingCommandInFlightLock.executeWithLock(
+                driver.getId(),
+                BookingCommandOperation.CREATE_CHECKOUT,
+                requestKey,
+                () -> {
+                    Optional<UUID> replay = bookingCommandRegistry.findReplay(
+                            driver.getId(),
+                            BookingCommandOperation.CREATE_CHECKOUT,
+                            requestKey,
+                            payloadHash
+                    );
+                    if (replay.isPresent()) {
+                        return bookingCheckoutPersistence.loadReplay(
+                                replay.get(),
+                                driver.getId(),
+                                evaluatedAt
+                        );
+                    }
+
+                    Payment payment = bookingCheckoutPersistence.prepareCheckout(
+                            bookingId,
+                            driver.getId(),
+                            evaluatedAt
+                    );
+                    OrderCheckout checkout = payment.getProviderOrderRef() == null
+                            ? paymentGatewayRegistry.createCheckout(payment, evaluatedAt)
+                            : null;
+
+                    return bookingCheckoutPersistence.completeCheckout(
+                            bookingId,
+                            driver.getId(),
+                            requestKey,
+                            payloadHash,
+                            checkout,
+                            applicationClock.instant()
+                    );
+                }
+        );
     }
 
     @Override
@@ -418,7 +472,9 @@ public class BookingServiceImpl implements BookingService {
                 state,
                 payment.getMethod(),
                 payment.getProviderExpiresAt(),
-                null,
+                payment.getMethod() == PaymentMethod.SIMULATOR
+                        ? "Complete payment in the simulator before the hold expires."
+                        : null,
                 payment.getProviderOrderRef(),
                 payment.getQrCodeUrl()
         );

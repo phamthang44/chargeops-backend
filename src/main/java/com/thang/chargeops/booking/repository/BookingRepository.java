@@ -187,4 +187,11 @@ public interface BookingRepository extends JpaRepository<Booking, UUID>, JpaSpec
 
     Optional<Booking> findByIdAndDriverId(UUID bookingId, UUID driverId);
 
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT b FROM Booking b WHERE b.id = :bookingId AND b.driver.id = :driverId")
+    Optional<Booking> findByIdAndDriverIdWithLock(
+            @Param("bookingId") UUID bookingId,
+            @Param("driverId") UUID driverId
+    );
+
 }

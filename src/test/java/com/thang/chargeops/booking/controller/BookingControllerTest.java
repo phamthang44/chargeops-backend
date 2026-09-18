@@ -5,6 +5,7 @@ import com.thang.chargeops.booking.dto.filter.DriverBookingHistoryFilter;
 import com.thang.chargeops.booking.dto.request.CreateBookingRequest;
 import com.thang.chargeops.booking.dto.request.PricePreviewRequest;
 import com.thang.chargeops.booking.dto.response.BookingStatsResponse;
+import com.thang.chargeops.booking.dto.response.CheckoutResponse;
 import com.thang.chargeops.booking.dto.response.CreateBookingResponse;
 import com.thang.chargeops.booking.dto.response.DriverBookingListItemResponse;
 import com.thang.chargeops.booking.dto.response.PricePreviewResponse;
@@ -18,6 +19,7 @@ import com.thang.chargeops.common.enums.PaymentStatus;
 import com.thang.chargeops.exception.AppException;
 import com.thang.chargeops.exception.GlobalHandlerError;
 import com.thang.chargeops.exception.errorcode.BookingErrorCode;
+import com.thang.chargeops.exception.errorcode.PaymentErrorCode;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
@@ -262,6 +264,55 @@ class BookingControllerTest {
                                 }
                                 """.formatted(connectorId, "a".repeat(64))))
                 .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void createCheckout_success_returns200() throws Exception {
+        UUID bookingId = UUID.randomUUID();
+        UUID requestKey = UUID.randomUUID();
+        Instant expiresAt = Instant.parse("2026-09-16T02:10:00Z");
+        when(bookingService.createCheckout(bookingId, requestKey))
+                .thenReturn(new CheckoutResponse(
+                        CheckoutStatus.READY,
+                        PaymentMethod.SIMULATOR,
+                        expiresAt,
+                        "Complete payment in the simulator before the hold expires.",
+                        "SIM-ORDER-1",
+                        "https://simulator.chargeops.local/checkout/ORDER-1"
+                ));
+
+        mockMvc.perform(post("/api/v1/bookings/{bookingId}/checkout", bookingId)
+                        .header("Idempotency-Key", requestKey))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("READY"))
+                .andExpect(jsonPath("$.data.method").value("SIMULATOR"))
+                .andExpect(jsonPath("$.data.expiresAt").value(expiresAt.toString()))
+                .andExpect(jsonPath("$.data.checkoutReference").value("SIM-ORDER-1"));
+    }
+
+    @Test
+    void createCheckout_missingIdempotencyKey_returns400() throws Exception {
+        mockMvc.perform(post(
+                        "/api/v1/bookings/{bookingId}/checkout",
+                        UUID.randomUUID()
+                ))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void createCheckout_gatewayUnavailable_returns503() throws Exception {
+        UUID bookingId = UUID.randomUUID();
+        UUID requestKey = UUID.randomUUID();
+        when(bookingService.createCheckout(bookingId, requestKey))
+                .thenThrow(new AppException(
+                        PaymentErrorCode.CHECKOUT_UNAVAILABLE
+                ));
+
+        mockMvc.perform(post("/api/v1/bookings/{bookingId}/checkout", bookingId)
+                        .header("Idempotency-Key", requestKey))
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(jsonPath("$.error.code")
+                        .value("PAY_CHECKOUT_UNAVAILABLE"));
     }
 
     @Test

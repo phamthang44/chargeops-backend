@@ -1,6 +1,7 @@
 package com.thang.chargeops.booking.service;
 
 import com.thang.chargeops.booking.command.BookingCommand;
+import com.thang.chargeops.booking.command.BookingCommandInFlightLock;
 import com.thang.chargeops.booking.command.BookingCommandOperation;
 import com.thang.chargeops.booking.command.BookingCommandRegistry;
 import com.thang.chargeops.booking.config.BookingPolicyConfig;
@@ -9,6 +10,7 @@ import com.thang.chargeops.booking.dto.request.CreateBookingRequest;
 import com.thang.chargeops.booking.dto.response.BookingDetailResponse;
 import com.thang.chargeops.booking.dto.response.BookingPolicyResponse;
 import com.thang.chargeops.booking.dto.response.BookingStatsResponse;
+import com.thang.chargeops.booking.dto.response.CheckoutResponse;
 import com.thang.chargeops.booking.dto.response.CreateBookingResponse;
 import com.thang.chargeops.booking.dto.response.DriverBookingListItemResponse;
 import com.thang.chargeops.booking.dto.response.PricePreviewResponse;
@@ -27,10 +29,13 @@ import com.thang.chargeops.common.enums.PaymentMethod;
 import com.thang.chargeops.common.enums.PaymentApplicationClassification;
 import com.thang.chargeops.payment.entity.Payment;
 import com.thang.chargeops.payment.entity.PaymentTransaction;
+import com.thang.chargeops.payment.gateway.PaymentGatewayRegistry;
+import com.thang.chargeops.payment.model.OrderCheckout;
 import com.thang.chargeops.payment.repository.PaymentRepository;
 import com.thang.chargeops.payment.repository.PaymentTransactionRepository;
 import com.thang.chargeops.exception.AppException;
 import com.thang.chargeops.exception.errorcode.BookingErrorCode;
+import com.thang.chargeops.exception.errorcode.CommandErrorCode;
 import com.thang.chargeops.exception.errorcode.CommonErrorCode;
 import com.thang.chargeops.profile.entity.UserProfile;
 import com.thang.chargeops.profile.support.CurrentProfileProvider;
@@ -86,6 +91,9 @@ class BookingServiceImplTest {
     @Mock private PaymentTransactionRepository paymentTransactionRepository;
     @Mock private DriverBookingReadPolicy driverBookingReadPolicy;
     @Mock private BookingStatusHistoryRecorder bookingStatusHistoryRecorder;
+    @Mock private PaymentGatewayRegistry paymentGatewayRegistry;
+    @Mock private BookingCheckoutPersistence bookingCheckoutPersistence;
+    @Mock private BookingCommandInFlightLock bookingCommandInFlightLock;
     @Mock private Clock applicationClock;
 
     private BookingServiceImpl service;
@@ -110,6 +118,9 @@ class BookingServiceImplTest {
                 paymentTransactionRepository,
                 driverBookingReadPolicy,
                 bookingStatusHistoryRecorder,
+                paymentGatewayRegistry,
+                bookingCheckoutPersistence,
+                bookingCommandInFlightLock,
                 applicationClock
         );
 
@@ -120,6 +131,13 @@ class BookingServiceImplTest {
         policy = mock(BookingPolicyResponse.class);
 
         when(driver.getId()).thenReturn(DRIVER_ID);
+        lenient().when(bookingCommandInFlightLock.executeWithLock(any(), any(), any(), any()))
+                .thenAnswer(invocation -> {
+                    java.util.function.Supplier<?> action = invocation.getArgument(3);
+                    return action != null ? action.get() : null;
+                });
+        lenient().when(paymentGatewayRegistry.supports(PaymentMethod.SIMULATOR))
+                .thenReturn(true);
 
         currentPrice = new PricePreviewResponse(
                 PRICING_VERSION,
@@ -133,6 +151,106 @@ class BookingServiceImplTest {
                 null,
                 policy,
                 List.of()
+        );
+    }
+
+    @Test
+    void createsCheckoutOutsidePersistenceTransactionAndStoresTheResult() {
+        Payment payment = mock(Payment.class);
+        OrderCheckout orderCheckout = mock(OrderCheckout.class);
+        CheckoutResponse expected = new CheckoutResponse(
+                com.thang.chargeops.common.enums.CheckoutStatus.READY,
+                PaymentMethod.SIMULATOR,
+                DECISION_AT.plusSeconds(600),
+                "Pay in simulator",
+                "SIM-ORDER",
+                "https://simulator.test/checkout"
+        );
+
+        when(currentProfileProvider.requireProfile()).thenReturn(driver);
+        when(applicationClock.instant()).thenReturn(
+                DECISION_AT,
+                DECISION_AT.plusSeconds(1)
+        );
+        when(bookingCommandRegistry.findReplay(
+                eq(DRIVER_ID),
+                eq(BookingCommandOperation.CREATE_CHECKOUT),
+                eq(REQUEST_KEY),
+                anyString()
+        )).thenReturn(Optional.empty());
+        when(bookingCheckoutPersistence.prepareCheckout(
+                BOOKING_ID,
+                DRIVER_ID,
+                DECISION_AT
+        )).thenReturn(payment);
+        when(payment.getProviderOrderRef()).thenReturn(null);
+        when(paymentGatewayRegistry.createCheckout(payment, DECISION_AT))
+                .thenReturn(orderCheckout);
+        when(bookingCheckoutPersistence.completeCheckout(
+                eq(BOOKING_ID),
+                eq(DRIVER_ID),
+                eq(REQUEST_KEY),
+                anyString(),
+                eq(orderCheckout),
+                eq(DECISION_AT.plusSeconds(1))
+        )).thenReturn(expected);
+
+        assertThat(service.createCheckout(BOOKING_ID, REQUEST_KEY))
+                .isSameAs(expected);
+
+        var order = inOrder(
+                bookingCheckoutPersistence,
+                paymentGatewayRegistry
+        );
+        order.verify(bookingCheckoutPersistence).prepareCheckout(
+                BOOKING_ID,
+                DRIVER_ID,
+                DECISION_AT
+        );
+        order.verify(paymentGatewayRegistry).createCheckout(
+                payment,
+                DECISION_AT
+        );
+        order.verify(bookingCheckoutPersistence).completeCheckout(
+                eq(BOOKING_ID),
+                eq(DRIVER_ID),
+                eq(REQUEST_KEY),
+                anyString(),
+                eq(orderCheckout),
+                eq(DECISION_AT.plusSeconds(1))
+        );
+    }
+
+    @Test
+    void checkoutReplayReturnsStoredResultWithoutCallingGateway() {
+        CheckoutResponse expected = new CheckoutResponse(
+                com.thang.chargeops.common.enums.CheckoutStatus.READY,
+                PaymentMethod.SIMULATOR,
+                DECISION_AT.plusSeconds(600),
+                null,
+                "SIM-ORDER",
+                "https://simulator.test/checkout"
+        );
+        when(currentProfileProvider.requireProfile()).thenReturn(driver);
+        when(applicationClock.instant()).thenReturn(DECISION_AT);
+        when(bookingCommandRegistry.findReplay(
+                eq(DRIVER_ID),
+                eq(BookingCommandOperation.CREATE_CHECKOUT),
+                eq(REQUEST_KEY),
+                anyString()
+        )).thenReturn(Optional.of(BOOKING_ID));
+        when(bookingCheckoutPersistence.loadReplay(
+                BOOKING_ID,
+                DRIVER_ID,
+                DECISION_AT
+        )).thenReturn(expected);
+
+        assertThat(service.createCheckout(BOOKING_ID, REQUEST_KEY))
+                .isSameAs(expected);
+
+        verifyNoInteractions(paymentGatewayRegistry);
+        verify(bookingCheckoutPersistence, never()).prepareCheckout(
+                any(), any(), any()
         );
     }
 
@@ -490,6 +608,49 @@ class BookingServiceImplTest {
         assertThat(stats.spent()).isEqualByComparingTo(BigDecimal.ZERO);
         assertThat(stats.sessions()).isZero();
         assertThat(stats.hours()).isZero();
+    }
+
+    @Test
+    void createCheckout_WhenInFlightLockRejects_ThrowsInProgressExceptionAndSkipsGateway() {
+        UUID bookingId = UUID.randomUUID();
+        UUID requestKey = UUID.randomUUID();
+
+        when(currentProfileProvider.requireProfile()).thenReturn(driver);
+        doThrow(new AppException(CommandErrorCode.IN_PROGRESS))
+                .when(bookingCommandInFlightLock)
+                .executeWithLock(eq(DRIVER_ID), eq(BookingCommandOperation.CREATE_CHECKOUT), eq(requestKey), any());
+
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> service.createCheckout(bookingId, requestKey))
+                .isInstanceOf(AppException.class)
+                .extracting(ex -> ((AppException) ex).getErrorCode())
+                .isEqualTo(CommandErrorCode.IN_PROGRESS);
+
+        verify(paymentGatewayRegistry, never()).createCheckout(any(), any());
+        verify(bookingCheckoutPersistence, never()).prepareCheckout(any(), any(), any());
+        verify(bookingCheckoutPersistence, never()).completeCheckout(any(), any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void createCheckout_WhenLockAcquired_ExecutesCheckoutFlowSuccessfully() {
+        UUID bookingId = UUID.randomUUID();
+        UUID requestKey = UUID.randomUUID();
+        Payment payment = mock(Payment.class);
+        CheckoutResponse expectedResponse = mock(CheckoutResponse.class);
+
+        when(currentProfileProvider.requireProfile()).thenReturn(driver);
+        when(applicationClock.instant()).thenReturn(DECISION_AT);
+        when(bookingCommandRegistry.findReplay(eq(DRIVER_ID), eq(BookingCommandOperation.CREATE_CHECKOUT), eq(requestKey), anyString()))
+                .thenReturn(Optional.empty());
+        when(bookingCheckoutPersistence.prepareCheckout(bookingId, DRIVER_ID, DECISION_AT))
+                .thenReturn(payment);
+        when(payment.getProviderOrderRef()).thenReturn("SIM-ORDER-123");
+        when(bookingCheckoutPersistence.completeCheckout(eq(bookingId), eq(DRIVER_ID), eq(requestKey), anyString(), isNull(), eq(DECISION_AT)))
+                .thenReturn(expectedResponse);
+
+        CheckoutResponse actual = service.createCheckout(bookingId, requestKey);
+
+        assertThat(actual).isSameAs(expectedResponse);
+        verify(bookingCommandInFlightLock).executeWithLock(eq(DRIVER_ID), eq(BookingCommandOperation.CREATE_CHECKOUT), eq(requestKey), any());
     }
 
     private CreateBookingRequest request(long amount, String pricingVersion, String policyVersion) {

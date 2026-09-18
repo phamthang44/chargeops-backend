@@ -53,6 +53,17 @@ public class BookingController {
                 ));
     }
 
+    @PostMapping("/{bookingId}/checkout")
+    @PreAuthorize("hasRole('DRIVER')")
+    public ResponseEntity<ApiResult<CheckoutResponse>> createCheckout(
+            @PathVariable UUID bookingId,
+            @RequestHeader("Idempotency-Key") UUID requestKey
+    ) {
+        return ResponseEntity.ok(ApiResult.success(
+                bookingService.createCheckout(bookingId, requestKey)
+        ));
+    }
+
     @GetMapping("/active")
     @PreAuthorize("hasRole('DRIVER')")
     public ResponseEntity<ApiResult<?>> getMyActiveBookings(
