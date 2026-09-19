@@ -1,0 +1,33 @@
+meta {
+  name: Keycloak Token
+  type: http
+  seq: 1
+}
+
+post {
+  url: {{keycloakUrl}}/realms/chargeops/protocol/openid-connect/token
+  body: form-urlencoded
+  auth: none
+}
+
+body:form-urlencoded {
+  grant_type: password
+  client_id: chargeops-driver-app
+  username: {{username}}
+  password: {{password}}
+}
+
+script:post-response {
+  if (res.status === 200 && res.body.access_token) {
+    bru.setEnvVar("access_token", res.body.access_token);
+  }
+}
+
+tests {
+  test("Status code is 200", function() {
+    expect(res.getStatus()).to.equal(200);
+  });
+  test("Access token returned", function() {
+    expect(res.getBody().access_token).to.be.a('string');
+  });
+}

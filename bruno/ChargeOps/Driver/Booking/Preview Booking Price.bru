@@ -1,0 +1,29 @@
+meta {
+  name: Preview Booking Price
+  type: http
+  seq: 2
+}
+
+post {
+  url: {{baseUrl}}/api/v1/bookings/price-preview
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{access_token}}
+}
+
+body:json {
+  {
+    "connectorId": "{{connectorId}}",
+    "startTime": "2026-03-30T10:00:00Z",
+    "endTime": "2026-03-30T11:00:00Z"
+  }
+}
+
+tests {
+  test("Status code is 200 or 400", function() {
+    expect([200, 400]).to.include(res.getStatus());
+  });
+}

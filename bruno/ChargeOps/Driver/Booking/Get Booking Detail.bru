@@ -1,0 +1,21 @@
+meta {
+  name: Get Booking Detail
+  type: http
+  seq: 7
+}
+
+get {
+  url: {{baseUrl}}/api/v1/bookings/{{bookingId}}
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{access_token}}
+}
+
+tests {
+  test("Status code is 200 or 404", function() {
+    expect([200, 404]).to.include(res.getStatus());
+  });
+}

@@ -1,0 +1,27 @@
+meta {
+  name: Get or Bootstrap Profile
+  type: http
+  seq: 2
+}
+
+get {
+  url: {{baseUrl}}/api/v1/me/profile
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{access_token}}
+}
+
+tests {
+  test("Status code is 200", function() {
+    expect(res.getStatus()).to.equal(200);
+  });
+  test("Response has success true", function() {
+    expect(res.getBody().success).to.equal(true);
+  });
+  test("Profile data structure is valid", function() {
+    expect(res.getBody().data).to.be.an('object');
+  });
+}
