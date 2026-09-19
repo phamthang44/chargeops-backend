@@ -1,0 +1,25 @@
+meta {
+  name: Get ImageKit Auth
+  type: http
+  seq: 4
+}
+
+get {
+  url: {{baseUrl}}/api/v1/media/imagekit-auth
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{access_token}}
+}
+
+tests {
+  test("Status code is 200", function() {
+    expect(res.getStatus()).to.equal(200);
+  });
+  test("Response contains token and signature", function() {
+    expect(res.getBody().data.token).to.be.a('string');
+    expect(res.getBody().data.signature).to.be.a('string');
+  });
+}

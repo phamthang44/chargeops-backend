@@ -1,0 +1,20 @@
+meta {
+  name: Get Administrative Wards
+  type: http
+  seq: 5
+}
+
+get {
+  url: {{baseUrl}}/api/v1/administrative-units/provinces/{{provinceCode}}/wards
+  body: none
+  auth: none
+}
+
+tests {
+  test("Status code is 200", function() {
+    expect(res.getStatus()).to.equal(200);
+  });
+  test("Wards list returned", function() {
+    expect(res.getBody().data).to.be.an('array');
+  });
+}
