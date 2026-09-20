@@ -24,6 +24,7 @@ import com.thang.chargeops.payment.entity.Payment;
 import com.thang.chargeops.payment.gateway.PaymentGateway;
 import com.thang.chargeops.payment.gateway.PaymentGatewayRegistry;
 import com.thang.chargeops.payment.gateway.PaymentGatewayUnavailableException;
+import com.thang.chargeops.payment.gateway.PaymentGatewayProfile;
 import com.thang.chargeops.payment.gateway.SimulatorPaymentGateway;
 import com.thang.chargeops.payment.model.OrderCheckout;
 import com.thang.chargeops.payment.repository.PaymentRepository;
@@ -382,6 +383,11 @@ class BookingCheckoutIntegrationTest {
         @Override
         public boolean supports(PaymentMethod method) {
             return method == PaymentMethod.SIMULATOR;
+        }
+
+        @Override
+        public PaymentGatewayProfile profile() {
+            return delegate.profile();
         }
 
         @Override

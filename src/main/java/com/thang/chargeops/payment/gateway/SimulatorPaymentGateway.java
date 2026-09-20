@@ -10,9 +10,17 @@ import java.time.Instant;
 @Component
 public class SimulatorPaymentGateway implements PaymentGateway {
 
+    private static final PaymentGatewayProfile PROFILE =
+            new PaymentGatewayProfile("SIMULATOR", "SIMULATOR", "VND");
+
     @Override
     public boolean supports(PaymentMethod method) {
         return method == PaymentMethod.SIMULATOR;
+    }
+
+    @Override
+    public PaymentGatewayProfile profile() {
+        return PROFILE;
     }
 
     @Override

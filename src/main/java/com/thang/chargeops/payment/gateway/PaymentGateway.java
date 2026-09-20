@@ -10,5 +10,7 @@ public interface PaymentGateway {
 
     boolean supports(PaymentMethod method);
 
+    PaymentGatewayProfile profile();
+
     OrderCheckout createCheckout(Payment payment, Instant now);
 }

@@ -31,6 +31,8 @@ public class BookingCheckoutPersistence {
 
     private static final String SIMULATOR_INSTRUCTION =
             "Complete payment in the simulator before the hold expires.";
+    private static final String SEPAY_TEST_INSTRUCTION =
+            "SePay Test Mode only — simulated payment; do not transfer real money.";
 
     private final BookingRepository bookingRepository;
     private final PaymentRepository paymentRepository;
@@ -147,11 +149,16 @@ public class BookingCheckoutPersistence {
                 status,
                 payment.getMethod(),
                 payment.getProviderExpiresAt(),
-                payment.getMethod() == PaymentMethod.SIMULATOR
-                        ? SIMULATOR_INSTRUCTION
-                        : null,
+                checkoutInstruction(payment),
                 payment.getProviderOrderRef(),
                 payment.getQrCodeUrl()
         );
+    }
+
+    private String checkoutInstruction(Payment payment) {
+        if (payment.getMethod() == PaymentMethod.SIMULATOR) return SIMULATOR_INSTRUCTION;
+        if (payment.getMethod() == PaymentMethod.BANK_TRANSFER
+                && "SEPAY".equals(payment.getProvider())) return SEPAY_TEST_INSTRUCTION;
+        return null;
     }
 }

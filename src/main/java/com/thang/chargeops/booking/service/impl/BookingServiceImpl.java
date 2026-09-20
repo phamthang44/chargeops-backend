@@ -40,6 +40,7 @@ import com.thang.chargeops.exception.errorcode.PaymentErrorCode;
 import com.thang.chargeops.payment.entity.Payment;
 import com.thang.chargeops.payment.entity.PaymentTransaction;
 import com.thang.chargeops.payment.gateway.PaymentGatewayRegistry;
+import com.thang.chargeops.payment.gateway.PaymentGatewayProfile;
 import com.thang.chargeops.payment.model.OrderCheckout;
 import com.thang.chargeops.payment.model.PendingPaymentSpec;
 import com.thang.chargeops.payment.repository.PaymentRepository;
@@ -75,9 +76,8 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class BookingServiceImpl implements BookingService {
 
-    private static final String CURRENCY = "VND";
-    private static final String SIMULATOR_PROVIDER = "SIMULATOR";
-    private static final String SIMULATOR_ACCOUNT_REF = "SIMULATOR";
+    private static final String SEPAY_TEST_INSTRUCTION =
+            "SePay Test Mode only — simulated payment; do not transfer real money.";
 
     private final BookingRepository bookingRepository;
     private final BookingPricingService bookingPricingService;
@@ -98,9 +98,7 @@ public class BookingServiceImpl implements BookingService {
     @Transactional
     @Override
     public CreateBookingResponse createNewBooking(UUID requestKey, CreateBookingRequest request) {
-        if (!paymentGatewayRegistry.supports(request.paymentMethod())) {
-            throw new AppException(PaymentErrorCode.METHOD_INVALID);
-        }
+        PaymentGatewayProfile gatewayProfile = paymentGatewayRegistry.profile(request.paymentMethod());
         UserProfile driver = currentProfileProvider.requireProfile();
         log.info(LogConstant.SERVICE_LOG_FORMAT, LogConstant.ACTION_START, "createNewBooking", driver.getId(), request);
         Instant requestedEndAt = request.startAt()
@@ -161,9 +159,9 @@ public class BookingServiceImpl implements BookingService {
                         savedBooking,
                         savedBooking.getTotalAmount(),
                         request.paymentMethod(),
-                        SIMULATOR_PROVIDER,
-                        SIMULATOR_ACCOUNT_REF,
-                        CURRENCY
+                        gatewayProfile.provider(),
+                        gatewayProfile.receivingAccountRef(),
+                        gatewayProfile.currency()
                 )
         );
         Payment savedPayment = paymentRepository.save(payment);
@@ -474,7 +472,10 @@ public class BookingServiceImpl implements BookingService {
                 payment.getProviderExpiresAt(),
                 payment.getMethod() == PaymentMethod.SIMULATOR
                         ? "Complete payment in the simulator before the hold expires."
-                        : null,
+                        : payment.getMethod() == PaymentMethod.BANK_TRANSFER
+                                && "SEPAY".equals(payment.getProvider())
+                                ? SEPAY_TEST_INSTRUCTION
+                                : null,
                 payment.getProviderOrderRef(),
                 payment.getQrCodeUrl()
         );

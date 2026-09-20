@@ -30,6 +30,7 @@ import com.thang.chargeops.common.enums.PaymentApplicationClassification;
 import com.thang.chargeops.payment.entity.Payment;
 import com.thang.chargeops.payment.entity.PaymentTransaction;
 import com.thang.chargeops.payment.gateway.PaymentGatewayRegistry;
+import com.thang.chargeops.payment.gateway.PaymentGatewayProfile;
 import com.thang.chargeops.payment.model.OrderCheckout;
 import com.thang.chargeops.payment.repository.PaymentRepository;
 import com.thang.chargeops.payment.repository.PaymentTransactionRepository;
@@ -136,8 +137,8 @@ class BookingServiceImplTest {
                     java.util.function.Supplier<?> action = invocation.getArgument(3);
                     return action != null ? action.get() : null;
                 });
-        lenient().when(paymentGatewayRegistry.supports(PaymentMethod.SIMULATOR))
-                .thenReturn(true);
+        lenient().when(paymentGatewayRegistry.profile(PaymentMethod.SIMULATOR))
+                .thenReturn(new PaymentGatewayProfile("SIMULATOR", "SIMULATOR", "VND"));
 
         currentPrice = new PricePreviewResponse(
                 PRICING_VERSION,

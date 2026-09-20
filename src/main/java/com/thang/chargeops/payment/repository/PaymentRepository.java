@@ -36,4 +36,6 @@ public interface PaymentRepository extends JpaRepository<Payment, UUID> {
     Optional<Payment> findByBookingIdWithLock(@Param("bookingId") UUID bookingId);
 
     Optional<Payment> findByGatewayTxnRef(String gatewayTxnRef);
+
+    Optional<Payment> findByVaNumber(String vaNumber);
 }

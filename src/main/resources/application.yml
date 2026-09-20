@@ -110,4 +110,12 @@ app:
     private-key: ${IMAGEKIT_PRIVATE_KEY:}
     url-endpoint: ${IMAGEKIT_URL_ENDPOINT:https://ik.imagekit.io/chargeops}
   sepay:
-    webhook-secret: ${SEPAY_WEBHOOK_SECRET}
+    # Sandbox-only. These values are generated in SePay Test Mode and are not real bank credentials.
+    enabled: ${SEPAY_TEST_MODE_ENABLED:false}
+    base-url: https://userapi-sandbox.sepay.vn/v2
+    api-token: ${SEPAY_TEST_API_TOKEN:}
+    bank-account-xid: ${SEPAY_TEST_BANK_ACCOUNT_XID:}
+    receiving-account-ref: ${SEPAY_TEST_ACCOUNT_NUMBER:}
+    va-prefix: ${SEPAY_TEST_VA_PREFIX:}
+    webhook-secret: ${SEPAY_TEST_WEBHOOK_SECRET:}
+    webhook-tolerance-seconds: 300
