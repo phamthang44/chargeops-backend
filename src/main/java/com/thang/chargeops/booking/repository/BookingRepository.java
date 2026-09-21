@@ -3,6 +3,7 @@ package com.thang.chargeops.booking.repository;
 import com.thang.chargeops.booking.entity.Booking;
 import com.thang.chargeops.common.enums.BookingStatus;
 import com.thang.chargeops.booking.projection.BookingCompletedSessionProjection;
+import com.thang.chargeops.booking.projection.BookingExpirationCandidateProjection;
 import com.thang.chargeops.booking.projection.BookingTimeRangeProjection;
 import com.thang.chargeops.profile.entity.UserProfile;
 import jakarta.persistence.LockModeType;
@@ -125,6 +126,19 @@ public interface BookingRepository extends JpaRepository<Booking, UUID>, JpaSpec
     List<Booking> findOverduePendingByConnectorForUpdate(
             @Param("connectorId") UUID connectorId,
             @Param("now") Instant now
+    );
+
+    @Query("""
+        SELECT b.id AS bookingId,
+               b.connector.id AS connectorId
+        FROM Booking b
+        WHERE b.status = com.thang.chargeops.common.enums.BookingStatus.PENDING
+          AND b.expiresAt <= :now
+        ORDER BY b.expiresAt ASC, b.id ASC
+    """)
+    List<BookingExpirationCandidateProjection> findOverduePendingCandidates(
+            @Param("now") Instant now,
+            Pageable pageable
     );
 
     @Query("""
