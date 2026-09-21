@@ -3,6 +3,7 @@ package com.thang.chargeops.payment.gateway;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.thang.chargeops.common.enums.PaymentMethod;
+import com.thang.chargeops.common.enums.PaymentEnvironment;
 import com.thang.chargeops.payment.config.SepayTestModeProperties;
 import com.thang.chargeops.payment.entity.Payment;
 import com.thang.chargeops.payment.model.OrderCheckout;
@@ -42,7 +43,11 @@ public class SepayPaymentGateway implements PaymentGateway {
         properties.validateForUse();
         this.properties = properties;
         this.profile = new PaymentGatewayProfile(
-                "SEPAY", properties.getReceivingAccountRef(), "VND");
+                "SEPAY",
+                properties.getReceivingAccountRef(),
+                "VND",
+                PaymentEnvironment.TEST
+        );
         this.restClient = restClientBuilder
                 .baseUrl(properties.getBaseUrl())
                 .defaultHeader(HttpHeaders.AUTHORIZATION, "Bearer " + properties.getApiToken())

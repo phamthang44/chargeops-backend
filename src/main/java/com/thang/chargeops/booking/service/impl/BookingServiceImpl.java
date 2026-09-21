@@ -161,7 +161,8 @@ public class BookingServiceImpl implements BookingService {
                         request.paymentMethod(),
                         gatewayProfile.provider(),
                         gatewayProfile.receivingAccountRef(),
-                        gatewayProfile.currency()
+                        gatewayProfile.currency(),
+                        gatewayProfile.environment()
                 )
         );
         Payment savedPayment = paymentRepository.save(payment);

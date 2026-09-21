@@ -40,8 +40,24 @@ class PaymentEntityTest {
         assertThat(p.getProviderOrderRef()).isNull();
         assertThat(p.getVaNumber()).isNull();
         assertThat(p.getStatus()).isEqualTo(PaymentStatus.PENDING);
+        assertThat(p.getEnvironment()).isEqualTo(PaymentEnvironment.LIVE);
         assertThat(p.getRefundAmount()).isEqualByComparingTo("0");
         assertThat(p.isNeedsReconciliation()).isFalse();
+    }
+
+    @Test void preservesExplicitTestEnvironmentForSandboxBankTransfer() {
+        Booking booking = mock(Booking.class);
+        Payment payment = Payment.createPending(new PendingPaymentSpec(
+                booking,
+                new BigDecimal("120000"),
+                PaymentMethod.BANK_TRANSFER,
+                "SEPAY",
+                "sandbox-account",
+                "VND",
+                PaymentEnvironment.TEST
+        ));
+
+        assertThat(payment.getEnvironment()).isEqualTo(PaymentEnvironment.TEST);
     }
 
     @ParameterizedTest @ValueSource(strings = {"0", "-1", "1.01", "1000000000000"})

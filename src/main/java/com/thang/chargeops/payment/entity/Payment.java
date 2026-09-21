@@ -4,6 +4,7 @@ import com.thang.chargeops.booking.entity.Booking;
 import com.thang.chargeops.common.entity.AuditableEntity;
 import com.thang.chargeops.common.enums.BookingStatus;
 import com.thang.chargeops.common.enums.PaymentApplicationClassification;
+import com.thang.chargeops.common.enums.PaymentEnvironment;
 import com.thang.chargeops.common.enums.PaymentMethod;
 import com.thang.chargeops.common.enums.PaymentStatus;
 import com.thang.chargeops.exception.AppException;
@@ -34,6 +35,9 @@ public class Payment extends AuditableEntity {
     private PaymentStatus status;
     @Enumerated(EnumType.STRING) @Column(length = 30)
     private PaymentMethod method;
+    /** Owner revenue, payout and accounting projections must include LIVE only. */
+    @Enumerated(EnumType.STRING) @Column(nullable = false, length = 10)
+    private PaymentEnvironment environment;
     // Historical transaction reference; do not repurpose as provider Order ID.
     @Column(name = "gateway_txn_ref") private String gatewayTxnRef;
     @Column(name = "refund_amount", precision = 15, scale = 2) private BigDecimal refundAmount;
@@ -64,6 +68,10 @@ public class Payment extends AuditableEntity {
         payment.booking = spec.booking();
         payment.amount = expected;
         payment.method = spec.method();
+        payment.environment = Objects.requireNonNull(
+                spec.environment(),
+                "Payment environment must not be null"
+        );
         payment.currency = "VND";
         payment.status = PaymentStatus.PENDING;
         payment.refundAmount = BigDecimal.ZERO.setScale(2);

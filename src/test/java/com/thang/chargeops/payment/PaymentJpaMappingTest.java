@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.thang.chargeops.booking.entity.Booking;
 import com.thang.chargeops.booking.repository.BookingRepository;
 import com.thang.chargeops.common.enums.PaymentApplicationClassification;
+import com.thang.chargeops.common.enums.PaymentEnvironment;
 import com.thang.chargeops.common.enums.PaymentMethod;
 import com.thang.chargeops.common.enums.PaymentStatus;
 import com.thang.chargeops.payment.entity.Payment;
@@ -202,9 +203,9 @@ class PaymentJpaMappingTest {
                 INSERT INTO payments(id, booking_id, amount, status, method, gateway_txn_ref, refund_amount,
                                      paid_at, provider, receiving_account_ref, currency, collected_amount,
                                      applied_to_package_amount, package_refunded_amount, excess_amount,
-                                     unallocated_amount, needs_reconciliation, version)
+                                     unallocated_amount, needs_reconciliation, environment, version)
                 VALUES (?, ?, 120000.00, 'PAID', 'VNPAY', 'legacy-vnpay-ref', 120000.00,
-                        now(), NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, true, 0)
+                        now(), NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, true, 'LEGACY', 0)
                 """, legacyPaymentId, booking.getId());
 
         entityManager.clear();
@@ -214,6 +215,7 @@ class PaymentJpaMappingTest {
         assertThat(legacyPayment.getMethod()).isEqualTo(PaymentMethod.VNPAY);
         assertThat(legacyPayment.getGatewayTxnRef()).isEqualTo("legacy-vnpay-ref");
         assertThat(legacyPayment.getRefundAmount()).isEqualByComparingTo(new BigDecimal("120000.00"));
+        assertThat(legacyPayment.getEnvironment()).isEqualTo(PaymentEnvironment.LEGACY);
         assertThat(legacyPayment.isNeedsReconciliation()).isTrue();
 
         // Must stay NULL, NOT coerced to zero

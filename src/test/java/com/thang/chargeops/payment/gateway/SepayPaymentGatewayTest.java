@@ -1,6 +1,7 @@
 package com.thang.chargeops.payment.gateway;
 
 import com.thang.chargeops.booking.entity.Booking;
+import com.thang.chargeops.common.enums.PaymentEnvironment;
 import com.thang.chargeops.payment.config.SepayTestModeProperties;
 import com.thang.chargeops.payment.entity.Payment;
 import com.thang.chargeops.payment.model.OrderCheckout;
@@ -27,6 +28,7 @@ class SepayPaymentGatewayTest {
         SepayPaymentGateway gateway = new SepayPaymentGateway(validProperties());
 
         assertThat(gateway.profile().provider()).isEqualTo("SEPAY");
+        assertThat(gateway.profile().environment()).isEqualTo(PaymentEnvironment.TEST);
     }
 
     @Test
