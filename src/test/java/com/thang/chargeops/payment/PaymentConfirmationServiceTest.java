@@ -6,19 +6,28 @@ import com.thang.chargeops.booking.history.BookingStatusHistoryRecorder;
 import com.thang.chargeops.booking.history.BookingStatusReason;
 import com.thang.chargeops.booking.repository.BookingRepository;
 import com.thang.chargeops.common.enums.BookingStatus;
+import com.thang.chargeops.common.enums.OperationalChargePointStatus;
 import com.thang.chargeops.common.enums.PaymentMethod;
 import com.thang.chargeops.common.enums.PaymentStatus;
+import com.thang.chargeops.common.enums.ProvisioningStatus;
+import com.thang.chargeops.common.enums.RuntimeStatus;
+import com.thang.chargeops.common.enums.StationOperationalStatus;
+import com.thang.chargeops.common.enums.StationStatus;
 import com.thang.chargeops.exception.AppException;
+import com.thang.chargeops.exception.errorcode.PaymentErrorCode;
 import com.thang.chargeops.payment.entity.Payment;
 import com.thang.chargeops.payment.entity.PaymentTransaction;
 import com.thang.chargeops.payment.model.NormalizedReceipt;
 import com.thang.chargeops.payment.model.OrderCheckout;
 import com.thang.chargeops.payment.model.PaymentReceiptResult;
 import com.thang.chargeops.payment.model.PendingPaymentSpec;
+import com.thang.chargeops.payment.projection.OrderPaymentMatchProjection;
 import com.thang.chargeops.payment.repository.PaymentRepository;
 import com.thang.chargeops.payment.repository.PaymentTransactionRepository;
 import com.thang.chargeops.payment.service.impl.PaymentConfirmationServiceImpl;
+import com.thang.chargeops.station.entity.ChargePoint;
 import com.thang.chargeops.station.entity.Connector;
+import com.thang.chargeops.station.entity.Station;
 import com.thang.chargeops.station.repository.ConnectorRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -56,6 +65,10 @@ class PaymentConfirmationServiceTest {
 
     private PaymentConfirmationServiceImpl service;
 
+    private Connector connector;
+    private ChargePoint chargePoint;
+    private Station station;
+    private OrderPaymentMatchProjection matchProjection;
     private UUID connectorId;
     private UUID bookingId;
     private Booking booking;
@@ -100,8 +113,19 @@ class PaymentConfirmationServiceTest {
         connectorId = UUID.randomUUID();
         bookingId = UUID.randomUUID();
 
-        Connector connector = mock(Connector.class);
+        station = mock(Station.class);
+        when(station.getStatus()).thenReturn(StationStatus.ACTIVE);
+        when(station.getOperationalStatus()).thenReturn(StationOperationalStatus.OPERATING);
+
+        chargePoint = mock(ChargePoint.class);
+        when(chargePoint.getStation()).thenReturn(station);
+        when(chargePoint.getProvisioningStatus()).thenReturn(ProvisioningStatus.ACTIVE);
+        when(chargePoint.getOperationalChargePointStatus()).thenReturn(OperationalChargePointStatus.AVAILABLE);
+
+        connector = mock(Connector.class);
         when(connector.getId()).thenReturn(connectorId);
+        when(connector.getChargePoint()).thenReturn(chargePoint);
+        when(connector.getRuntimeStatus()).thenReturn(RuntimeStatus.AVAILABLE);
 
         booking = mock(Booking.class);
         when(booking.getId()).thenReturn(bookingId);
@@ -118,6 +142,7 @@ class PaymentConfirmationServiceTest {
                 "SIMULATOR_ACCOUNT",
                 "VND"
         ));
+        payment.setId(UUID.randomUUID());
         paymentCode = payment.getPaymentCode();
         vaNumber = "VA-SIM-" + paymentCode;
 
@@ -131,11 +156,17 @@ class PaymentConfirmationServiceTest {
                 "https://simulator.chargeops.local/checkout/" + paymentCode
         ), NOW);
 
+        matchProjection = new OrderPaymentMatchProjection() {
+            @Override public UUID getPaymentId() { return payment.getId(); }
+            @Override public UUID getBookingId() { return bookingId; }
+            @Override public UUID getConnectorId() { return connectorId; }
+        };
+
         when(connectorRepository.findByIdWithLock(connectorId)).thenReturn(Optional.of(connector));
         when(bookingRepository.findByIdWithLock(bookingId)).thenReturn(Optional.of(booking));
-        when(paymentRepository.findByBookingIdWithLock(bookingId)).thenReturn(Optional.of(payment));
-        when(paymentRepository.findByPaymentCode(paymentCode)).thenReturn(Optional.of(payment));
-        when(paymentRepository.findByVaNumber(vaNumber)).thenReturn(Optional.of(payment));
+        when(paymentRepository.findByIdWithLock(payment.getId())).thenReturn(Optional.of(payment));
+        when(paymentRepository.findOrderPaymentMatchByPaymentCode(paymentCode)).thenReturn(Optional.of(matchProjection));
+        when(paymentRepository.findOrderPaymentMatchByVaNumber(vaNumber)).thenReturn(Optional.of(matchProjection));
     }
 
     private NormalizedReceipt createSimulatorReceipt(String txRef, String amountStr) {
@@ -253,6 +284,20 @@ class PaymentConfirmationServiceTest {
     }
 
     @Test
+    @DisplayName("Receipt for an already EXPIRED booking is classified as LATE")
+    void expiredBookingReceipt_isClassifiedAsLate() {
+        when(booking.getStatus()).thenReturn(BookingStatus.EXPIRED);
+
+        PaymentReceiptResult result = service.processReceipt(
+                createSimulatorReceipt("TX-EXPIRED-BOOKING", "120000")
+        );
+
+        assertThat(result.status()).isEqualTo(PaymentReceiptResult.Status.UNAPPLIED);
+        assertThat(result.reason()).isEqualTo("LATE");
+        verify(booking, never()).confirmPayment(any(), any());
+    }
+
+    @Test
     @DisplayName("5. Tiền vào thiếu (UNDERPAYMENT): lưu UNAPPLIED, không confirm booking")
     void underpaymentReceipt_markedUnderpayment() {
         NormalizedReceipt receipt = createSimulatorReceipt("TX-UNDER", "100000"); // Thiếu 20k
@@ -297,8 +342,8 @@ class PaymentConfirmationServiceTest {
                 "{}"
         );
 
-        when(paymentRepository.findByPaymentCode("CODE_NOT_FOUND")).thenReturn(Optional.empty());
-        when(paymentRepository.findByVaNumber("VA-UNKNOWN")).thenReturn(Optional.empty());
+        when(paymentRepository.findOrderPaymentMatchByPaymentCode("CODE_NOT_FOUND")).thenReturn(Optional.empty());
+        when(paymentRepository.findOrderPaymentMatchByVaNumber("VA-UNKNOWN")).thenReturn(Optional.empty());
 
         PaymentReceiptResult result = service.processReceipt(receipt);
 
@@ -337,7 +382,7 @@ class PaymentConfirmationServiceTest {
 
         assertThat(result.status()).isEqualTo(PaymentReceiptResult.Status.UNMATCHED);
         assertThat(result.reason()).isEqualTo("INCOMPLETE_ORDER_IDENTITY");
-        verify(paymentRepository, never()).findByPaymentCode(anyString());
+        verify(paymentRepository, never()).findOrderPaymentMatchByPaymentCode(anyString());
         verify(connectorRepository, never()).findByIdWithLock(any());
     }
 
@@ -359,9 +404,65 @@ class PaymentConfirmationServiceTest {
                         "SIMULATOR", "SIMULATOR_ACCOUNT", "TX-DOUBLE-CHECK");
         order.verify(connectorRepository).findByIdWithLock(connectorId);
         order.verify(bookingRepository).findByIdWithLock(bookingId);
-        order.verify(paymentRepository).findByBookingIdWithLock(bookingId);
+        order.verify(paymentRepository).findByIdWithLock(payment.getId());
         order.verify(paymentTransactionRepository)
                 .findByProviderAndReceivingAccountRefAndTransactionRef(
                         "SIMULATOR", "SIMULATOR_ACCOUNT", "TX-DOUBLE-CHECK");
+    }
+
+    @Test
+    @DisplayName("Invalid receipt uses a payment domain error instead of Java default exceptions")
+    void invalidReceipt_usesPaymentDomainError() {
+        assertThatThrownBy(() -> service.processReceipt(null))
+                .isInstanceOf(AppException.class)
+                .satisfies(error -> assertThat(((AppException) error).getErrorCode())
+                        .isEqualTo(PaymentErrorCode.RECEIPT_INVALID));
+
+        NormalizedReceipt blankTransactionRef = new NormalizedReceipt(
+                "SIMULATOR",
+                "SIMULATOR_ACCOUNT",
+                " ",
+                new BigDecimal("120000"),
+                "VND",
+                NOW,
+                NOW,
+                vaNumber,
+                paymentCode,
+                "content",
+                "{}"
+        );
+
+        assertThatThrownBy(() -> service.processReceipt(blankTransactionRef))
+                .isInstanceOf(AppException.class)
+                .satisfies(error -> assertThat(((AppException) error).getErrorCode())
+                        .isEqualTo(PaymentErrorCode.RECEIPT_INVALID));
+    }
+
+    @Test
+    @DisplayName("Trạm ngừng phục vụ (PAUSED): lưu UNAPPLIED với lý do STATION_UNAVAILABLE")
+    void stationPaused_markedStationUnavailable() {
+        when(station.getOperationalStatus()).thenReturn(StationOperationalStatus.PAUSED);
+
+        NormalizedReceipt receipt = createSimulatorReceipt("TX-STATION-PAUSED", "120000");
+        PaymentReceiptResult result = service.processReceipt(receipt);
+
+        assertThat(result.status()).isEqualTo(PaymentReceiptResult.Status.UNAPPLIED);
+        assertThat(result.reason()).isEqualTo("STATION_UNAVAILABLE");
+        assertThat(payment.getStatus()).isEqualTo(PaymentStatus.PENDING);
+        verify(booking, never()).confirmPayment(any(), any());
+    }
+
+    @Test
+    @DisplayName("Súng sạc offline (OFFLINE): lưu UNAPPLIED với lý do STATION_UNAVAILABLE")
+    void connectorOffline_markedStationUnavailable() {
+        when(connector.getRuntimeStatus()).thenReturn(RuntimeStatus.OFFLINE);
+
+        NormalizedReceipt receipt = createSimulatorReceipt("TX-CONN-OFFLINE", "120000");
+        PaymentReceiptResult result = service.processReceipt(receipt);
+
+        assertThat(result.status()).isEqualTo(PaymentReceiptResult.Status.UNAPPLIED);
+        assertThat(result.reason()).isEqualTo("STATION_UNAVAILABLE");
+        assertThat(payment.getStatus()).isEqualTo(PaymentStatus.PENDING);
+        verify(booking, never()).confirmPayment(any(), any());
     }
 }

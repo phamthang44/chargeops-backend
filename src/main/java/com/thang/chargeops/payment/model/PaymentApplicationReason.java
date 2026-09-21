@@ -1,0 +1,17 @@
+package com.thang.chargeops.payment.model;
+
+public enum PaymentApplicationReason {
+    NOT_PROCESSED,
+    APPLIED,
+    ALREADY_PAID,
+    LATE,
+    BOOKING_NOT_PENDING,
+    MERCHANT_IDENTITY_MISMATCH,
+    NO_ACTIVE_ORDER,
+    UNDERPAYMENT,
+    OVERPAYMENT,
+    STATION_UNAVAILABLE,
+    INCOMPLETE_ORDER_IDENTITY,
+    ORDER_IDENTITY_MISMATCH,
+    UNMATCHED
+}

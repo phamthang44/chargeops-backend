@@ -1,6 +1,6 @@
 package com.thang.chargeops.payment;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.ObjectMapper;
 import com.thang.chargeops.payment.controller.SepayWebhookController;
 import com.thang.chargeops.payment.model.NormalizedReceipt;
 import com.thang.chargeops.payment.service.PaymentConfirmationService;

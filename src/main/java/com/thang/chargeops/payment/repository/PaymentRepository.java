@@ -7,6 +7,7 @@ import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import com.thang.chargeops.payment.projection.OrderPaymentMatchProjection;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -15,6 +16,15 @@ public interface PaymentRepository extends JpaRepository<Payment, UUID> {
     Optional<Payment> findByBookingId(UUID bookingId);
 
     Optional<Payment> findByPaymentCode(String paymentCode);
+
+    @Query("""
+        SELECT p.id AS paymentId,
+               p.booking.id AS bookingId,
+               p.booking.connector.id AS connectorId
+        FROM Payment p
+        WHERE p.paymentCode = :paymentCode
+    """)
+    Optional<OrderPaymentMatchProjection> findOrderPaymentMatchByPaymentCode(@Param("paymentCode") String paymentCode);
 
     Optional<Payment> findByProviderAndReceivingAccountRefAndProviderOrderRef(
             String provider, String receivingAccountRef, String providerOrderRef);
@@ -38,4 +48,13 @@ public interface PaymentRepository extends JpaRepository<Payment, UUID> {
     Optional<Payment> findByGatewayTxnRef(String gatewayTxnRef);
 
     Optional<Payment> findByVaNumber(String vaNumber);
+
+    @Query("""
+        SELECT p.id AS paymentId,
+               p.booking.id AS bookingId,
+               p.booking.connector.id AS connectorId
+        FROM Payment p
+        WHERE p.vaNumber = :vaNumber
+    """)
+    Optional<OrderPaymentMatchProjection> findOrderPaymentMatchByVaNumber(@Param("vaNumber") String vaNumber);
 }
