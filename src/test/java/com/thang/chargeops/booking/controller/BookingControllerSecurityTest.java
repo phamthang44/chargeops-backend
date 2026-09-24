@@ -89,7 +89,7 @@ class BookingControllerSecurityTest {
                                 {
                                   "expectedVersion": 1,
                                   "expectedRefundAmount": 0,
-                                  "acceptedPolicyVersion": "v4.9"
+                                  "acceptedPolicyVersion": "booking-v4.9"
                                 }
                                 """))
                 .andExpect(status().isForbidden());
@@ -110,7 +110,7 @@ class BookingControllerSecurityTest {
                                 {
                                   "expectedVersion": 1,
                                   "expectedRefundAmount": 0,
-                                  "acceptedPolicyVersion": "v4.9"
+                                  "acceptedPolicyVersion": "booking-v4.9"
                                 }
                                 """))
                 .andExpect(status().isOk());

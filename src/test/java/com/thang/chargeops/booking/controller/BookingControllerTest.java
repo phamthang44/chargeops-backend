@@ -421,7 +421,7 @@ class BookingControllerTest {
                                 {
                                   "expectedVersion": 1,
                                   "expectedRefundAmount": 126000,
-                                  "acceptedPolicyVersion": "v4.9"
+                                  "acceptedPolicyVersion": "booking-v4.9"
                                 }
                                 """))
                 .andExpect(status().isOk())
@@ -453,7 +453,7 @@ class BookingControllerTest {
                                 {
                                   "expectedVersion": 1,
                                   "expectedRefundAmount": 126000,
-                                  "acceptedPolicyVersion": "v4.9"
+                                  "acceptedPolicyVersion": "booking-v4.9"
                                 }
                                 """))
                 .andExpect(status().isConflict())
@@ -471,7 +471,7 @@ class BookingControllerTest {
                                 {
                                   "expectedVersion": 1,
                                   "expectedRefundAmount": 126000,
-                                  "acceptedPolicyVersion": "v4.9"
+                                  "acceptedPolicyVersion": "booking-v4.9"
                                 }
                                 """))
                 .andExpect(status().isBadRequest());

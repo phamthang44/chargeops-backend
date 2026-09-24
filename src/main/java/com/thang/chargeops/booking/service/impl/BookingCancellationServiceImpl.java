@@ -9,6 +9,7 @@ import com.thang.chargeops.booking.dto.request.CancelBookingRequest;
 import com.thang.chargeops.booking.dto.response.BookingCancellationReason;
 import com.thang.chargeops.booking.dto.response.BookingDetailResponse;
 import com.thang.chargeops.booking.entity.Booking;
+import com.thang.chargeops.booking.exception.BookingCancellationDomainException;
 import com.thang.chargeops.booking.history.BookingStatusActorType;
 import com.thang.chargeops.booking.history.BookingStatusHistoryRecorder;
 import com.thang.chargeops.booking.history.BookingStatusReason;
@@ -159,7 +160,11 @@ public class BookingCancellationServiceImpl implements BookingCancellationServic
         }
 
         if (status == BookingStatus.PENDING) {
-            if (lockedBooking.getExpiresAt() != null && !decisionAt.isBefore(lockedBooking.getExpiresAt())) {
+            if (lockedBooking.getExpiresAt() == null) {
+                log.warn("Rejecting cancellation for PENDING booking {} with missing expiresAt", bookingId);
+                throw new AppException(BookingErrorCode.STATE_CONFLICT);
+            }
+            if (!decisionAt.isBefore(lockedBooking.getExpiresAt())) {
                 throw new AppException(BookingErrorCode.HOLD_EXPIRED);
             }
         } else {
@@ -170,7 +175,11 @@ public class BookingCancellationServiceImpl implements BookingCancellationServic
                         "Booking already checked in"
                 );
             }
-            if (lockedBooking.getCheckInDeadline() != null && !decisionAt.isBefore(lockedBooking.getCheckInDeadline())) {
+            if (lockedBooking.getCheckInDeadline() == null) {
+                log.warn("Rejecting cancellation for CONFIRMED booking {} with missing checkInDeadline", bookingId);
+                throw new AppException(BookingErrorCode.STATE_CONFLICT);
+            }
+            if (!decisionAt.isBefore(lockedBooking.getCheckInDeadline())) {
                 throw new AppException(BookingErrorCode.CHECK_IN_CLOSED);
             }
         }
@@ -193,11 +202,21 @@ public class BookingCancellationServiceImpl implements BookingCancellationServic
                 refundablePackageAmount
         );
 
-        CancellationRefundDecision decision = bookingCancellationPolicy.calculateRefund(
-                context,
-                decisionAt,
-                false
-        );
+        CancellationRefundDecision decision;
+        try {
+            decision = bookingCancellationPolicy.calculateRefund(
+                    context,
+                    decisionAt,
+                    false
+            );
+        } catch (BookingCancellationDomainException exception) {
+            log.warn(
+                    "Cancellation policy rejected persisted facts for booking {}: {}",
+                    bookingId,
+                    exception.getViolation()
+            );
+            throw new AppException(BookingErrorCode.STATE_CONFLICT);
+        }
         long serverRefundAmount = decision.refundAmount().longValueExact();
 
         // 10. Compare consent (version, refund amount, policy version)

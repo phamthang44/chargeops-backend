@@ -25,8 +25,10 @@ import com.thang.chargeops.booking.service.impl.BookingServiceImpl;
 import com.thang.chargeops.booking.service.model.BookingReadSnapshot;
 import com.thang.chargeops.booking.service.model.DriverBookingHistoryResult;
 import com.thang.chargeops.booking.service.model.HoldPreparationContext;
-import com.thang.chargeops.common.enums.PaymentMethod;
+import com.thang.chargeops.common.enums.BookingStatus;
 import com.thang.chargeops.common.enums.PaymentApplicationClassification;
+import com.thang.chargeops.common.enums.PaymentMethod;
+import com.thang.chargeops.common.enums.PaymentStatus;
 import com.thang.chargeops.payment.entity.Payment;
 import com.thang.chargeops.payment.entity.PaymentTransaction;
 import com.thang.chargeops.payment.gateway.PaymentGatewayRegistry;
@@ -466,6 +468,9 @@ class BookingServiceImplTest {
         when(payment.getCurrency()).thenReturn("VND");
         when(payment.getRefundAmount())
                 .thenReturn(BigDecimal.valueOf(20_000));
+        when(booking.getStatus()).thenReturn(BookingStatus.PENDING);
+        when(booking.getExpiresAt()).thenReturn(checkoutExpiresAt);
+        when(payment.getStatus()).thenReturn(PaymentStatus.PENDING);
         when(payment.getMethod()).thenReturn(PaymentMethod.BANK_TRANSFER);
         when(payment.getProviderOrderRef()).thenReturn("ORDER-1");
         when(payment.getProviderExpiresAt()).thenReturn(checkoutExpiresAt);

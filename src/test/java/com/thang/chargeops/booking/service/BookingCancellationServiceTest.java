@@ -10,6 +10,8 @@ import com.thang.chargeops.booking.dto.response.BookingCancellationReason;
 import com.thang.chargeops.booking.dto.response.BookingDetailResponse;
 import com.thang.chargeops.booking.entity.Booking;
 import com.thang.chargeops.booking.enums.CancellationRefundTier;
+import com.thang.chargeops.booking.exception.BookingCancellationDomainException;
+import com.thang.chargeops.booking.exception.violation.BookingCancellationViolation;
 import com.thang.chargeops.booking.history.BookingStatusActorType;
 import com.thang.chargeops.booking.history.BookingStatusHistoryRecorder;
 import com.thang.chargeops.booking.history.BookingStatusReason;
@@ -76,7 +78,7 @@ class BookingCancellationServiceTest {
     private static final UUID REQUEST_KEY = UUID.fromString("88888888-8888-8888-8888-888888888888");
 
     private static final Instant NOW = Instant.parse("2026-09-24T10:00:00Z");
-    private static final String POLICY_VERSION = "v4.9";
+    private static final String POLICY_VERSION = "booking-v4.9";
     private static final BigDecimal PACKAGE_AMOUNT = new BigDecimal("126000.00");
 
     @Mock private CurrentProfileProvider currentProfileProvider;
@@ -283,8 +285,8 @@ class BookingCancellationServiceTest {
         @DisplayName("C05: Policy version snapshot mismatch -> 409 CANCELLATION_CHANGED")
         void policyVersionMismatch_throws409() {
             setupStandardSuccessfulFlow(BookingStatus.CONFIRMED, 126000L);
-            // Expected policy v4.8, but booking policy snapshot is v4.9
-            CancelBookingRequest request = new CancelBookingRequest(1L, 126000L, "v4.8");
+            // Expected policy booking-v4.8, but booking policy snapshot is booking-v4.9
+            CancelBookingRequest request = new CancelBookingRequest(1L, 126000L, "booking-v4.8");
 
             assertThatThrownBy(() -> service.cancelBooking(BOOKING_ID, REQUEST_KEY, request))
                     .isInstanceOf(AppException.class)
@@ -347,6 +349,20 @@ class BookingCancellationServiceTest {
         }
 
         @Test
+        @DisplayName("S02b: PENDING booking missing hold deadline fails closed")
+        void pendingMissingExpiry_throwsStateConflict() {
+            setupStandardSuccessfulFlow(BookingStatus.PENDING, 0L);
+            when(booking.getExpiresAt()).thenReturn(null);
+
+            CancelBookingRequest request = new CancelBookingRequest(1L, 0L, POLICY_VERSION);
+
+            assertThatThrownBy(() -> service.cancelBooking(BOOKING_ID, REQUEST_KEY, request))
+                    .isInstanceOf(AppException.class)
+                    .hasFieldOrPropertyWithValue("errorCode", BookingErrorCode.STATE_CONFLICT);
+            verify(bookingCommandRegistry, never()).recordSuccess(any(), any(), any(), any(), any(), any());
+        }
+
+        @Test
         @DisplayName("S03: CONFIRMED booking past check-in deadline -> 409 CHECK_IN_CLOSED")
         void confirmedPastCheckInDeadline_throwsCheckInClosed() {
             when(bookingCommandRegistry.findReplay(any(), any(), any(), any())).thenReturn(Optional.empty());
@@ -367,6 +383,39 @@ class BookingCancellationServiceTest {
             assertThatThrownBy(() -> service.cancelBooking(BOOKING_ID, REQUEST_KEY, request))
                     .isInstanceOf(AppException.class)
                     .hasFieldOrPropertyWithValue("errorCode", BookingErrorCode.CHECK_IN_CLOSED);
+        }
+
+        @Test
+        @DisplayName("S03b: CONFIRMED booking missing check-in deadline fails closed")
+        void confirmedMissingCheckInDeadline_throwsStateConflict() {
+            setupStandardSuccessfulFlow(BookingStatus.CONFIRMED, 0L);
+            when(booking.getCheckInDeadline()).thenReturn(null);
+
+            CancelBookingRequest request = new CancelBookingRequest(1L, 0L, POLICY_VERSION);
+
+            assertThatThrownBy(() -> service.cancelBooking(BOOKING_ID, REQUEST_KEY, request))
+                    .isInstanceOf(AppException.class)
+                    .hasFieldOrPropertyWithValue("errorCode", BookingErrorCode.STATE_CONFLICT);
+            verify(bookingCommandRegistry, never()).recordSuccess(any(), any(), any(), any(), any(), any());
+        }
+
+        @Test
+        @DisplayName("S03c: Domain policy violations are translated to stable API conflicts")
+        void cancellationPolicyViolation_throwsStateConflict() {
+            setupStandardSuccessfulFlow(BookingStatus.CONFIRMED, 0L);
+            when(bookingCancellationPolicy.calculateRefund(any(), eq(NOW), eq(false)))
+                    .thenThrow(new BookingCancellationDomainException(
+                            BookingCancellationViolation.PAYMENT_CONFIRMATION_REQUIRED,
+                            "missing confirmation"
+                    ));
+
+            CancelBookingRequest request = new CancelBookingRequest(1L, 0L, POLICY_VERSION);
+
+            assertThatThrownBy(() -> service.cancelBooking(BOOKING_ID, REQUEST_KEY, request))
+                    .isInstanceOf(AppException.class)
+                    .hasFieldOrPropertyWithValue("errorCode", BookingErrorCode.STATE_CONFLICT);
+            verify(bookingCommandRegistry, never()).recordSuccess(any(), any(), any(), any(), any(), any());
+            verifyNoInteractions(refundObligationService);
         }
 
         @Test

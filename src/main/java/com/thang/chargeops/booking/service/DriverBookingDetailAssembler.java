@@ -5,8 +5,10 @@ import com.thang.chargeops.booking.entity.Booking;
 import com.thang.chargeops.booking.mapper.BookingMapper;
 import com.thang.chargeops.booking.policy.DriverBookingReadPolicy;
 import com.thang.chargeops.booking.service.model.BookingReadSnapshot;
+import com.thang.chargeops.common.enums.BookingStatus;
 import com.thang.chargeops.common.enums.PaymentApplicationClassification;
 import com.thang.chargeops.common.enums.PaymentMethod;
+import com.thang.chargeops.common.enums.PaymentStatus;
 import com.thang.chargeops.payment.entity.Payment;
 import com.thang.chargeops.payment.entity.PaymentTransaction;
 import com.thang.chargeops.payment.repository.PaymentTransactionRepository;
@@ -86,7 +88,7 @@ public class DriverBookingDetailAssembler {
                         receipts,
                         PaymentApplicationClassification.UNAPPLIED
                 ))
-                .checkout(toCheckoutDetail(payment, evaluatedAt))
+                .checkout(toCheckoutDetail(booking, payment, evaluatedAt))
                 .refunds(refundSummaries)
                 .build();
     }
@@ -120,11 +122,19 @@ public class DriverBookingDetailAssembler {
     }
 
     private BookingDetailResponse.CheckoutDetail toCheckoutDetail(
+            Booking booking,
             Payment payment,
             Instant evaluatedAt
     ) {
         BookingDetailResponse.CheckoutState state;
-        if (payment.getProviderOrderRef() == null) {
+        boolean bookingCanStillBePaid = booking.getStatus() == BookingStatus.PENDING
+                && booking.getExpiresAt() != null
+                && evaluatedAt.isBefore(booking.getExpiresAt())
+                && payment.getStatus() == PaymentStatus.PENDING;
+
+        if (!bookingCanStillBePaid) {
+            state = BookingDetailResponse.CheckoutState.UNAVAILABLE;
+        } else if (payment.getProviderOrderRef() == null) {
             state = BookingDetailResponse.CheckoutState.NOT_CREATED;
         } else if (payment.getProviderExpiresAt() == null) {
             state = BookingDetailResponse.CheckoutState.UNAVAILABLE;
@@ -134,18 +144,19 @@ public class DriverBookingDetailAssembler {
             state = BookingDetailResponse.CheckoutState.READY;
         }
 
+        boolean checkoutIsActionable = state == BookingDetailResponse.CheckoutState.READY;
         return new BookingDetailResponse.CheckoutDetail(
                 state,
                 payment.getMethod(),
                 payment.getProviderExpiresAt(),
-                payment.getMethod() == PaymentMethod.SIMULATOR
+                checkoutIsActionable && payment.getMethod() == PaymentMethod.SIMULATOR
                         ? "Complete payment in the simulator before the hold expires."
-                        : payment.getMethod() == PaymentMethod.BANK_TRANSFER
+                        : checkoutIsActionable && payment.getMethod() == PaymentMethod.BANK_TRANSFER
                                 && "SEPAY".equals(payment.getProvider())
                                 ? SEPAY_TEST_INSTRUCTION
                                 : null,
-                payment.getProviderOrderRef(),
-                payment.getQrCodeUrl()
+                checkoutIsActionable ? payment.getProviderOrderRef() : null,
+                checkoutIsActionable ? payment.getQrCodeUrl() : null
         );
     }
 }
