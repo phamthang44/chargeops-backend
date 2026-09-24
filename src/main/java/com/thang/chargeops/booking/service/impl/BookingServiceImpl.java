@@ -25,6 +25,7 @@ import com.thang.chargeops.booking.service.BookingHoldCoordinator;
 import com.thang.chargeops.booking.service.BookingCheckoutPersistence;
 import com.thang.chargeops.booking.service.BookingPricingService;
 import com.thang.chargeops.booking.service.BookingService;
+import com.thang.chargeops.booking.service.DriverBookingDetailAssembler;
 import com.thang.chargeops.booking.service.model.BookingReadSnapshot;
 import com.thang.chargeops.booking.service.model.CanonicalPayload;
 import com.thang.chargeops.booking.service.model.DriverBookingHistoryResult;
@@ -76,9 +77,6 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class BookingServiceImpl implements BookingService {
 
-    private static final String SEPAY_TEST_INSTRUCTION =
-            "SePay Test Mode only — simulated payment; do not transfer real money.";
-
     private final BookingRepository bookingRepository;
     private final BookingPricingService bookingPricingService;
     private final BookingHoldCoordinator bookingHoldCoordinator;
@@ -87,7 +85,7 @@ public class BookingServiceImpl implements BookingService {
     private final BookingMapper bookingMapper;
     private final BookingPolicyConfig bookingPolicyConfig;
     private final PaymentRepository paymentRepository;
-    private final PaymentTransactionRepository paymentTransactionRepository;
+    private final DriverBookingDetailAssembler driverBookingDetailAssembler;
     private final DriverBookingReadPolicy driverBookingReadPolicy;
     private final BookingStatusHistoryRecorder bookingStatusHistoryRecorder;
     private final PaymentGatewayRegistry paymentGatewayRegistry;
@@ -357,16 +355,10 @@ public class BookingServiceImpl implements BookingService {
                         "Booking exists but payment was not found: " + bookingId
                 ));
 
-        BookingReadSnapshot snapshot = buildBookingReadSnapshot(
+        return driverBookingDetailAssembler.assemble(
                 booking,
                 payment,
                 evaluatedAt
-        );
-
-        return bookingMapper.toBookingDetailResponse(
-                booking,
-                payment,
-                snapshot
         );
     }
 
@@ -384,101 +376,6 @@ public class BookingServiceImpl implements BookingService {
         throw new AppException(
                 CommonErrorCode.RESOURCE_NOT_FOUND,
                 "Booking not found: " + bookingId
-        );
-    }
-
-    /**
-     * Aggregates the request-time facts required by the Driver detail mapper.
-     * Repository access stays in the service; the mapper remains deterministic.
-     */
-    private BookingReadSnapshot buildBookingReadSnapshot(
-            Booking booking,
-            Payment payment,
-            Instant evaluatedAt
-    ) {
-        BookingReadSnapshot listSnapshot = driverBookingReadPolicy
-                .snapshotForList(booking, evaluatedAt);
-        List<PaymentTransaction> receipts = paymentTransactionRepository
-                .findByPaymentIdOrderByReceivedAtAscIdAsc(
-                        Objects.requireNonNull(
-                                payment.getId(),
-                                "payment id must not be null"
-                        )
-                );
-
-        return BookingReadSnapshot.builder()
-                .evaluatedAt(listSnapshot.evaluatedAt())
-                .stationAvailable(listSnapshot.stationAvailable())
-                .canReportIssue(listSnapshot.canReportIssue())
-                .currency(payment.getCurrency())
-                .collectedAmount(sumReceiptAmounts(receipts, null))
-                .appliedToPackageAmount(sumReceiptAmounts(
-                        receipts,
-                        PaymentApplicationClassification.APPLIED
-                ))
-                .packageRefundedAmount(amountOrZero(
-                        payment.getRefundAmount()
-                ))
-                // Order VA accepts the exact package amount. Receipts that
-                // cannot be applied remain UNAPPLIED; they are not silently
-                // reclassified as excess money.
-                .excessAmount(0L)
-                .unallocatedAmount(sumReceiptAmounts(
-                        receipts,
-                        PaymentApplicationClassification.UNAPPLIED
-                ))
-                .checkout(toCheckoutDetail(payment, evaluatedAt))
-                // Refund obligations/attempts are introduced by later tasks.
-                // refundAmount above only represents successful package refund.
-                .refunds(List.of())
-                .build();
-    }
-
-    private long sumReceiptAmounts(
-            List<PaymentTransaction> receipts,
-            PaymentApplicationClassification classification
-    ) {
-        return receipts.stream()
-                .filter(receipt -> classification == null
-                        || receipt.getApplicationClassification()
-                        == classification)
-                .map(PaymentTransaction::getAmount)
-                .filter(Objects::nonNull)
-                .reduce(BigDecimal.ZERO, BigDecimal::add)
-                .longValueExact();
-    }
-
-    private long amountOrZero(BigDecimal amount) {
-        return amount == null ? 0L : amount.longValueExact();
-    }
-
-    private BookingDetailResponse.CheckoutDetail toCheckoutDetail(
-            Payment payment,
-            Instant evaluatedAt
-    ) {
-        BookingDetailResponse.CheckoutState state;
-        if (payment.getProviderOrderRef() == null) {
-            state = BookingDetailResponse.CheckoutState.NOT_CREATED;
-        } else if (payment.getProviderExpiresAt() == null) {
-            state = BookingDetailResponse.CheckoutState.UNAVAILABLE;
-        } else if (!evaluatedAt.isBefore(payment.getProviderExpiresAt())) {
-            state = BookingDetailResponse.CheckoutState.EXPIRED;
-        } else {
-            state = BookingDetailResponse.CheckoutState.READY;
-        }
-
-        return new BookingDetailResponse.CheckoutDetail(
-                state,
-                payment.getMethod(),
-                payment.getProviderExpiresAt(),
-                payment.getMethod() == PaymentMethod.SIMULATOR
-                        ? "Complete payment in the simulator before the hold expires."
-                        : payment.getMethod() == PaymentMethod.BANK_TRANSFER
-                                && "SEPAY".equals(payment.getProvider())
-                                ? SEPAY_TEST_INSTRUCTION
-                                : null,
-                payment.getProviderOrderRef(),
-                payment.getQrCodeUrl()
         );
     }
 

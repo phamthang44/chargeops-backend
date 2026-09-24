@@ -39,6 +39,17 @@ public final class BookingCommandPayloadHasher {
         ));
     }
 
+    public static String sha256(CancelBookingCanonicalPayload payload) {
+        Objects.requireNonNull(payload, "cancelPayload must not be null");
+        return sha256(String.join("\n",
+                "cancel-booking-v1",
+                field("bookingId", payload.bookingId()),
+                field("expectedVersion", payload.expectedVersion()),
+                field("expectedRefundAmount", payload.expectedRefundAmount()),
+                field("acceptedPolicyVersion", payload.acceptedPolicyVersion())
+        ));
+    }
+
     private static String field(String name, Object value) {
         String text = Objects.requireNonNull(value, name + " must not be null").toString();
         return name + ":" + text.length() + ":" + text;

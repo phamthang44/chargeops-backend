@@ -116,7 +116,7 @@ class BookingCheckoutIntegrationTest {
                 mock(BookingMapper.class),
                 mock(BookingPolicyConfig.class),
                 paymentRepository,
-                paymentTransactionRepository,
+                mock(com.thang.chargeops.booking.service.DriverBookingDetailAssembler.class),
                 mock(DriverBookingReadPolicy.class),
                 mock(BookingStatusHistoryRecorder.class),
                 gatewayRegistry,

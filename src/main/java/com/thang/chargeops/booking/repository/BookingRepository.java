@@ -212,4 +212,16 @@ public interface BookingRepository extends JpaRepository<Booking, UUID>, JpaSpec
     @Query("SELECT b FROM Booking b WHERE b.id = :id")
     Optional<Booking> findByIdWithLock(@Param("id") UUID id);
 
+    @Query("""
+        SELECT b.id AS bookingId,
+               b.driver.id AS driverId,
+               b.connector.id AS connectorId
+        FROM Booking b
+        WHERE b.id = :bookingId
+    """)
+    Optional<com.thang.chargeops.booking.projection.BookingCancellationRouteProjection> findCancellationRouteById(
+            @Param("bookingId") UUID bookingId
+    );
+
 }
+

@@ -26,4 +26,6 @@ public interface RefundRepository extends JpaRepository<Refund, UUID> {
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("SELECT r FROM Refund r WHERE r.id = :id")
     Optional<Refund> findByIdWithLock(@Param("id") UUID id);
+
+    java.util.List<Refund> findByBookingIdOrderByCreatedAtAscIdAsc(UUID bookingId);
 }

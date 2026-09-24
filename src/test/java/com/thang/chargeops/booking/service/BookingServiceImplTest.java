@@ -90,6 +90,7 @@ class BookingServiceImplTest {
     @Mock private BookingPolicyConfig bookingPolicyConfig;
     @Mock private PaymentRepository paymentRepository;
     @Mock private PaymentTransactionRepository paymentTransactionRepository;
+    @Mock private com.thang.chargeops.refund.repository.RefundRepository refundRepository;
     @Mock private DriverBookingReadPolicy driverBookingReadPolicy;
     @Mock private BookingStatusHistoryRecorder bookingStatusHistoryRecorder;
     @Mock private PaymentGatewayRegistry paymentGatewayRegistry;
@@ -97,6 +98,7 @@ class BookingServiceImplTest {
     @Mock private BookingCommandInFlightLock bookingCommandInFlightLock;
     @Mock private Clock applicationClock;
 
+    private DriverBookingDetailAssembler driverBookingDetailAssembler;
     private BookingServiceImpl service;
     private UserProfile driver;
     private Connector connector;
@@ -107,6 +109,12 @@ class BookingServiceImplTest {
 
     @BeforeEach
     void setUp() {
+        driverBookingDetailAssembler = new DriverBookingDetailAssembler(
+                driverBookingReadPolicy,
+                paymentTransactionRepository,
+                refundRepository,
+                bookingMapper
+        );
         service = new BookingServiceImpl(
                 bookingRepository,
                 bookingPricingService,
@@ -116,7 +124,7 @@ class BookingServiceImplTest {
                 bookingMapper,
                 bookingPolicyConfig,
                 paymentRepository,
-                paymentTransactionRepository,
+                driverBookingDetailAssembler,
                 driverBookingReadPolicy,
                 bookingStatusHistoryRecorder,
                 paymentGatewayRegistry,

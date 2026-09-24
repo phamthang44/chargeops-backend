@@ -27,6 +27,7 @@ public class BookingController {
 
     private final BookingPricingService bookingPricingService;
     private final BookingService bookingService;
+    private final com.thang.chargeops.booking.service.BookingCancellationService bookingCancellationService;
 
     private static final String CACHE_CONTROL_NO_STORE = "no-store";
 
@@ -62,6 +63,20 @@ public class BookingController {
         return ResponseEntity.ok(ApiResult.success(
                 bookingService.createCheckout(bookingId, requestKey)
         ));
+    }
+
+    @PostMapping("/{bookingId}/cancel")
+    @PreAuthorize("hasRole('DRIVER')")
+    public ResponseEntity<ApiResult<BookingDetailResponse>> cancelBooking(
+            @PathVariable UUID bookingId,
+            @RequestHeader("Idempotency-Key") UUID requestKey,
+            @Valid @RequestBody com.thang.chargeops.booking.dto.request.CancelBookingRequest request
+    ) {
+        BookingDetailResponse response = bookingCancellationService
+                .cancelBooking(bookingId, requestKey, request);
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CACHE_CONTROL, CACHE_CONTROL_NO_STORE)
+                .body(ApiResult.success(response));
     }
 
     @GetMapping("/active")

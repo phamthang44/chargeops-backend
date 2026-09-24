@@ -43,6 +43,9 @@ class BookingControllerSecurityTest {
     private BookingService bookingService;
 
     @MockitoBean
+    private com.thang.chargeops.booking.service.BookingCancellationService bookingCancellationService;
+
+    @MockitoBean
     private RestAuthenticationEntryPoint authenticationEntryPoint;
 
     @MockitoBean
@@ -79,7 +82,37 @@ class BookingControllerSecurityTest {
         mockMvc.perform(post("/api/v1/bookings/{bookingId}/checkout", bookingId)
                         .header("Idempotency-Key", UUID.randomUUID()))
                 .andExpect(status().isForbidden());
+        mockMvc.perform(post("/api/v1/bookings/{bookingId}/cancel", bookingId)
+                        .header("Idempotency-Key", UUID.randomUUID())
+                        .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "expectedVersion": 1,
+                                  "expectedRefundAmount": 0,
+                                  "acceptedPolicyVersion": "v4.9"
+                                }
+                                """))
+                .andExpect(status().isForbidden());
 
-        verifyNoInteractions(bookingService);
+        verifyNoInteractions(bookingService, bookingCancellationService);
+    }
+
+    @Test
+    @WithMockUser(roles = "DRIVER")
+    void driverCanCallCancelEndpoint() throws Exception {
+        UUID bookingId = UUID.randomUUID();
+        UUID requestKey = UUID.randomUUID();
+
+        mockMvc.perform(post("/api/v1/bookings/{bookingId}/cancel", bookingId)
+                        .header("Idempotency-Key", requestKey)
+                        .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "expectedVersion": 1,
+                                  "expectedRefundAmount": 0,
+                                  "acceptedPolicyVersion": "v4.9"
+                                }
+                                """))
+                .andExpect(status().isOk());
     }
 }

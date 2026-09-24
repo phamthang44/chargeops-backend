@@ -38,4 +38,13 @@ public interface PaymentTransactionRepository extends JpaRepository<PaymentTrans
     );
 
     Page<PaymentTransaction> findByPaymentCode(String paymentCode, Pageable pageable);
+
+    @Query("""
+        SELECT pt.id
+        FROM PaymentTransaction pt
+        WHERE pt.payment.id = :paymentId
+          AND pt.applicationClassification = com.thang.chargeops.common.enums.PaymentApplicationClassification.APPLIED
+        ORDER BY pt.receivedAt ASC, pt.id ASC
+    """)
+    List<UUID> findAppliedReceiptIdsByPaymentId(@Param("paymentId") UUID paymentId);
 }

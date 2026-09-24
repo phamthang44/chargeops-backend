@@ -62,6 +62,9 @@ class BookingControllerTest {
     @MockitoBean
     private com.thang.chargeops.booking.service.BookingService bookingService;
 
+    @MockitoBean
+    private com.thang.chargeops.booking.service.BookingCancellationService bookingCancellationService;
+
     @Test
     void previewBookingPriceReturnsNoStorePricePreview() throws Exception {
         UUID connectorId = UUID.randomUUID();
@@ -397,4 +400,99 @@ class BookingControllerTest {
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.error.code").value("BKG_PENDING_LIMIT_EXCEEDED"));
     }
+
+    @Test
+    void cancelBooking_success_returns200AndNoStore() throws Exception {
+        UUID bookingId = UUID.randomUUID();
+        UUID requestKey = UUID.randomUUID();
+        com.thang.chargeops.booking.dto.response.BookingDetailResponse detailResponse =
+                mock(com.thang.chargeops.booking.dto.response.BookingDetailResponse.class);
+        when(detailResponse.bookingId()).thenReturn(bookingId);
+        when(bookingCancellationService.cancelBooking(
+                eq(bookingId),
+                eq(requestKey),
+                any(com.thang.chargeops.booking.dto.request.CancelBookingRequest.class)
+        )).thenReturn(detailResponse);
+
+        mockMvc.perform(post("/api/v1/bookings/{bookingId}/cancel", bookingId)
+                        .header("Idempotency-Key", requestKey)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "expectedVersion": 1,
+                                  "expectedRefundAmount": 126000,
+                                  "acceptedPolicyVersion": "v4.9"
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(header().string(HttpHeaders.CACHE_CONTROL, "no-store"))
+                .andExpect(jsonPath("$.data.bookingId").value(bookingId.toString()));
+    }
+
+    @Test
+    void cancelBooking_consentChanged_returns409ConflictWithCurrentBooking() throws Exception {
+        UUID bookingId = UUID.randomUUID();
+        UUID requestKey = UUID.randomUUID();
+        com.thang.chargeops.booking.dto.response.BookingDetailResponse currentBooking =
+                mock(com.thang.chargeops.booking.dto.response.BookingDetailResponse.class);
+        when(currentBooking.bookingId()).thenReturn(bookingId);
+
+        when(bookingCancellationService.cancelBooking(
+                eq(bookingId),
+                eq(requestKey),
+                any(com.thang.chargeops.booking.dto.request.CancelBookingRequest.class)
+        )).thenThrow(AppException.withDetails(
+                BookingErrorCode.CANCELLATION_CHANGED,
+                Map.of("currentBooking", currentBooking)
+        ));
+
+        mockMvc.perform(post("/api/v1/bookings/{bookingId}/cancel", bookingId)
+                        .header("Idempotency-Key", requestKey)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "expectedVersion": 1,
+                                  "expectedRefundAmount": 126000,
+                                  "acceptedPolicyVersion": "v4.9"
+                                }
+                                """))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error.code").value("BKG_CANCELLATION_CHANGED"))
+                .andExpect(jsonPath("$.error.details.currentBooking.bookingId").value(bookingId.toString()));
+    }
+
+    @Test
+    void cancelBooking_missingIdempotencyKey_returns400BadRequest() throws Exception {
+        UUID bookingId = UUID.randomUUID();
+
+        mockMvc.perform(post("/api/v1/bookings/{bookingId}/cancel", bookingId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "expectedVersion": 1,
+                                  "expectedRefundAmount": 126000,
+                                  "acceptedPolicyVersion": "v4.9"
+                                }
+                                """))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void cancelBooking_invalidBody_returns400BadRequest() throws Exception {
+        UUID bookingId = UUID.randomUUID();
+        UUID requestKey = UUID.randomUUID();
+
+        // Missing expectedVersion and negative expectedRefundAmount
+        mockMvc.perform(post("/api/v1/bookings/{bookingId}/cancel", bookingId)
+                        .header("Idempotency-Key", requestKey)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "expectedRefundAmount": -100,
+                                  "acceptedPolicyVersion": ""
+                                }
+                                """))
+                .andExpect(status().isBadRequest());
+    }
 }
+
