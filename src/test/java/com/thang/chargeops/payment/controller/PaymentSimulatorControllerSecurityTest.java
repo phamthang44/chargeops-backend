@@ -1,8 +1,6 @@
 package com.thang.chargeops.payment.controller;
 
 import com.thang.chargeops.exception.GlobalHandlerError;
-import com.thang.chargeops.infra.security.RestAccessDeniedHandler;
-import com.thang.chargeops.infra.security.RestAuthenticationEntryPoint;
 import com.thang.chargeops.payment.dto.request.SimulationRequest;
 import com.thang.chargeops.payment.dto.response.SimulationResultResponse;
 import com.thang.chargeops.payment.service.PaymentSimulationService;
@@ -45,12 +43,6 @@ class PaymentSimulatorControllerSecurityTest {
     @MockitoBean
     private PaymentSimulationService paymentSimulationService;
 
-    @MockitoBean
-    private RestAuthenticationEntryPoint authenticationEntryPoint;
-
-    @MockitoBean
-    private RestAccessDeniedHandler accessDeniedHandler;
-
     @TestConfiguration
     @EnableMethodSecurity
     static class MethodSecurityTestConfig {
@@ -59,25 +51,23 @@ class PaymentSimulatorControllerSecurityTest {
             return http
                     .csrf(AbstractHttpConfigurer::disable)
                     .authorizeHttpRequests(auth -> auth.anyRequest().authenticated())
+                    .exceptionHandling(ex -> ex
+                            .authenticationEntryPoint((request, response, exception) -> response.setStatus(401))
+                            .accessDeniedHandler((request, response, exception) -> response.setStatus(403)))
                     .build();
         }
     }
 
     @Test
     @WithMockUser(roles = "DRIVER")
-    void driverCanSimulatePayment() throws Exception {
+    void driverCannotSimulatePayment() throws Exception {
         UUID bookingId = UUID.randomUUID();
         UUID requestKey = UUID.randomUUID();
-        when(paymentSimulationService.simulate(eq(bookingId), eq(requestKey), any()))
-                .thenReturn(new SimulationResultResponse(
-                        SimulationRequest.Outcome.SUCCESS,
-                        false,
-                        null,
-                        null
-                ));
 
         mockMvc.perform(simulationRequest(bookingId, requestKey))
-                .andExpect(status().isOk());
+                .andExpect(status().isForbidden());
+
+        verifyNoInteractions(paymentSimulationService);
     }
 
     @Test
@@ -95,6 +85,17 @@ class PaymentSimulatorControllerSecurityTest {
 
         mockMvc.perform(simulationRequest(bookingId, requestKey))
                 .andExpect(status().isOk());
+    }
+
+    @Test
+    void unauthenticatedCannotSimulatePayment() throws Exception {
+        UUID bookingId = UUID.randomUUID();
+        UUID requestKey = UUID.randomUUID();
+
+        mockMvc.perform(simulationRequest(bookingId, requestKey))
+                .andExpect(status().isUnauthorized());
+
+        verifyNoInteractions(paymentSimulationService);
     }
 
     private org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder simulationRequest(

@@ -7,6 +7,7 @@ import com.thang.chargeops.payment.dto.response.SimulationResultResponse;
 import com.thang.chargeops.payment.service.PaymentSimulationService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.annotation.Profile;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
@@ -14,9 +15,10 @@ import org.springframework.web.bind.annotation.*;
 import java.util.UUID;
 
 @RestController
+@Profile({"dev", "demo", "test"})
 @RequiredArgsConstructor
 @RequestMapping(SystemConstant.API_URL_PATTERN + "bookings")
-@PreAuthorize("isAuthenticated()")
+@PreAuthorize("hasRole('ADMIN')")
 public class PaymentSimulatorController {
 
     private final PaymentSimulationService paymentSimulationService;

@@ -349,10 +349,10 @@ class BookingCheckoutIntegrationTest {
                 INSERT INTO payments(
                     id, booking_id, amount, status, method, refund_amount,
                     provider, receiving_account_ref, currency, version,
-                    needs_reconciliation, payment_code, created_at, updated_at
+                    needs_reconciliation, payment_code, environment, created_at, updated_at
                 )
                 VALUES (?, ?, 126000, 'PENDING', 'SIMULATOR', 0,
-                        'SIMULATOR', 'SIMULATOR', 'VND', 0, false, ?, ?, ?)
+                        'SIMULATOR', 'SIMULATOR', 'VND', 0, false, ?, 'SIMULATOR', ?, ?)
                 """,
                 fixturePaymentId,
                 fixtureBookingId,

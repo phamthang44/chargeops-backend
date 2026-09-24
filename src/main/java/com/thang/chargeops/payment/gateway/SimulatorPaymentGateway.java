@@ -4,11 +4,13 @@ import com.thang.chargeops.common.enums.PaymentMethod;
 import com.thang.chargeops.common.enums.PaymentEnvironment;
 import com.thang.chargeops.payment.entity.Payment;
 import com.thang.chargeops.payment.model.OrderCheckout;
+import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Component;
 
 import java.time.Instant;
 
 @Component
+@Profile({"dev", "demo", "test"})
 public class SimulatorPaymentGateway implements PaymentGateway {
 
     private static final PaymentGatewayProfile PROFILE =
@@ -16,7 +18,7 @@ public class SimulatorPaymentGateway implements PaymentGateway {
                     "SIMULATOR",
                     "SIMULATOR",
                     "VND",
-                    PaymentEnvironment.TEST
+                    PaymentEnvironment.SIMULATOR
             );
 
     @Override
@@ -32,19 +34,16 @@ public class SimulatorPaymentGateway implements PaymentGateway {
     @Override
     public OrderCheckout createCheckout(Payment payment, Instant now) {
         String paymentCode = payment.getPaymentCode();
-        String safeCode = paymentCode.replaceAll("[^a-zA-Z0-9]", "");
-        String vaSuffix = safeCode.length() > 8 ? safeCode.substring(safeCode.length() - 8) : safeCode;
-        String vaNumber = "96247" + vaSuffix;
-        long amount = payment.getAmount().longValue();
-        String qrCodeUrl = "https://img.vietqr.io/image/MB-" + vaNumber + "-compact2.png?amount=" + amount + "&addInfo=" + paymentCode + "&accountName=CHARGEOPS%20DEMO";
+        String vaNumber = "VA-SIM-" + paymentCode;
+        String qrCode = "SIM_QR_" + paymentCode;
         return new OrderCheckout(
                 "SIM-" + paymentCode,
                 paymentCode,
                 vaNumber,
                 payment.getAmount(),
                 payment.getBooking().getExpiresAt(),
-                "SIMULATOR_QR_" + paymentCode,
-                qrCodeUrl
+                qrCode,
+                null
         );
     }
 }

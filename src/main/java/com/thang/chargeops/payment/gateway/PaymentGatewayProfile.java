@@ -28,7 +28,7 @@ public record PaymentGatewayProfile(
                 receivingAccountRef,
                 currency,
                 "SIMULATOR".equalsIgnoreCase(provider)
-                        ? PaymentEnvironment.TEST
+                        ? PaymentEnvironment.SIMULATOR
                         : PaymentEnvironment.LIVE
         );
     }

@@ -153,7 +153,7 @@ class PaymentConfirmationServiceTest {
                 new BigDecimal("120000"),
                 HOLD_EXPIRY,
                 "SIM_QR_" + paymentCode,
-                "https://simulator.chargeops.local/checkout/" + paymentCode
+                null
         ), NOW);
 
         matchProjection = new OrderPaymentMatchProjection() {

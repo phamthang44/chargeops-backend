@@ -10,6 +10,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.annotation.Profile;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -68,11 +69,14 @@ class PaymentSimulatorControllerTest {
     }
 
     @Test
-    @DisplayName("Controller allows authenticated demo users to simulate payment")
+    @DisplayName("Controller is available only in non-production simulator profiles and requires ADMIN authority")
     void controllerHasExpectedRuntimeGuards() {
-        PreAuthorize preAuthorize = PaymentSimulatorController.class.getAnnotation(PreAuthorize.class);
+        Profile profile = PaymentSimulatorController.class.getAnnotation(Profile.class);
+        assertThat(profile).isNotNull();
+        assertThat(profile.value()).containsExactlyInAnyOrder("dev", "demo", "test");
 
+        PreAuthorize preAuthorize = PaymentSimulatorController.class.getAnnotation(PreAuthorize.class);
         assertThat(preAuthorize).isNotNull();
-        assertThat(preAuthorize.value()).isEqualTo("isAuthenticated()");
+        assertThat(preAuthorize.value()).isEqualTo("hasRole('ADMIN')");
     }
 }

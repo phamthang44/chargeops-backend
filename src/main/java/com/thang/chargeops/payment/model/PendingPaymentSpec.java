@@ -31,7 +31,7 @@ public record PendingPaymentSpec(
                 receivingAccountRef,
                 currency,
                 method == PaymentMethod.SIMULATOR
-                        ? PaymentEnvironment.TEST
+                        ? PaymentEnvironment.SIMULATOR
                         : PaymentEnvironment.LIVE
         );
     }

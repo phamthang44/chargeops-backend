@@ -1,10 +1,11 @@
 package com.thang.chargeops.common.enums;
 
 /**
- * Separates non-monetary demo/sandbox records from real financial records.
- * Owner revenue, payout and accounting queries must include LIVE only.
+ * Separates offline simulation, provider sandbox, legacy and real financial records.
+ * Financial queries must select exactly one environment; production money movement uses LIVE only.
  */
 public enum PaymentEnvironment {
+    SIMULATOR,
     TEST,
     LEGACY,
     LIVE

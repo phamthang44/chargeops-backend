@@ -60,6 +60,20 @@ class PaymentEntityTest {
         assertThat(payment.getEnvironment()).isEqualTo(PaymentEnvironment.TEST);
     }
 
+    @Test void defaultsSimulatorPaymentsToSimulatorEnvironment() {
+        Booking booking = mock(Booking.class);
+        Payment payment = Payment.createPending(new PendingPaymentSpec(
+                booking,
+                new BigDecimal("120000"),
+                PaymentMethod.SIMULATOR,
+                "SIMULATOR",
+                "SIMULATOR",
+                "VND"
+        ));
+
+        assertThat(payment.getEnvironment()).isEqualTo(PaymentEnvironment.SIMULATOR);
+    }
+
     @ParameterizedTest @ValueSource(strings = {"0", "-1", "1.01", "1000000000000"})
     void rejectsAmountsOutsideExactVnd(String amount) {
         assertThatThrownBy(() -> Payment.createPending(new PendingPaymentSpec(mock(Booking.class), new BigDecimal(amount), PaymentMethod.BANK_TRANSFER, "SEPAY", "merchant-test", "VND")))
