@@ -18,7 +18,34 @@ public final class RefundErrorMessage {
             "Refund must match the accepted full-package amount in whole VND"
     );
 
+    public static final ErrorMessage.Template VERSION_CONFLICT = template(
+            "error.refund.versionConflict",
+            "Refund data changed; refresh before executing it"
+    );
+
+    public static final ErrorMessage.Template REQUEST_CONFLICT = template(
+            "error.refund.requestConflict",
+            "The refund request key was already used with a different payload"
+    );
+
+    public static final ErrorMessage.Template MODE_UNAVAILABLE = template(
+            "error.refund.modeUnavailable",
+            "The requested refund execution mode is unavailable in this environment"
+    );
+
+    public static final ErrorMessage.Template INVALID_EXECUTION_REQUEST = template(
+            "error.refund.invalidExecutionRequest",
+            "Refund execution data is invalid for the selected mode"
+    );
+
     static List<ErrorMessage.Template> templates() {
-        return List.of(EXECUTION_CONFLICT, AMOUNT_CONFLICT);
+        return List.of(
+                EXECUTION_CONFLICT,
+                AMOUNT_CONFLICT,
+                VERSION_CONFLICT,
+                REQUEST_CONFLICT,
+                MODE_UNAVAILABLE,
+                INVALID_EXECUTION_REQUEST
+        );
     }
 }

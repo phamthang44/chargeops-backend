@@ -29,7 +29,7 @@ class RefundSchemaMigrationTest {
     void migrationEnforcesFullPackageSourceIdempotencyAndAttemptOwnership() throws Exception {
         Flyway baseline = Flyway.configure()
                 .dataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword())
-                .target("35")
+                .target("36")
                 .load();
         baseline.migrate();
 
@@ -39,7 +39,7 @@ class RefundSchemaMigrationTest {
 
             Flyway migration = Flyway.configure()
                     .dataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword())
-                    .target("36")
+                    .target("37")
                     .load();
             assertThat(migration.migrate().migrationsExecuted).isEqualTo(1);
             migration.validate();
@@ -87,6 +87,17 @@ class RefundSchemaMigrationTest {
             UUID request1 = UUID.randomUUID();
             UUID successAttempt = insertAttempt(connection, refund1, 1, request1, actorId,
                     "SUCCEEDED", "SIM-TRANSFER-1", null);
+
+            reject(connection, """
+                    INSERT INTO refund_attempts(
+                        refund_id, sequence_no, execution_mode, request_key, payload_hash,
+                        idempotency_key, status, transfer_reference, started_at, completed_at,
+                        performed_at, note, performed_by
+                    ) VALUES (
+                        '%s',2,'SIMULATOR','%s','%s','refund:missing-audit','SUCCEEDED',
+                        'SIM-MISSING-AUDIT',now(),now(),NULL,NULL,'%s'
+                    )
+                    """.formatted(refund1, UUID.randomUUID(), "a".repeat(64), actorId), "23514");
 
             reject(connection, attemptSql(refund1, 2, UUID.randomUUID(), actorId,
                     "SUCCEEDED", "SIM-TRANSFER-2", null), "23505");
@@ -228,19 +239,21 @@ class RefundSchemaMigrationTest {
             String failureCode
     ) {
         String completedAt = "STARTED".equals(status) ? "NULL" : "now()";
+        String performedAt = "STARTED".equals(status) ? "NULL" : "now()";
+        String note = "STARTED".equals(status) ? "NULL" : "'Migration test outcome'";
         String transfer = transferReference == null ? "NULL" : "'" + transferReference + "'";
         String failure = failureCode == null ? "NULL" : "'" + failureCode + "'";
         return """
                 INSERT INTO refund_attempts(
                     refund_id, sequence_no, execution_mode, request_key, payload_hash,
                     idempotency_key, status, transfer_reference, failure_code,
-                    started_at, completed_at, performed_by
+                    started_at, performed_at, note, completed_at, performed_by
                 ) VALUES (
                     '%s',%d,'SIMULATOR','%s','%s','refund:%s','%s',%s,%s,
-                    now(),%s,'%s'
+                    now(),%s,%s,%s,'%s'
                 )
                 """.formatted(refundId, sequence, requestKey, "a".repeat(64), requestKey,
-                status, transfer, failure, completedAt, actorId);
+                status, transfer, failure, performedAt, note, completedAt, actorId);
     }
 
     private static UUID bookingId(Connection connection, String paymentCode) throws SQLException {

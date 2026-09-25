@@ -13,6 +13,7 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 
 import java.time.Instant;
+import java.util.Objects;
 import java.util.regex.Pattern;
 
 /** One auditable execution of a Refund obligation. */
@@ -68,6 +69,12 @@ public class RefundAttempt extends AuditableEntity {
     @Column(name = "completed_at")
     private Instant completedAt;
 
+    @Column(name = "performed_at")
+    private Instant performedAt;
+
+    @Column(length = 2000)
+    private String note;
+
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "performed_by", nullable = false, updatable = false)
     private UserProfile performedBy;
@@ -94,16 +101,40 @@ public class RefundAttempt extends AuditableEntity {
     }
 
     public void completeSucceeded(String providerRefundId, String transferReference, Instant completedAt) {
+        completeSucceeded(providerRefundId, transferReference, completedAt,
+                "Refund execution succeeded", completedAt);
+    }
+
+    public void completeSucceeded(
+            String providerRefundId,
+            String transferReference,
+            Instant performedAt,
+            String note,
+            Instant completedAt
+    ) {
         ensureStarted(completedAt);
         this.providerRefundId = optionalText(providerRefundId, 255, "Provider refund ID");
         this.transferReference = requiredText(transferReference, 255, "Transfer reference");
+        this.performedAt = Objects.requireNonNull(performedAt, "performedAt is required");
+        this.note = requiredText(note, 2000, "Note");
         this.status = RefundAttemptStatus.SUCCEEDED;
         this.completedAt = completedAt;
     }
 
     public void completeFailed(String failureCode, Instant completedAt) {
+        completeFailed(failureCode, "Refund execution failed", completedAt, completedAt);
+    }
+
+    public void completeFailed(
+            String failureCode,
+            String note,
+            Instant performedAt,
+            Instant completedAt
+    ) {
         ensureStarted(completedAt);
         this.failureCode = requiredText(failureCode, 100, "Failure code");
+        this.note = requiredText(note, 2000, "Note");
+        this.performedAt = Objects.requireNonNull(performedAt, "performedAt is required");
         this.status = RefundAttemptStatus.FAILED;
         this.completedAt = completedAt;
     }

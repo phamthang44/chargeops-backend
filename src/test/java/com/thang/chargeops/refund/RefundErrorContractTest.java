@@ -12,10 +12,21 @@ class RefundErrorContractTest {
     @Test
     void refundCodesUseStableNamespaceAndRegisteredMessages() {
         assertThat(RefundErrorCode.values()).extracting(RefundErrorCode::getCode)
-                .containsExactly("REF_EXECUTION_CONFLICT", "REF_AMOUNT_CONFLICT");
+                .containsExactly(
+                        "REF_EXECUTION_CONFLICT",
+                        "REF_AMOUNT_CONFLICT",
+                        "REF_VERSION_CONFLICT",
+                        "REF_REQUEST_CONFLICT",
+                        "REF_MODE_UNAVAILABLE",
+                        "REF_INVALID_EXECUTION_REQUEST"
+                );
 
         for (RefundErrorCode code : RefundErrorCode.values()) {
-            assertThat(code.getHttpStatus().value()).isEqualTo(409);
+            if (code == RefundErrorCode.INVALID_EXECUTION_REQUEST) {
+                assertThat(code.getHttpStatus().value()).isEqualTo(400);
+            } else {
+                assertThat(code.getHttpStatus().value()).isEqualTo(409);
+            }
             assertThat(ErrorMessage.findByKey(code.getMessageKey()))
                     .isPresent()
                     .get()
