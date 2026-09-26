@@ -23,7 +23,7 @@ import com.thang.chargeops.profile.support.CurrentProfileProvider;
 import com.thang.chargeops.refund.model.RefundStatus;
 import com.thang.chargeops.refund.repository.RefundRepository;
 import com.thang.chargeops.refund.service.RefundObligationService;
-import com.thang.chargeops.refund.service.RefundObligationServiceImpl;
+import com.thang.chargeops.refund.service.impl.RefundObligationServiceImpl;
 import com.thang.chargeops.station.repository.ConnectorRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;

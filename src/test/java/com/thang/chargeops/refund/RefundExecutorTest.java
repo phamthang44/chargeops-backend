@@ -57,7 +57,7 @@ class RefundExecutorTest {
     }
 
     @Test
-    void manualRecordRequiresSuccessfulPastExternalTransfer() {
+    void manualRecordRejectsFailedOutcome() {
         ManualRecordRefundExecutor executor = new ManualRecordRefundExecutor();
         ExecuteRefundRequest invalid = new ExecuteRefundRequest(
                 0L, RefundExecutionMode.MANUAL_RECORD, RefundExecutionOutcome.FAILED,
@@ -68,6 +68,39 @@ class RefundExecutorTest {
                 new RefundExecutionCommand(UUID.randomUUID(), UUID.randomUUID(), invalid, NOW)
         )).isInstanceOfSatisfying(AppException.class, exception ->
                 assertThat(exception.getErrorCode()).isEqualTo(RefundErrorCode.INVALID_EXECUTION_REQUEST));
+    }
+
+    @Test
+    void manualRecordRejectsMissingTransferReference() {
+        ManualRecordRefundExecutor executor = new ManualRecordRefundExecutor();
+        ExecuteRefundRequest invalid = new ExecuteRefundRequest(
+                0L, RefundExecutionMode.MANUAL_RECORD, RefundExecutionOutcome.SUCCEEDED,
+                null, NOW.minusSeconds(60), "Đã chuyển khoản ngoài hệ thống"
+        );
+
+        assertThatThrownBy(() -> executor.execute(
+                new RefundExecutionCommand(UUID.randomUUID(), UUID.randomUUID(), invalid, NOW)
+        )).isInstanceOfSatisfying(AppException.class, exception ->
+                assertThat(exception.getErrorCode()).isEqualTo(RefundErrorCode.INVALID_EXECUTION_REQUEST));
+    }
+
+    @Test
+    void manualRecordRejectsMissingPerformedAt() {
+        ManualRecordRefundExecutor executor = new ManualRecordRefundExecutor();
+        ExecuteRefundRequest invalid = new ExecuteRefundRequest(
+                0L, RefundExecutionMode.MANUAL_RECORD, RefundExecutionOutcome.SUCCEEDED,
+                "FT260925987123", null, "Đã chuyển khoản ngoài hệ thống"
+        );
+
+        assertThatThrownBy(() -> executor.execute(
+                new RefundExecutionCommand(UUID.randomUUID(), UUID.randomUUID(), invalid, NOW)
+        )).isInstanceOfSatisfying(AppException.class, exception ->
+                assertThat(exception.getErrorCode()).isEqualTo(RefundErrorCode.INVALID_EXECUTION_REQUEST));
+    }
+
+    @Test
+    void manualRecordAcceptsSuccessfulPastExternalTransfer() {
+        ManualRecordRefundExecutor executor = new ManualRecordRefundExecutor();
 
         Instant performedAt = NOW.minusSeconds(60);
         ExecuteRefundRequest valid = new ExecuteRefundRequest(

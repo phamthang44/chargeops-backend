@@ -10,6 +10,9 @@ import com.thang.chargeops.common.enums.PaymentMethod;
 import com.thang.chargeops.common.enums.PaymentStatus;
 import com.thang.chargeops.payment.entity.Payment;
 import com.thang.chargeops.payment.repository.PaymentTransactionRepository;
+import com.thang.chargeops.refund.entity.Refund;
+import com.thang.chargeops.refund.model.RefundReason;
+import com.thang.chargeops.refund.model.RefundStatus;
 import com.thang.chargeops.refund.repository.RefundRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -18,7 +21,10 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.math.BigDecimal;
 import java.time.Instant;
+import java.util.List;
+import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -36,6 +42,7 @@ class DriverBookingDetailAssemblerTest {
     @Mock private BookingMapper bookingMapper;
     @Mock private Booking booking;
     @Mock private Payment payment;
+    @Mock private Refund refund;
 
     private DriverBookingDetailAssembler assembler;
 
@@ -97,6 +104,54 @@ class DriverBookingDetailAssemblerTest {
         assertThat(snapshot.checkout().instruction()).isNull();
         assertThat(snapshot.checkout().checkoutReference()).isNull();
         assertThat(snapshot.checkout().checkoutUrl()).isNull();
+    }
+
+    @Test
+    void pendingRefundIsExposedAsSanitizedDriverSummary() {
+        UUID bookingId = UUID.fromString("00000000-0000-4000-8000-000000000001");
+        UUID refundId = UUID.fromString("00000000-0000-4000-8000-000000000006");
+        when(booking.getId()).thenReturn(bookingId);
+        when(refundRepository.findByBookingIdOrderByCreatedAtAscIdAsc(bookingId))
+                .thenReturn(List.of(refund));
+        when(refund.getId()).thenReturn(refundId);
+        when(refund.getAmount()).thenReturn(new BigDecimal("126000.00"));
+        when(refund.getReason()).thenReturn(RefundReason.VOLUNTARY_GRACE);
+        when(refund.getStatus()).thenReturn(RefundStatus.PENDING);
+        when(refund.getPayment()).thenReturn(payment);
+
+        BookingReadSnapshot snapshot = assembleAndCaptureSnapshot();
+
+        assertThat(snapshot.refunds()).containsExactly(new BookingDetailResponse.RefundSummary(
+                refundId,
+                126000L,
+                BookingDetailResponse.RefundReason.VOLUNTARY_GRACE,
+                BookingDetailResponse.RefundState.PENDING,
+                false
+        ));
+    }
+
+    @Test
+    void succeededRefundIsExposedAsTerminalDriverSummary() {
+        UUID bookingId = UUID.fromString("00000000-0000-4000-8000-000000000001");
+        UUID refundId = UUID.fromString("00000000-0000-4000-8000-000000000006");
+        when(booking.getId()).thenReturn(bookingId);
+        when(refundRepository.findByBookingIdOrderByCreatedAtAscIdAsc(bookingId))
+                .thenReturn(List.of(refund));
+        when(refund.getId()).thenReturn(refundId);
+        when(refund.getAmount()).thenReturn(new BigDecimal("126000.00"));
+        when(refund.getReason()).thenReturn(RefundReason.VOLUNTARY_GRACE);
+        when(refund.getStatus()).thenReturn(RefundStatus.SUCCEEDED);
+        when(refund.getPayment()).thenReturn(payment);
+
+        BookingReadSnapshot snapshot = assembleAndCaptureSnapshot();
+
+        assertThat(snapshot.refunds()).containsExactly(new BookingDetailResponse.RefundSummary(
+                refundId,
+                126000L,
+                BookingDetailResponse.RefundReason.VOLUNTARY_GRACE,
+                BookingDetailResponse.RefundState.SUCCEEDED,
+                false
+        ));
     }
 
     private BookingReadSnapshot assembleAndCaptureSnapshot() {
