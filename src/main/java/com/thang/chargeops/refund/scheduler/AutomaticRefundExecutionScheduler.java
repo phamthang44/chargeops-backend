@@ -1,6 +1,5 @@
 package com.thang.chargeops.refund.scheduler;
 
-import com.thang.chargeops.refund.model.RefundAutoDispatchStatus;
 import com.thang.chargeops.refund.repository.RefundAutoDispatchRepository;
 import com.thang.chargeops.refund.service.AutomaticRefundExecutionService;
 import lombok.extern.slf4j.Slf4j;
@@ -8,7 +7,6 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.dao.OptimisticLockingFailureException;
-import org.springframework.data.domain.PageRequest;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
@@ -37,14 +35,11 @@ public class AutomaticRefundExecutionScheduler {
     }
 
     @Scheduled(
-            fixedDelayString = "${app.refund.auto-execution.fixed-delay-ms:5000}",
-            initialDelayString = "${app.refund.auto-execution.initial-delay-ms:5000}"
+            fixedDelayString = "${app.refund.auto-execution.fixed-delay-ms:600000}",
+            initialDelayString = "${app.refund.auto-execution.initial-delay-ms:600000}"
     )
     public void processPendingRefunds() {
-        List<UUID> refundIds = dispatchRepository.findRefundIdsByStatus(
-                RefundAutoDispatchStatus.PENDING,
-                PageRequest.of(0, batchSize)
-        );
+        List<UUID> refundIds = dispatchRepository.findPendingRefundIds(batchSize);
         int processed = 0;
         int conflicts = 0;
         int errors = 0;

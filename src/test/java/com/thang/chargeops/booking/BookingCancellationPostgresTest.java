@@ -35,6 +35,7 @@ import com.thang.chargeops.refund.repository.RefundAttemptRepository;
 import com.thang.chargeops.refund.repository.RefundAutoDispatchRepository;
 import com.thang.chargeops.refund.repository.RefundRepository;
 import com.thang.chargeops.refund.service.RefundObligationService;
+import com.thang.chargeops.refund.service.RefundExecutionResultHandler;
 import com.thang.chargeops.refund.service.impl.AutomaticRefundExecutionServiceImpl;
 import com.thang.chargeops.refund.service.impl.RefundObligationServiceImpl;
 import com.thang.chargeops.station.repository.ConnectorRepository;
@@ -213,6 +214,7 @@ class BookingCancellationPostgresTest {
                 refundAttemptRepository,
                 autoDispatchRepository,
                 new RefundExecutorRegistry(List.of(new SimulatorRefundExecutor())),
+                new RefundExecutionResultHandler(refundAttemptRepository, refundRepository, paymentRepository),
                 Clock.fixed(NOW.plusSeconds(1), ZoneOffset.UTC)
         );
 
@@ -270,6 +272,7 @@ class BookingCancellationPostgresTest {
                 connectorRepository, bookingRepository, paymentRepository, paymentTransactionRepository,
                 refundRepository, refundAttemptRepository, autoDispatchRepository,
                 new RefundExecutorRegistry(List.of(failingExecutor)),
+                new RefundExecutionResultHandler(refundAttemptRepository, refundRepository, paymentRepository),
                 Clock.fixed(NOW.plusSeconds(1), ZoneOffset.UTC)
         );
 

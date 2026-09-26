@@ -21,7 +21,7 @@ import com.thang.chargeops.refund.executor.RefundExecutionCommand;
 import com.thang.chargeops.refund.executor.RefundExecutionResult;
 import com.thang.chargeops.refund.executor.RefundExecutor;
 import com.thang.chargeops.refund.executor.RefundExecutorRegistry;
-import com.thang.chargeops.refund.model.PendingRefundAttemptSpec;
+import com.thang.chargeops.refund.factory.RefundAttemptFactory;
 import com.thang.chargeops.refund.model.RefundExecutionTrigger;
 import com.thang.chargeops.refund.model.RefundStatus;
 import com.thang.chargeops.refund.projection.RefundExecutionRouteProjection;
@@ -31,6 +31,7 @@ import com.thang.chargeops.refund.repository.RefundRepository;
 import com.thang.chargeops.refund.service.AdminRefundService;
 import com.thang.chargeops.refund.service.RefundDetailAssembler;
 import com.thang.chargeops.refund.service.RefundExecutionPayloadHasher;
+import com.thang.chargeops.refund.service.RefundExecutionResultHandler;
 import com.thang.chargeops.station.repository.ConnectorRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
@@ -61,6 +62,7 @@ public class AdminRefundServiceImpl implements AdminRefundService {
     private final RefundAttemptRepository refundAttemptRepository;
     private final RefundExecutorRegistry executorRegistry;
     private final RefundDetailAssembler assembler;
+    private final RefundExecutionResultHandler resultHandler;
     private final Clock applicationClock;
 
     @Override
@@ -158,17 +160,9 @@ public class AdminRefundServiceImpl implements AdminRefundService {
 
         Instant executionAt = applicationClock.instant();
         int sequenceNo = Math.toIntExact(refundAttemptRepository.countByRefundId(refundId) + 1);
-        RefundAttempt attempt = RefundAttempt.start(new PendingRefundAttemptSpec(
-                refund,
-                sequenceNo,
-                request.executionMode(),
-                requestKey,
-                payloadHash,
-                "refund-executor:" + refundId + ":" + requestKey,
-                RefundExecutionTrigger.ADMIN,
-                lockedActor,
-                executionAt
-        ));
+        RefundAttempt attempt = RefundAttemptFactory.adminAttempt(
+                refund, sequenceNo, request.executionMode(), requestKey, payloadHash, lockedActor, executionAt
+        );
 
         RefundExecutionResult result = executor.execute(new RefundExecutionCommand(
                 refundId,
@@ -177,30 +171,7 @@ public class AdminRefundServiceImpl implements AdminRefundService {
                 executionAt
         ));
 
-        if (result.outcome() == RefundExecutionOutcome.SUCCEEDED) {
-            attempt.completeSucceeded(
-                    result.providerRefundId(),
-                    result.transferReference(),
-                    result.performedAt(),
-                    result.note(),
-                    executionAt
-            );
-            refundAttemptRepository.saveAndFlush(attempt);
-            refund.completeWith(attempt, result.performedAt());
-            payment.recordFullRefund(refund.getAmount());
-            paymentRepository.flush();
-            refundRepository.flush();
-        } else {
-            attempt.completeFailed(
-                    result.failureCode(),
-                    result.note(),
-                    result.performedAt(),
-                    executionAt
-            );
-            refundAttemptRepository.saveAndFlush(attempt);
-            refund.requireAdminAction();
-            refundRepository.flush();
-        }
+        resultHandler.apply(refund, payment, attempt, result, executionAt);
 
         return assembleDetail(refund);
     }

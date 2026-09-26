@@ -84,6 +84,7 @@ class AdminRefundServiceImplTest {
                 currentProfileProvider, userProfileRepository, connectorRepository,
                 bookingRepository, paymentRepository, paymentTransactionRepository,
                 refundRepository, refundAttemptRepository, executorRegistry, assembler,
+                new RefundExecutionResultHandler(refundAttemptRepository, refundRepository, paymentRepository),
                 Clock.fixed(NOW, ZoneOffset.UTC)
         );
     }

@@ -16,6 +16,7 @@ import com.thang.chargeops.refund.executor.RefundExecutionCommand;
 import com.thang.chargeops.refund.executor.RefundExecutionResult;
 import com.thang.chargeops.refund.executor.RefundExecutor;
 import com.thang.chargeops.refund.executor.RefundExecutorRegistry;
+import com.thang.chargeops.refund.factory.RefundAttemptFactory;
 import com.thang.chargeops.refund.model.*;
 import com.thang.chargeops.refund.projection.RefundExecutionRouteProjection;
 import com.thang.chargeops.refund.repository.RefundAttemptRepository;
@@ -23,6 +24,7 @@ import com.thang.chargeops.refund.repository.RefundAutoDispatchRepository;
 import com.thang.chargeops.refund.repository.RefundRepository;
 import com.thang.chargeops.refund.service.AutomaticRefundExecutionService;
 import com.thang.chargeops.refund.service.RefundExecutionPayloadHasher;
+import com.thang.chargeops.refund.service.RefundExecutionResultHandler;
 import com.thang.chargeops.station.repository.ConnectorRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -46,6 +48,7 @@ public class AutomaticRefundExecutionServiceImpl implements AutomaticRefundExecu
     private final RefundAttemptRepository refundAttemptRepository;
     private final RefundAutoDispatchRepository autoDispatchRepository;
     private final RefundExecutorRegistry executorRegistry;
+    private final RefundExecutionResultHandler resultHandler;
     private final Clock applicationClock;
 
     @Override
@@ -99,17 +102,9 @@ public class AutomaticRefundExecutionServiceImpl implements AutomaticRefundExecu
         );
         String payloadHash = RefundExecutionPayloadHasher.sha256(refundId, request);
         RefundExecutor executor = executorRegistry.require(RefundExecutionMode.SIMULATOR);
-        RefundAttempt attempt = RefundAttempt.start(new PendingRefundAttemptSpec(
-                refund,
-                1,
-                RefundExecutionMode.SIMULATOR,
-                dispatch.getRequestKey(),
-                payloadHash,
-                "refund-auto-first-attempt:" + refundId,
-                RefundExecutionTrigger.SYSTEM_POLICY,
-                null,
-                executionAt
-        ));
+        RefundAttempt attempt = RefundAttemptFactory.automaticFirstAttempt(
+                refund, dispatch.getRequestKey(), payloadHash, executionAt
+        );
 
         RefundExecutionResult result = executor.execute(new RefundExecutionCommand(
                 refundId,
@@ -117,22 +112,7 @@ public class AutomaticRefundExecutionServiceImpl implements AutomaticRefundExecu
                 request,
                 executionAt
         ));
-        if (result.outcome() == RefundExecutionOutcome.SUCCEEDED) {
-            attempt.completeSucceeded(
-                    result.providerRefundId(), result.transferReference(), result.performedAt(),
-                    result.note(), executionAt
-            );
-            refundAttemptRepository.saveAndFlush(attempt);
-            refund.completeWith(attempt, result.performedAt());
-            payment.recordFullRefund(refund.getAmount());
-            paymentRepository.flush();
-            refundRepository.flush();
-        } else {
-            attempt.completeFailed(result.failureCode(), result.note(), result.performedAt(), executionAt);
-            refundAttemptRepository.saveAndFlush(attempt);
-            refund.requireAdminAction();
-            refundRepository.flush();
-        }
+        resultHandler.apply(refund, payment, attempt, result, executionAt);
         dispatch.markProcessed(executionAt);
         return true;
     }
