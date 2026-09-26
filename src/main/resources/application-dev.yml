@@ -23,3 +23,8 @@ springdoc:
     enabled: true
   swagger-ui:
     enabled: true
+
+app:
+  refund:
+    auto-execution:
+      enabled: true

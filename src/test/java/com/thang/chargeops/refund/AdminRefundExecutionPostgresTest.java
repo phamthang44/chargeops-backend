@@ -437,8 +437,10 @@ class AdminRefundExecutionPostgresTest {
         UUID basisId = UUID.randomUUID();
         jdbc.update("""
                 INSERT INTO refunds(booking_id, payment_id, source_payment_transaction_id,
-                    basis_type, basis_id, amount, currency, reason, status, decided_by, decision_at, version)
-                VALUES (?, ?, ?, 'BOOKING_CANCELLATION', ?, 120000, 'VND', 'VOLUNTARY_GRACE', 'PENDING', ?, now(), 0)
+                    basis_type, basis_id, amount, currency, reason, status,
+                    execution_policy, requires_admin_action, decided_by, decision_at, version)
+                VALUES (?, ?, ?, 'BOOKING_CANCELLATION', ?, 120000, 'VND', 'VOLUNTARY_GRACE', 'PENDING',
+                    'AUTO_FIRST_ATTEMPT', false, ?, now(), 0)
                 """, bookingId, paymentId, sourceTxId, basisId, adminId);
 
         UUID refundId = jdbc.queryForObject(

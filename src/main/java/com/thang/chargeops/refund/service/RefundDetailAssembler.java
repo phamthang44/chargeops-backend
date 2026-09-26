@@ -26,6 +26,8 @@ public class RefundDetailAssembler {
                 refund.getBasisType(),
                 refund.getBasisId(),
                 refund.getStatus(),
+                refund.getExecutionPolicy(),
+                refund.isRequiresAdminAction(),
                 refund.getVersion(),
                 refund.getDecisionAt(),
                 refund.getDecidedBy().getId(),
@@ -41,6 +43,7 @@ public class RefundDetailAssembler {
                 attempt.getId(),
                 attempt.getSequenceNo(),
                 attempt.getExecutionMode(),
+                attempt.getExecutionTrigger(),
                 attempt.getStatus(),
                 attempt.getTransferReference(),
                 attempt.getFailureCode(),
@@ -48,7 +51,7 @@ public class RefundDetailAssembler {
                 attempt.getStartedAt(),
                 attempt.getPerformedAt(),
                 attempt.getCompletedAt(),
-                attempt.getPerformedBy().getId()
+                attempt.getPerformedBy() == null ? null : attempt.getPerformedBy().getId()
         );
     }
 }

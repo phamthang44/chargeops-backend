@@ -13,6 +13,7 @@ public record PendingRefundAttemptSpec(
         UUID requestKey,
         String payloadHash,
         String idempotencyKey,
+        RefundExecutionTrigger executionTrigger,
         UserProfile performedBy,
         Instant startedAt
 ) {

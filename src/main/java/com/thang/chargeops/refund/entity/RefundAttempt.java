@@ -7,6 +7,7 @@ import com.thang.chargeops.profile.entity.UserProfile;
 import com.thang.chargeops.refund.model.PendingRefundAttemptSpec;
 import com.thang.chargeops.refund.model.RefundAttemptStatus;
 import com.thang.chargeops.refund.model.RefundExecutionMode;
+import com.thang.chargeops.refund.model.RefundExecutionTrigger;
 import jakarta.persistence.*;
 import lombok.AccessLevel;
 import lombok.Getter;
@@ -40,6 +41,10 @@ public class RefundAttempt extends AuditableEntity {
     @Enumerated(EnumType.STRING)
     @Column(name = "execution_mode", nullable = false, length = 30, updatable = false)
     private RefundExecutionMode executionMode;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "execution_trigger", nullable = false, length = 30, updatable = false)
+    private RefundExecutionTrigger executionTrigger;
 
     @Column(name = "request_key", nullable = false, updatable = false)
     private java.util.UUID requestKey;
@@ -75,15 +80,17 @@ public class RefundAttempt extends AuditableEntity {
     @Column(length = 2000)
     private String note;
 
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "performed_by", nullable = false, updatable = false)
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "performed_by", updatable = false)
     private UserProfile performedBy;
 
     public static RefundAttempt start(PendingRefundAttemptSpec spec) {
         if (spec == null || spec.refund() == null || spec.executionMode() == null
-                || spec.requestKey() == null || spec.performedBy() == null || spec.startedAt() == null
+                || spec.requestKey() == null || spec.executionTrigger() == null || spec.startedAt() == null
                 || spec.sequenceNo() <= 0 || spec.payloadHash() == null
-                || !SHA_256.matcher(spec.payloadHash()).matches()) {
+                || !SHA_256.matcher(spec.payloadHash()).matches()
+                || (spec.executionTrigger() == RefundExecutionTrigger.ADMIN && spec.performedBy() == null)
+                || (spec.executionTrigger() == RefundExecutionTrigger.SYSTEM_POLICY && spec.performedBy() != null)) {
             throw conflict("Complete refund attempt data and a lowercase SHA-256 payload hash are required");
         }
 
@@ -91,6 +98,7 @@ public class RefundAttempt extends AuditableEntity {
         attempt.refund = spec.refund();
         attempt.sequenceNo = spec.sequenceNo();
         attempt.executionMode = spec.executionMode();
+        attempt.executionTrigger = spec.executionTrigger();
         attempt.requestKey = spec.requestKey();
         attempt.payloadHash = spec.payloadHash();
         attempt.idempotencyKey = requiredText(spec.idempotencyKey(), 255, "Idempotency key");

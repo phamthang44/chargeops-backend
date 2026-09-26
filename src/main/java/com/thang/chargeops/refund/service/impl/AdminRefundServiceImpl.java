@@ -22,6 +22,7 @@ import com.thang.chargeops.refund.executor.RefundExecutionResult;
 import com.thang.chargeops.refund.executor.RefundExecutor;
 import com.thang.chargeops.refund.executor.RefundExecutorRegistry;
 import com.thang.chargeops.refund.model.PendingRefundAttemptSpec;
+import com.thang.chargeops.refund.model.RefundExecutionTrigger;
 import com.thang.chargeops.refund.model.RefundStatus;
 import com.thang.chargeops.refund.projection.RefundExecutionRouteProjection;
 import com.thang.chargeops.refund.repository.RefundAttemptRepository;
@@ -164,6 +165,7 @@ public class AdminRefundServiceImpl implements AdminRefundService {
                 requestKey,
                 payloadHash,
                 "refund-executor:" + refundId + ":" + requestKey,
+                RefundExecutionTrigger.ADMIN,
                 lockedActor,
                 executionAt
         ));
@@ -196,6 +198,8 @@ public class AdminRefundServiceImpl implements AdminRefundService {
                     executionAt
             );
             refundAttemptRepository.saveAndFlush(attempt);
+            refund.requireAdminAction();
+            refundRepository.flush();
         }
 
         return assembleDetail(refund);

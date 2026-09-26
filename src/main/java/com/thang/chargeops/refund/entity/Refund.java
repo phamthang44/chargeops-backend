@@ -11,6 +11,7 @@ import com.thang.chargeops.payment.entity.PaymentTransaction;
 import com.thang.chargeops.profile.entity.UserProfile;
 import com.thang.chargeops.refund.model.PendingRefundSpec;
 import com.thang.chargeops.refund.model.RefundBasisType;
+import com.thang.chargeops.refund.model.RefundExecutionPolicy;
 import com.thang.chargeops.refund.model.RefundReason;
 import com.thang.chargeops.refund.model.RefundStatus;
 import jakarta.persistence.*;
@@ -71,6 +72,13 @@ public class Refund extends AuditableEntity {
     @Column(nullable = false, length = 20)
     private RefundStatus status;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "execution_policy", nullable = false, length = 30)
+    private RefundExecutionPolicy executionPolicy;
+
+    @Column(name = "requires_admin_action", nullable = false)
+    private boolean requiresAdminAction;
+
     @Column(name = "decision_at", nullable = false, updatable = false)
     private Instant decisionAt;
 
@@ -124,6 +132,10 @@ public class Refund extends AuditableEntity {
         refund.basisType = spec.basisType();
         refund.basisId = spec.basisId();
         refund.status = RefundStatus.PENDING;
+        refund.executionPolicy = spec.reason() == RefundReason.VOLUNTARY_GRACE
+                ? RefundExecutionPolicy.AUTO_FIRST_ATTEMPT
+                : RefundExecutionPolicy.ADMIN_REQUIRED;
+        refund.requiresAdminAction = refund.executionPolicy == RefundExecutionPolicy.ADMIN_REQUIRED;
         refund.decisionAt = spec.decisionAt();
         refund.decidedBy = spec.decidedBy();
         return refund;
@@ -144,6 +156,13 @@ public class Refund extends AuditableEntity {
         this.successfulAttempt = attempt;
         this.completedAt = completedAt;
         this.status = RefundStatus.SUCCEEDED;
+        this.requiresAdminAction = false;
+    }
+
+    public void requireAdminAction() {
+        if (status == RefundStatus.PENDING) {
+            this.requiresAdminAction = true;
+        }
     }
 
     private static BigDecimal exactWholeVnd(BigDecimal value) {

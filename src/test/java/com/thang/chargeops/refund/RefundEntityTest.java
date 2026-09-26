@@ -126,7 +126,7 @@ class RefundEntityTest {
         Refund refund = pendingRefund();
         PendingRefundAttemptSpec invalid = new PendingRefundAttemptSpec(
                 refund, 0, RefundExecutionMode.SIMULATOR, UUID.randomUUID(),
-                "ABC", "refund:key", actor, DECIDED_AT.plusSeconds(1)
+                "ABC", "refund:key", RefundExecutionTrigger.ADMIN, actor, DECIDED_AT.plusSeconds(1)
         );
 
         assertThatThrownBy(() -> RefundAttempt.start(invalid))
@@ -155,6 +155,7 @@ class RefundEntityTest {
                 UUID.randomUUID(),
                 PAYLOAD_HASH,
                 "refund:" + UUID.randomUUID(),
+                RefundExecutionTrigger.ADMIN,
                 actor,
                 DECIDED_AT.plusSeconds(1)
         ));

@@ -11,6 +11,7 @@ import com.thang.chargeops.common.enums.PaymentStatus;
 import com.thang.chargeops.payment.entity.Payment;
 import com.thang.chargeops.payment.repository.PaymentTransactionRepository;
 import com.thang.chargeops.refund.entity.Refund;
+import com.thang.chargeops.refund.model.RefundExecutionPolicy;
 import com.thang.chargeops.refund.model.RefundReason;
 import com.thang.chargeops.refund.model.RefundStatus;
 import com.thang.chargeops.refund.repository.RefundRepository;
@@ -117,6 +118,7 @@ class DriverBookingDetailAssemblerTest {
         when(refund.getAmount()).thenReturn(new BigDecimal("126000.00"));
         when(refund.getReason()).thenReturn(RefundReason.VOLUNTARY_GRACE);
         when(refund.getStatus()).thenReturn(RefundStatus.PENDING);
+        when(refund.getExecutionPolicy()).thenReturn(RefundExecutionPolicy.AUTO_FIRST_ATTEMPT);
         when(refund.getPayment()).thenReturn(payment);
 
         BookingReadSnapshot snapshot = assembleAndCaptureSnapshot();
@@ -126,6 +128,8 @@ class DriverBookingDetailAssemblerTest {
                 126000L,
                 BookingDetailResponse.RefundReason.VOLUNTARY_GRACE,
                 BookingDetailResponse.RefundState.PENDING,
+                RefundExecutionPolicy.AUTO_FIRST_ATTEMPT,
+                false,
                 false
         ));
     }
@@ -141,6 +145,7 @@ class DriverBookingDetailAssemblerTest {
         when(refund.getAmount()).thenReturn(new BigDecimal("126000.00"));
         when(refund.getReason()).thenReturn(RefundReason.VOLUNTARY_GRACE);
         when(refund.getStatus()).thenReturn(RefundStatus.SUCCEEDED);
+        when(refund.getExecutionPolicy()).thenReturn(RefundExecutionPolicy.AUTO_FIRST_ATTEMPT);
         when(refund.getPayment()).thenReturn(payment);
 
         BookingReadSnapshot snapshot = assembleAndCaptureSnapshot();
@@ -150,6 +155,8 @@ class DriverBookingDetailAssemblerTest {
                 126000L,
                 BookingDetailResponse.RefundReason.VOLUNTARY_GRACE,
                 BookingDetailResponse.RefundState.SUCCEEDED,
+                RefundExecutionPolicy.AUTO_FIRST_ATTEMPT,
+                false,
                 false
         ));
     }

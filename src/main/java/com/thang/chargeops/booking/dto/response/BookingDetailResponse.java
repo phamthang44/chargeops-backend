@@ -92,6 +92,8 @@ public record BookingDetailResponse(
             long amount,
             RefundReason reason,
             RefundState status,
+            com.thang.chargeops.refund.model.RefundExecutionPolicy executionPolicy,
+            boolean requiresAdminAction,
             boolean needsReconciliation
     ) {
     }

@@ -101,6 +101,12 @@ app:
       fixed-delay-ms: ${LICENSE_RENEWAL_ACTIVATION_FIXED_DELAY_MS:60000}
       initial-delay-ms: ${LICENSE_RENEWAL_ACTIVATION_INITIAL_DELAY_MS:30000}
       batch-size: ${LICENSE_RENEWAL_ACTIVATION_BATCH_SIZE:100}
+  refund:
+    auto-execution:
+      enabled: ${REFUND_AUTO_EXECUTION_ENABLED:false}
+      fixed-delay-ms: ${REFUND_AUTO_EXECUTION_FIXED_DELAY_MS:5000}
+      initial-delay-ms: ${REFUND_AUTO_EXECUTION_INITIAL_DELAY_MS:5000}
+      batch-size: ${REFUND_AUTO_EXECUTION_BATCH_SIZE:50}
   turnaround-buffer-minutes: 10
   duration-step-minutes: 30
   max-duration-minutes: 180

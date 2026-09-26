@@ -9,9 +9,11 @@ import com.thang.chargeops.payment.entity.Payment;
 import com.thang.chargeops.payment.entity.PaymentTransaction;
 import com.thang.chargeops.payment.repository.PaymentTransactionRepository;
 import com.thang.chargeops.refund.entity.Refund;
+import com.thang.chargeops.refund.entity.RefundAutoDispatch;
 import com.thang.chargeops.refund.model.CreateRefundObligationCommand;
 import com.thang.chargeops.refund.model.PendingRefundSpec;
 import com.thang.chargeops.refund.repository.RefundRepository;
+import com.thang.chargeops.refund.repository.RefundAutoDispatchRepository;
 import com.thang.chargeops.refund.service.RefundObligationService;
 import lombok.RequiredArgsConstructor;
 import org.hibernate.exception.ConstraintViolationException;
@@ -24,12 +26,16 @@ import java.math.BigDecimal;
 import java.sql.SQLException;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.UUID;
+
+import static java.nio.charset.StandardCharsets.UTF_8;
 
 @Service
 @RequiredArgsConstructor
 public class RefundObligationServiceImpl implements RefundObligationService {
     private final PaymentTransactionRepository transactionRepository;
     private final RefundRepository refundRepository;
+    private final RefundAutoDispatchRepository autoDispatchRepository;
 
     @Override
     @Transactional(propagation = Propagation.MANDATORY)
@@ -79,7 +85,14 @@ public class RefundObligationServiceImpl implements RefundObligationService {
                 command.lockedBooking(), payment, source, command.reason(), command.basisType(),
                 command.basisId(), command.decisionAt(), command.lockedActor()));
         try {
-            return refundRepository.saveAndFlush(pending);
+            Refund saved = refundRepository.saveAndFlush(pending);
+            if (saved.getReason() == com.thang.chargeops.refund.model.RefundReason.VOLUNTARY_GRACE) {
+                UUID requestKey = UUID.nameUUIDFromBytes(
+                        ("refund-auto-first-attempt:" + saved.getId()).getBytes(UTF_8)
+                );
+                autoDispatchRepository.save(RefundAutoDispatch.pending(saved, requestKey));
+            }
+            return saved;
         } catch (DataIntegrityViolationException exception) {
             if (isRefundUniquenessConflict(exception)) {
                 throw conflict("Refund source or basis was claimed concurrently");

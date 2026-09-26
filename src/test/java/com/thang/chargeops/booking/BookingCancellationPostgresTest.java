@@ -21,8 +21,21 @@ import com.thang.chargeops.profile.entity.UserProfile;
 import com.thang.chargeops.profile.repository.UserProfileRepository;
 import com.thang.chargeops.profile.support.CurrentProfileProvider;
 import com.thang.chargeops.refund.model.RefundStatus;
+import com.thang.chargeops.refund.model.RefundAutoDispatchStatus;
+import com.thang.chargeops.refund.model.RefundExecutionPolicy;
+import com.thang.chargeops.refund.model.RefundExecutionTrigger;
+import com.thang.chargeops.refund.executor.RefundExecutorRegistry;
+import com.thang.chargeops.refund.executor.RefundExecutor;
+import com.thang.chargeops.refund.executor.RefundExecutionCommand;
+import com.thang.chargeops.refund.executor.RefundExecutionResult;
+import com.thang.chargeops.refund.executor.SimulatorRefundExecutor;
+import com.thang.chargeops.refund.dto.request.RefundExecutionOutcome;
+import com.thang.chargeops.refund.model.RefundExecutionMode;
+import com.thang.chargeops.refund.repository.RefundAttemptRepository;
+import com.thang.chargeops.refund.repository.RefundAutoDispatchRepository;
 import com.thang.chargeops.refund.repository.RefundRepository;
 import com.thang.chargeops.refund.service.RefundObligationService;
+import com.thang.chargeops.refund.service.impl.AutomaticRefundExecutionServiceImpl;
 import com.thang.chargeops.refund.service.impl.RefundObligationServiceImpl;
 import com.thang.chargeops.station.repository.ConnectorRepository;
 import org.junit.jupiter.api.BeforeEach;
@@ -100,6 +113,8 @@ class BookingCancellationPostgresTest {
     @Autowired private BookingStatusHistoryRecorder bookingStatusHistoryRecorder;
     @Autowired private RefundObligationService refundObligationService;
     @Autowired private RefundRepository refundRepository;
+    @Autowired private RefundAttemptRepository refundAttemptRepository;
+    @Autowired private RefundAutoDispatchRepository autoDispatchRepository;
 
     private BookingCancellationServiceImpl service;
     private UUID driverId;
@@ -175,6 +190,103 @@ class BookingCancellationPostgresTest {
                 .satisfies(refund -> {
                     assertThat(refund.getAmount()).isEqualByComparingTo(AMOUNT);
                     assertThat(refund.getStatus()).isEqualTo(RefundStatus.PENDING);
+                    assertThat(refund.getExecutionPolicy()).isEqualTo(RefundExecutionPolicy.AUTO_FIRST_ATTEMPT);
+                    assertThat(refund.isRequiresAdminAction()).isFalse();
+                    assertThat(autoDispatchRepository.findRefundIdsByStatus(
+                            RefundAutoDispatchStatus.PENDING,
+                            org.springframework.data.domain.PageRequest.of(0, 10)
+                    )).containsExactly(refund.getId());
+                });
+    }
+
+    @Test
+    void graceCancellationDispatchesOneAutomaticSystemAttemptAfterCommit() {
+        cancelInTransaction(UUID.randomUUID());
+        UUID refundId = refundRepository.findByBookingIdOrderByCreatedAtAscIdAsc(bookingId)
+                .getFirst().getId();
+        AutomaticRefundExecutionServiceImpl autoExecution = new AutomaticRefundExecutionServiceImpl(
+                connectorRepository,
+                bookingRepository,
+                paymentRepository,
+                paymentTransactionRepository,
+                refundRepository,
+                refundAttemptRepository,
+                autoDispatchRepository,
+                new RefundExecutorRegistry(List.of(new SimulatorRefundExecutor())),
+                Clock.fixed(NOW.plusSeconds(1), ZoneOffset.UTC)
+        );
+
+        Boolean processed = new TransactionTemplate(transactionManager)
+                .execute(status -> autoExecution.processFirstAttempt(refundId));
+        Boolean replayed = new TransactionTemplate(transactionManager)
+                .execute(status -> autoExecution.processFirstAttempt(refundId));
+
+        assertThat(processed).isTrue();
+        assertThat(replayed).isFalse();
+        assertThat(refundRepository.findById(refundId)).get().satisfies(refund -> {
+            assertThat(refund.getStatus()).isEqualTo(RefundStatus.SUCCEEDED);
+            assertThat(refund.isRequiresAdminAction()).isFalse();
+        });
+        assertThat(paymentRepository.findByBookingId(bookingId)).get()
+                .extracting(com.thang.chargeops.payment.entity.Payment::getStatus)
+                .isEqualTo(com.thang.chargeops.common.enums.PaymentStatus.REFUNDED);
+        assertThat(refundAttemptRepository.findByRefundIdOrderBySequenceNoAsc(refundId))
+                .singleElement()
+                .satisfies(attempt -> {
+                    assertThat(attempt.getExecutionTrigger()).isEqualTo(RefundExecutionTrigger.SYSTEM_POLICY);
+                    assertThat(attempt.getPerformedBy()).isNull();
+                    assertThat(attempt.getSequenceNo()).isEqualTo(1);
+                });
+        assertThat(autoDispatchRepository.findRefundIdsByStatus(
+                RefundAutoDispatchStatus.PENDING,
+                org.springframework.data.domain.PageRequest.of(0, 10)
+        )).doesNotContain(refundId);
+    }
+
+    @Test
+    void failedAutomaticAttemptRequiresAdminAndIsNeverAutomaticallyRetried() {
+        cancelInTransaction(UUID.randomUUID());
+        UUID refundId = refundRepository.findByBookingIdOrderByCreatedAtAscIdAsc(bookingId)
+                .getFirst().getId();
+        RefundExecutor failingExecutor = new RefundExecutor() {
+            @Override
+            public RefundExecutionMode mode() {
+                return RefundExecutionMode.SIMULATOR;
+            }
+
+            @Override
+            public RefundExecutionResult execute(RefundExecutionCommand command) {
+                return new RefundExecutionResult(
+                        RefundExecutionOutcome.FAILED,
+                        "SIMULATOR",
+                        null,
+                        "SIMULATED_FAILURE",
+                        command.executionAt(),
+                        "Automatic attempt failed"
+                );
+            }
+        };
+        AutomaticRefundExecutionServiceImpl autoExecution = new AutomaticRefundExecutionServiceImpl(
+                connectorRepository, bookingRepository, paymentRepository, paymentTransactionRepository,
+                refundRepository, refundAttemptRepository, autoDispatchRepository,
+                new RefundExecutorRegistry(List.of(failingExecutor)),
+                Clock.fixed(NOW.plusSeconds(1), ZoneOffset.UTC)
+        );
+
+        new TransactionTemplate(transactionManager).execute(status -> autoExecution.processFirstAttempt(refundId));
+        Boolean replayed = new TransactionTemplate(transactionManager)
+                .execute(status -> autoExecution.processFirstAttempt(refundId));
+
+        assertThat(replayed).isFalse();
+        assertThat(refundRepository.findById(refundId)).get().satisfies(refund -> {
+            assertThat(refund.getStatus()).isEqualTo(RefundStatus.PENDING);
+            assertThat(refund.isRequiresAdminAction()).isTrue();
+        });
+        assertThat(refundAttemptRepository.findByRefundIdOrderBySequenceNoAsc(refundId))
+                .singleElement()
+                .satisfies(attempt -> {
+                    assertThat(attempt.getStatus().name()).isEqualTo("FAILED");
+                    assertThat(attempt.getExecutionTrigger()).isEqualTo(RefundExecutionTrigger.SYSTEM_POLICY);
                 });
     }
 

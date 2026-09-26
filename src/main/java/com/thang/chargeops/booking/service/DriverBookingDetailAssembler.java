@@ -100,6 +100,8 @@ public class DriverBookingDetailAssembler {
                 refund.getAmount().longValueExact(),
                 BookingDetailResponse.RefundReason.valueOf(refund.getReason().name()),
                 BookingDetailResponse.RefundState.valueOf(refund.getStatus().name()),
+                refund.getExecutionPolicy(),
+                refund.isRequiresAdminAction(),
                 needsReconciliation
         );
     }

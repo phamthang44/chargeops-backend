@@ -125,7 +125,8 @@ class RefundJpaMappingTest {
         RefundAttempt attempt = attemptRepository.saveAndFlush(RefundAttempt.start(
                 new PendingRefundAttemptSpec(
                         refund, 1, RefundExecutionMode.SIMULATOR, requestKey,
-                        "b".repeat(64), "refund:" + requestKey, actor, decisionAt.plusSeconds(1)
+                        "b".repeat(64), "refund:" + requestKey,
+                        RefundExecutionTrigger.ADMIN, actor, decisionAt.plusSeconds(1)
                 )
         ));
         Instant completedAt = decisionAt.plusSeconds(2);

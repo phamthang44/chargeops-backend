@@ -1,6 +1,7 @@
 package com.thang.chargeops.refund.dto.response;
 
 import com.thang.chargeops.refund.model.RefundBasisType;
+import com.thang.chargeops.refund.model.RefundExecutionPolicy;
 import com.thang.chargeops.refund.model.RefundReason;
 import com.thang.chargeops.refund.model.RefundStatus;
 
@@ -21,6 +22,8 @@ public record RefundDetailResponse(
         RefundBasisType basisType,
         UUID basisId,
         RefundStatus status,
+        RefundExecutionPolicy executionPolicy,
+        boolean requiresAdminAction,
         long version,
         Instant decisionAt,
         UUID decidedBy,
