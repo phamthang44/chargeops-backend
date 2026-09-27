@@ -7,7 +7,9 @@ import com.thang.chargeops.booking.dto.request.PricePreviewRequest;
 import com.thang.chargeops.booking.dto.response.*;
 import com.thang.chargeops.booking.pricing.PriceBasis;
 import com.thang.chargeops.booking.pricing.PriceLine;
+import com.thang.chargeops.booking.service.BookingCancellationService;
 import com.thang.chargeops.booking.service.BookingPricingService;
+import com.thang.chargeops.booking.service.BookingSessionService;
 import com.thang.chargeops.booking.service.BookingService;
 import com.thang.chargeops.common.enums.*;
 import com.thang.chargeops.exception.AppException;
@@ -60,6 +62,12 @@ class BookingM1LifecycleIntegrationTest {
 
     @MockitoBean
     private BookingService bookingService;
+
+    @MockitoBean
+    private BookingSessionService bookingSessionService;
+
+    @MockitoBean
+    private BookingCancellationService bookingCancellationService;
 
     private static final UUID CONNECTOR_ID = UUID.fromString("00000000-0000-4000-8000-000000000003");
     private static final UUID BOOKING_ID = UUID.fromString("11111111-2222-3333-4444-555555555555");

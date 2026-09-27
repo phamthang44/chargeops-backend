@@ -6,6 +6,7 @@ import com.thang.chargeops.booking.service.model.BookingReadSnapshot;
 import com.thang.chargeops.booking.service.model.DriverBookingCapabilities;
 import com.thang.chargeops.common.enums.BookingStatus;
 import com.thang.chargeops.common.enums.OperationalChargePointStatus;
+import com.thang.chargeops.common.enums.ProvisioningStatus;
 import com.thang.chargeops.common.enums.RuntimeStatus;
 import com.thang.chargeops.common.enums.StationOperationalStatus;
 import com.thang.chargeops.common.enums.StationStatus;
@@ -100,6 +101,8 @@ public class DriverBookingReadPolicy {
                         == DriverBookingCapabilities.CheckInReason.AVAILABLE,
                 checkInReason,
                 effectiveStatus == BookingStatus.CHECKED_IN
+                        && booking.getEndAt() != null
+                        && snapshot.evaluatedAt().isBefore(booking.getEndAt())
                         && snapshot.stationAvailable(),
                 effectiveStatus == BookingStatus.CHECKED_IN
                         || effectiveStatus == BookingStatus.CHARGING,
@@ -139,13 +142,15 @@ public class DriverBookingReadPolicy {
         if (effectiveStatus != BookingStatus.CONFIRMED) {
             return DriverBookingCapabilities.CheckInReason.WRONG_STATE;
         }
-        if (snapshot.evaluatedAt().isBefore(booking.getStartAt())) {
+        Instant startAt = booking.getStartAt();
+        Instant deadline = booking.getCheckInDeadline();
+        if (startAt == null || deadline == null) {
+            return DriverBookingCapabilities.CheckInReason.WRONG_STATE;
+        }
+        if (snapshot.evaluatedAt().isBefore(startAt)) {
             return DriverBookingCapabilities.CheckInReason.TOO_EARLY;
         }
-        if (booking.getCheckInDeadline() != null
-                && !snapshot.evaluatedAt().isBefore(
-                        booking.getCheckInDeadline()
-                )) {
+        if (!snapshot.evaluatedAt().isBefore(deadline)) {
             return DriverBookingCapabilities.CheckInReason.WINDOW_CLOSED;
         }
         if (!snapshot.stationAvailable()) {
@@ -184,12 +189,18 @@ public class DriverBookingReadPolicy {
         }
         ChargePoint chargePoint = connector.getChargePoint();
         Station station = chargePoint.getStation();
+        RuntimeStatus expectedRuntimeStatus = switch (booking.getStatus()) {
+            case CHECKED_IN, CHARGING -> RuntimeStatus.IN_USE;
+            default -> RuntimeStatus.AVAILABLE;
+        };
         return station != null
                 && station.getStatus() == StationStatus.ACTIVE
                 && station.getOperationalStatus()
                 == StationOperationalStatus.OPERATING
+                && chargePoint.getProvisioningStatus()
+                == ProvisioningStatus.ACTIVE
                 && chargePoint.getOperationalChargePointStatus()
                 == OperationalChargePointStatus.AVAILABLE
-                && connector.getRuntimeStatus() == RuntimeStatus.AVAILABLE;
+                && connector.getRuntimeStatus() == expectedRuntimeStatus;
     }
 }

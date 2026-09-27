@@ -3,14 +3,20 @@ package com.thang.chargeops.booking.controller;
 import com.thang.chargeops.booking.config.BookingPolicyConfig;
 import com.thang.chargeops.booking.dto.filter.DriverBookingHistoryFilter;
 import com.thang.chargeops.booking.dto.request.CreateBookingRequest;
+import com.thang.chargeops.booking.dto.request.ConfirmCheckInRequest;
 import com.thang.chargeops.booking.dto.request.PricePreviewRequest;
+import com.thang.chargeops.booking.dto.request.ResolveCheckInRequest;
+import com.thang.chargeops.booking.dto.request.VersionRequest;
 import com.thang.chargeops.booking.dto.response.BookingStatsResponse;
+import com.thang.chargeops.booking.dto.response.BookingDetailResponse;
 import com.thang.chargeops.booking.dto.response.CheckoutResponse;
 import com.thang.chargeops.booking.dto.response.CreateBookingResponse;
 import com.thang.chargeops.booking.dto.response.DriverBookingListItemResponse;
 import com.thang.chargeops.booking.dto.response.PricePreviewResponse;
+import com.thang.chargeops.booking.dto.response.ResolveCheckInResponse;
 import com.thang.chargeops.booking.pricing.PriceBasis;
 import com.thang.chargeops.booking.service.BookingPricingService;
+import com.thang.chargeops.booking.service.BookingSessionService;
 import com.thang.chargeops.booking.service.model.DriverBookingHistoryResult;
 import com.thang.chargeops.common.enums.BookingStatus;
 import com.thang.chargeops.common.enums.CheckoutStatus;
@@ -61,6 +67,9 @@ class BookingControllerTest {
 
     @MockitoBean
     private com.thang.chargeops.booking.service.BookingService bookingService;
+
+    @MockitoBean
+    private BookingSessionService bookingSessionService;
 
     @MockitoBean
     private com.thang.chargeops.booking.service.BookingCancellationService bookingCancellationService;
@@ -316,6 +325,202 @@ class BookingControllerTest {
                 .andExpect(status().isServiceUnavailable())
                 .andExpect(jsonPath("$.error.code")
                         .value("PAY_CHECKOUT_UNAVAILABLE"));
+    }
+
+    @Test
+    void resolveCheckInReturnsPreviewAndNoStore() throws Exception {
+        UUID bookingId = UUID.randomUUID();
+        UUID connectorId = UUID.randomUUID();
+        Instant startAt = Instant.parse("2026-09-16T03:00:00Z");
+        Instant endAt = Instant.parse("2026-09-16T04:00:00Z");
+        Instant deadline = Instant.parse("2026-09-16T03:45:00Z");
+        Instant challengeExpiresAt = Instant.parse("2026-09-16T03:05:45Z");
+        ResolveCheckInResponse response = ResolveCheckInResponse.builder()
+                .bookingId(bookingId)
+                .connectorId(connectorId)
+                .connectorCode("CP-01-A")
+                .challengeExpiresAt(challengeExpiresAt)
+                .startAt(startAt)
+                .endAt(endAt)
+                .checkInDeadline(deadline)
+                .expectedVersion(3L)
+                .build();
+        when(bookingService.resolveCheckIn(any(ResolveCheckInRequest.class)))
+                .thenReturn(response);
+
+        mockMvc.perform(post("/api/v1/bookings/check-in/resolve")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "bookingId": "%s",
+                                  "challengeToken": "challenge-token-1234567890"
+                                }
+                                """.formatted(bookingId)))
+                .andExpect(status().isOk())
+                .andExpect(header().string(HttpHeaders.CACHE_CONTROL, "no-store"))
+                .andExpect(jsonPath("$.data.bookingId").value(bookingId.toString()))
+                .andExpect(jsonPath("$.data.connectorId").value(connectorId.toString()))
+                .andExpect(jsonPath("$.data.connectorCode").value("CP-01-A"))
+                .andExpect(jsonPath("$.data.challengeExpiresAt")
+                        .value(challengeExpiresAt.toString()))
+                .andExpect(jsonPath("$.data.checkInDeadline").value(deadline.toString()))
+                .andExpect(jsonPath("$.data.expectedVersion").value(3));
+    }
+
+    @Test
+    void resolveCheckInRejectsInvalidBody() throws Exception {
+        mockMvc.perform(post("/api/v1/bookings/check-in/resolve")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "challengeToken": "short"
+                                }
+                                """))
+                .andExpect(status().isBadRequest());
+
+        verify(bookingService, never())
+                .resolveCheckIn(any(ResolveCheckInRequest.class));
+    }
+
+    @Test
+    void confirmCheckInReturnsBookingDetailAndNoStore() throws Exception {
+        UUID bookingId = UUID.randomUUID();
+        UUID requestKey = UUID.randomUUID();
+        BookingDetailResponse response = BookingDetailResponse.builder()
+                .bookingId(bookingId)
+                .status(BookingStatus.CHECKED_IN)
+                .persistedStatus(BookingStatus.CHECKED_IN)
+                .version(4L)
+                .build();
+        when(bookingService.confirmCheckIn(
+                eq(bookingId),
+                eq(requestKey),
+                any(ConfirmCheckInRequest.class)
+        )).thenReturn(response);
+
+        mockMvc.perform(post("/api/v1/bookings/{bookingId}/check-in", bookingId)
+                        .header("Idempotency-Key", requestKey)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "expectedVersion": 3,
+                                  "challengeToken": "challenge-token-1234567890"
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(header().string(HttpHeaders.CACHE_CONTROL, "no-store"))
+                .andExpect(jsonPath("$.data.bookingId").value(bookingId.toString()))
+                .andExpect(jsonPath("$.data.status").value("CHECKED_IN"))
+                .andExpect(jsonPath("$.data.version").value(4));
+
+        verify(bookingService).confirmCheckIn(
+                eq(bookingId),
+                eq(requestKey),
+                argThat(request -> request.expectedVersion() == 3L
+                        && request.challengeToken().equals("challenge-token-1234567890"))
+        );
+    }
+
+    @Test
+    void confirmCheckInRejectsInvalidBody() throws Exception {
+        mockMvc.perform(post("/api/v1/bookings/{bookingId}/check-in", UUID.randomUUID())
+                        .header("Idempotency-Key", UUID.randomUUID())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "expectedVersion": -1,
+                                  "challengeToken": "short"
+                                }
+                                """))
+                .andExpect(status().isBadRequest());
+
+        verify(bookingService, never()).confirmCheckIn(any(), any(), any());
+    }
+
+    @Test
+    void startChargingReturnsBookingDetailAndNoStore() throws Exception {
+        UUID bookingId = UUID.randomUUID();
+        UUID requestKey = UUID.randomUUID();
+        BookingDetailResponse response = BookingDetailResponse.builder()
+                .bookingId(bookingId)
+                .status(BookingStatus.CHARGING)
+                .persistedStatus(BookingStatus.CHARGING)
+                .version(5L)
+                .chargingStartedAt(Instant.parse("2026-09-17T03:30:00Z"))
+                .build();
+        when(bookingSessionService.startCharging(
+                eq(bookingId),
+                eq(requestKey),
+                any(VersionRequest.class)
+        )).thenReturn(response);
+
+        mockMvc.perform(post("/api/v1/bookings/{bookingId}/start-charging", bookingId)
+                        .header("Idempotency-Key", requestKey)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"expectedVersion": 4}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(header().string(HttpHeaders.CACHE_CONTROL, "no-store"))
+                .andExpect(jsonPath("$.data.status").value("CHARGING"))
+                .andExpect(jsonPath("$.data.version").value(5));
+
+        verify(bookingSessionService).startCharging(
+                eq(bookingId),
+                eq(requestKey),
+                argThat(value -> value.expectedVersion() == 4L)
+        );
+    }
+
+    @Test
+    void completeBookingReturnsBookingDetailAndNoStore() throws Exception {
+        UUID bookingId = UUID.randomUUID();
+        UUID requestKey = UUID.randomUUID();
+        BookingDetailResponse response = BookingDetailResponse.builder()
+                .bookingId(bookingId)
+                .status(BookingStatus.COMPLETED)
+                .persistedStatus(BookingStatus.COMPLETED)
+                .version(6L)
+                .completedAt(Instant.parse("2026-09-17T03:45:00Z"))
+                .build();
+        when(bookingSessionService.completeBooking(
+                eq(bookingId),
+                eq(requestKey),
+                any(VersionRequest.class)
+        )).thenReturn(response);
+
+        mockMvc.perform(post("/api/v1/bookings/{bookingId}/complete", bookingId)
+                        .header("Idempotency-Key", requestKey)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"expectedVersion": 5}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(header().string(HttpHeaders.CACHE_CONTROL, "no-store"))
+                .andExpect(jsonPath("$.data.status").value("COMPLETED"))
+                .andExpect(jsonPath("$.data.version").value(6));
+    }
+
+    @Test
+    void sessionCommandsRejectInvalidVersionBody() throws Exception {
+        UUID bookingId = UUID.randomUUID();
+        UUID requestKey = UUID.randomUUID();
+
+        mockMvc.perform(post("/api/v1/bookings/{bookingId}/start-charging", bookingId)
+                        .header("Idempotency-Key", requestKey)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"expectedVersion": -1}
+                                """))
+                .andExpect(status().isBadRequest());
+
+        mockMvc.perform(post("/api/v1/bookings/{bookingId}/complete", bookingId)
+                        .header("Idempotency-Key", requestKey)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isBadRequest());
+
+        verifyNoInteractions(bookingSessionService);
     }
 
     @Test

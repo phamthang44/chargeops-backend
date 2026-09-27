@@ -7,5 +7,7 @@ public enum BookingStatusReason {
     OWNER_CANCELLED,
     PAYMENT_CONFIRMED,
     CHECK_IN_CONFIRMED,
+    CHARGING_STARTED,
+    SESSION_COMPLETED,
     NO_SHOW
 }

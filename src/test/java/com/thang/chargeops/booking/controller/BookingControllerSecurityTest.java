@@ -2,6 +2,7 @@ package com.thang.chargeops.booking.controller;
 
 import com.thang.chargeops.booking.service.BookingPricingService;
 import com.thang.chargeops.booking.service.BookingService;
+import com.thang.chargeops.booking.service.BookingSessionService;
 import com.thang.chargeops.exception.GlobalHandlerError;
 import com.thang.chargeops.infra.security.RestAccessDeniedHandler;
 import com.thang.chargeops.infra.security.RestAuthenticationEntryPoint;
@@ -41,6 +42,9 @@ class BookingControllerSecurityTest {
 
     @MockitoBean
     private BookingService bookingService;
+
+    @MockitoBean
+    private BookingSessionService bookingSessionService;
 
     @MockitoBean
     private com.thang.chargeops.booking.service.BookingCancellationService bookingCancellationService;
@@ -93,8 +97,41 @@ class BookingControllerSecurityTest {
                                 }
                                 """))
                 .andExpect(status().isForbidden());
+        mockMvc.perform(post("/api/v1/bookings/check-in/resolve")
+                        .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "bookingId": "%s",
+                                  "challengeToken": "challenge-token-1234567890"
+                                }
+                                """.formatted(bookingId)))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(post("/api/v1/bookings/{bookingId}/check-in", bookingId)
+                        .header("Idempotency-Key", UUID.randomUUID())
+                        .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "expectedVersion": 1,
+                                  "challengeToken": "challenge-token-1234567890"
+                                }
+                                """))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(post("/api/v1/bookings/{bookingId}/start-charging", bookingId)
+                        .header("Idempotency-Key", UUID.randomUUID())
+                        .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+                        .content("{\"expectedVersion\": 1}"))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(post("/api/v1/bookings/{bookingId}/complete", bookingId)
+                        .header("Idempotency-Key", UUID.randomUUID())
+                        .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+                        .content("{\"expectedVersion\": 1}"))
+                .andExpect(status().isForbidden());
 
-        verifyNoInteractions(bookingService, bookingCancellationService);
+        verifyNoInteractions(
+                bookingService,
+                bookingSessionService,
+                bookingCancellationService
+        );
     }
 
     @Test
