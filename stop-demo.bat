@@ -5,8 +5,11 @@ echo                CHARGEOPS - DUNG HE THONG DEMO
 echo =====================================================================
 echo.
 echo [1/2] Dang tat Tailscale Funnel...
-tailscale funnel --bg http://127.0.0.1:8080 off
+tailscale funnel --bg http://localhost:8082 off
 tailscale funnel --bg --set-path /api http://127.0.0.1:8081/api off
+tailscale funnel --bg --set-path /realms http://127.0.0.1:8080/realms off
+tailscale funnel --bg --set-path /resources http://127.0.0.1:8080/resources off
+tailscale funnel --bg --set-path /js http://127.0.0.1:8080/js off
 tailscale funnel --bg --https=8443 http://localhost:5173 off
 
 echo.
