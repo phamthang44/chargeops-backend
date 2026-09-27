@@ -2,11 +2,9 @@ package com.thang.chargeops.booking.service;
 
 import com.thang.chargeops.booking.dto.filter.DriverBookingHistoryFilter;
 import com.thang.chargeops.booking.dto.request.CreateBookingRequest;
-import com.thang.chargeops.booking.dto.response.BookingDetailResponse;
-import com.thang.chargeops.booking.dto.response.BookingStatsResponse;
-import com.thang.chargeops.booking.dto.response.CheckoutResponse;
-import com.thang.chargeops.booking.dto.response.CreateBookingResponse;
-import com.thang.chargeops.booking.dto.response.DriverBookingListItemResponse;
+import com.thang.chargeops.booking.dto.request.ConfirmCheckInRequest;
+import com.thang.chargeops.booking.dto.request.ResolveCheckInRequest;
+import com.thang.chargeops.booking.dto.response.*;
 import com.thang.chargeops.booking.service.model.DriverBookingHistoryResult;
 import org.springframework.data.domain.Page;
 
@@ -29,5 +27,13 @@ public interface BookingService {
     BookingDetailResponse getMyBooking(UUID bookingId);
 
     BookingStatsResponse getMyBookingStats();
+
+    ResolveCheckInResponse resolveCheckIn(ResolveCheckInRequest request);
+
+    BookingDetailResponse confirmCheckIn(
+            UUID bookingId,
+            UUID requestKey,
+            ConfirmCheckInRequest request
+    );
 
 }

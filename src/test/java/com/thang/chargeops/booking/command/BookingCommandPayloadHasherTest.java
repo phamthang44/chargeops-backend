@@ -85,4 +85,36 @@ class BookingCommandPayloadHasherTest {
         assertThat(BookingCommandPayloadHasher.sha256(diffAmount)).isNotEqualTo(baseHash);
         assertThat(BookingCommandPayloadHasher.sha256(diffPolicy)).isNotEqualTo(baseHash);
     }
+
+    @Test
+    void changingAnyConfirmCheckInFieldChangesHash() {
+        java.util.UUID bookingId = java.util.UUID.randomUUID();
+        ConfirmCheckInCanonicalPayload base = ConfirmCheckInCanonicalPayload.builder()
+                .bookingId(bookingId)
+                .expectedVersion(3L)
+                .challengeToken("challenge-token-1234567890")
+                .build();
+
+        assertThat(BookingCommandPayloadHasher.sha256(
+                ConfirmCheckInCanonicalPayload.builder()
+                        .bookingId(java.util.UUID.randomUUID())
+                        .expectedVersion(3L)
+                        .challengeToken("challenge-token-1234567890")
+                        .build()
+        )).isNotEqualTo(BookingCommandPayloadHasher.sha256(base));
+        assertThat(BookingCommandPayloadHasher.sha256(
+                ConfirmCheckInCanonicalPayload.builder()
+                        .bookingId(bookingId)
+                        .expectedVersion(4L)
+                        .challengeToken("challenge-token-1234567890")
+                        .build()
+        )).isNotEqualTo(BookingCommandPayloadHasher.sha256(base));
+        assertThat(BookingCommandPayloadHasher.sha256(
+                ConfirmCheckInCanonicalPayload.builder()
+                        .bookingId(bookingId)
+                        .expectedVersion(3L)
+                        .challengeToken("another-challenge-token-12345")
+                        .build()
+        )).isNotEqualTo(BookingCommandPayloadHasher.sha256(base));
+    }
 }

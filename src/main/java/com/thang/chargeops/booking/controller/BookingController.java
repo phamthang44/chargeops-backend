@@ -2,6 +2,9 @@ package com.thang.chargeops.booking.controller;
 
 
 import com.thang.chargeops.booking.dto.filter.DriverBookingHistoryFilter;
+import com.thang.chargeops.booking.dto.request.CancelBookingRequest;
+import com.thang.chargeops.booking.dto.request.ConfirmCheckInRequest;
+import com.thang.chargeops.booking.dto.request.ResolveCheckInRequest;
 import com.thang.chargeops.booking.dto.request.CreateBookingRequest;
 import com.thang.chargeops.booking.dto.request.PricePreviewRequest;
 import com.thang.chargeops.booking.dto.response.*;
@@ -70,10 +73,34 @@ public class BookingController {
     public ResponseEntity<ApiResult<BookingDetailResponse>> cancelBooking(
             @PathVariable UUID bookingId,
             @RequestHeader("Idempotency-Key") UUID requestKey,
-            @Valid @RequestBody com.thang.chargeops.booking.dto.request.CancelBookingRequest request
+            @Valid @RequestBody CancelBookingRequest request
     ) {
         BookingDetailResponse response = bookingCancellationService
                 .cancelBooking(bookingId, requestKey, request);
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CACHE_CONTROL, CACHE_CONTROL_NO_STORE)
+                .body(ApiResult.success(response));
+    }
+
+    @PostMapping("/check-in/resolve")
+    @PreAuthorize("hasRole('DRIVER')")
+    public ResponseEntity<ApiResult<ResolveCheckInResponse>> resolveCheckIn(
+            @Valid @RequestBody ResolveCheckInRequest request
+    ) {
+        ResolveCheckInResponse response = bookingService.resolveCheckIn(request);
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CACHE_CONTROL, CACHE_CONTROL_NO_STORE)
+                .body(ApiResult.success(response));
+    }
+
+    @PostMapping("/{bookingId}/check-in")
+    @PreAuthorize("hasRole('DRIVER')")
+    public ResponseEntity<ApiResult<BookingDetailResponse>> confirmCheckIn(
+            @PathVariable UUID bookingId,
+            @RequestHeader("Idempotency-Key") UUID requestKey,
+            @Valid @RequestBody ConfirmCheckInRequest request
+    ) {
+        BookingDetailResponse response = bookingService.confirmCheckIn(bookingId, requestKey, request);
         return ResponseEntity.ok()
                 .header(HttpHeaders.CACHE_CONTROL, CACHE_CONTROL_NO_STORE)
                 .body(ApiResult.success(response));

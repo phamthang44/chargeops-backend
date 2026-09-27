@@ -6,5 +6,6 @@ public enum BookingStatusReason {
     DRIVER_CANCELLED,
     OWNER_CANCELLED,
     PAYMENT_CONFIRMED,
+    CHECK_IN_CONFIRMED,
     NO_SHOW
 }

@@ -122,6 +122,10 @@ class BookingCheckoutIntegrationTest {
                 gatewayRegistry,
                 bookingCheckoutPersistence,
                 inFlightLock,
+                mock(com.thang.chargeops.booking.checkin.CheckInChallengeService.class),
+                mock(com.thang.chargeops.station.repository.ConnectorRepository.class),
+                mock(com.thang.chargeops.station.policy.CheckInPolicy.class),
+                mock(com.thang.chargeops.station.service.EquipmentStatusHistoryService.class),
                 Clock.fixed(NOW, ZoneOffset.UTC)
         );
     }

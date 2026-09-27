@@ -50,6 +50,16 @@ public final class BookingCommandPayloadHasher {
         ));
     }
 
+    public static String sha256(ConfirmCheckInCanonicalPayload payload) {
+        Objects.requireNonNull(payload, "confirmCheckInPayload must not be null");
+        return sha256(String.join("\n",
+                "confirm-check-in-v1",
+                field("bookingId", payload.bookingId()),
+                field("expectedVersion", payload.expectedVersion()),
+                field("challengeToken", payload.challengeToken())
+        ));
+    }
+
     private static String field(String name, Object value) {
         String text = Objects.requireNonNull(value, name + " must not be null").toString();
         return name + ":" + text.length() + ":" + text;

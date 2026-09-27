@@ -5,20 +5,27 @@ import com.thang.chargeops.booking.command.BookingCommandInFlightLock;
 import com.thang.chargeops.booking.command.BookingCommandOperation;
 import com.thang.chargeops.booking.command.BookingCommandPayloadHasher;
 import com.thang.chargeops.booking.command.BookingCommandRegistry;
+import com.thang.chargeops.booking.command.ConfirmCheckInCanonicalPayload;
+import com.thang.chargeops.booking.checkin.CheckInChallengeService;
+import com.thang.chargeops.booking.checkin.ResolvedCheckInChallenge;
 import com.thang.chargeops.booking.config.BookingPolicyConfig;
 import com.thang.chargeops.booking.dto.BookingPolicySnapshot;
 import com.thang.chargeops.booking.dto.filter.DriverBookingHistoryFilter;
 import com.thang.chargeops.booking.dto.request.CreateBookingRequest;
+import com.thang.chargeops.booking.dto.request.ConfirmCheckInRequest;
+import com.thang.chargeops.booking.dto.request.ResolveCheckInRequest;
 import com.thang.chargeops.booking.dto.response.*;
 import com.thang.chargeops.booking.entity.Booking;
 import com.thang.chargeops.booking.entity.BookingPriceLine;
 import com.thang.chargeops.booking.history.BookingStatusActorType;
 import com.thang.chargeops.booking.history.BookingStatusHistoryRecorder;
+import com.thang.chargeops.booking.history.BookingStatusReason;
 import com.thang.chargeops.booking.mapper.BookingMapper;
 import com.thang.chargeops.booking.mapper.BookingPriceLineMapper;
 import com.thang.chargeops.booking.policy.DriverBookingReadPolicy;
 import com.thang.chargeops.booking.pricing.PricePreview;
 import com.thang.chargeops.booking.projection.BookingCompletedSessionProjection;
+import com.thang.chargeops.booking.projection.BookingCheckInRouteProjection;
 import com.thang.chargeops.booking.repository.BookingRepository;
 import com.thang.chargeops.booking.repository.specs.BookingSpecification;
 import com.thang.chargeops.booking.service.BookingHoldCoordinator;
@@ -34,10 +41,12 @@ import com.thang.chargeops.common.constant.LogConstant;
 import com.thang.chargeops.common.enums.BookingStatus;
 import com.thang.chargeops.common.enums.PaymentApplicationClassification;
 import com.thang.chargeops.common.enums.PaymentMethod;
+import com.thang.chargeops.common.enums.RuntimeStatus;
 import com.thang.chargeops.exception.AppException;
 import com.thang.chargeops.exception.errorcode.BookingErrorCode;
 import com.thang.chargeops.exception.errorcode.CommonErrorCode;
 import com.thang.chargeops.exception.errorcode.PaymentErrorCode;
+import com.thang.chargeops.exception.errorcode.StationErrorCode;
 import com.thang.chargeops.payment.entity.Payment;
 import com.thang.chargeops.payment.entity.PaymentTransaction;
 import com.thang.chargeops.payment.gateway.PaymentGatewayRegistry;
@@ -51,6 +60,9 @@ import com.thang.chargeops.profile.support.CurrentProfileProvider;
 import com.thang.chargeops.station.entity.ChargePoint;
 import com.thang.chargeops.station.entity.Connector;
 import com.thang.chargeops.station.entity.Station;
+import com.thang.chargeops.station.policy.CheckInPolicy;
+import com.thang.chargeops.station.repository.ConnectorRepository;
+import com.thang.chargeops.station.service.EquipmentStatusHistoryService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
@@ -91,6 +103,10 @@ public class BookingServiceImpl implements BookingService {
     private final PaymentGatewayRegistry paymentGatewayRegistry;
     private final BookingCheckoutPersistence bookingCheckoutPersistence;
     private final BookingCommandInFlightLock bookingCommandInFlightLock;
+    private final CheckInChallengeService checkInChallengeService;
+    private final ConnectorRepository connectorRepository;
+    private final CheckInPolicy checkInPolicy;
+    private final EquipmentStatusHistoryService equipmentStatusHistoryService;
     private final Clock applicationClock;
 
     @Transactional
@@ -423,6 +439,181 @@ public class BookingServiceImpl implements BookingService {
                 totalCompleted,
                 totalCancelled,
                 totalHours
+        );
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public ResolveCheckInResponse resolveCheckIn(ResolveCheckInRequest request) {
+        UserProfile driver = currentProfileProvider.requireProfile();
+        Booking booking = requireDriverBooking(request.bookingId(), driver.getId());
+        ResolvedCheckInChallenge challenge = checkInChallengeService
+                .resolveWithExpiry(request.challengeToken());
+        Connector connector = connectorRepository.findById(challenge.connectorId())
+                .orElseThrow(() -> new AppException(
+                        StationErrorCode.CONNECTOR_NOT_FOUND,
+                        challenge.connectorId()
+                ));
+        checkInPolicy.requireCanCheckIn(
+                driver,
+                booking,
+                connector,
+                applicationClock.instant()
+        );
+
+        return ResolveCheckInResponse.builder()
+                .bookingId(booking.getId())
+                .connectorId(connector.getId())
+                .connectorCode(connector.getConnectorCode())
+                .challengeExpiresAt(challenge.expiresAt())
+                .startAt(booking.getStartAt())
+                .endAt(booking.getEndAt())
+                .checkInDeadline(booking.getCheckInDeadline())
+                .expectedVersion(booking.getVersion())
+                .build();
+    }
+
+    @Override
+    @Transactional
+    public BookingDetailResponse confirmCheckIn(
+            UUID bookingId,
+            UUID requestKey,
+            ConfirmCheckInRequest request
+    ) {
+        Objects.requireNonNull(bookingId, "bookingId must not be null");
+        Objects.requireNonNull(requestKey, "requestKey must not be null");
+        Objects.requireNonNull(request, "request must not be null");
+        log.info(LogConstant.SERVICE_LOG_FORMAT, LogConstant.ACTION_START, "confirmCheckIn", bookingId, requestKey);
+
+        UserProfile driver = currentProfileProvider.requireProfile();
+
+        String payloadHash = BookingCommandPayloadHasher.sha256(
+                ConfirmCheckInCanonicalPayload.builder()
+                        .bookingId(bookingId)
+                        .expectedVersion(request.expectedVersion())
+                        .challengeToken(request.challengeToken())
+                        .build()
+        );
+
+        Optional<UUID> fastReplay = bookingCommandRegistry.findReplay(
+                driver.getId(),
+                BookingCommandOperation.CONFIRM_CHECK_IN,
+                requestKey,
+                payloadHash
+        );
+        if (fastReplay.isPresent()) {
+            return loadReplayBookingDetail(fastReplay.get());
+        }
+
+        UserProfile lockedDriver = bookingHoldCoordinator.lockDriver(driver.getId());
+
+        Optional<UUID> lockedReplay = bookingCommandRegistry.findReplay(
+                lockedDriver.getId(),
+                BookingCommandOperation.CONFIRM_CHECK_IN,
+                requestKey,
+                payloadHash
+        );
+        if (lockedReplay.isPresent()) {
+            return loadReplayBookingDetail(lockedReplay.get());
+        }
+
+        BookingCheckInRouteProjection route = bookingRepository.findCheckInRouteById(bookingId)
+                .orElseThrow(() -> new AppException(
+                        CommonErrorCode.RESOURCE_NOT_FOUND,
+                        "Booking not found: " + bookingId
+                ));
+        if (!Objects.equals(route.getDriverId(), lockedDriver.getId())) {
+            throw new AppException(BookingErrorCode.BOOKING_NOT_ACCESS);
+        }
+
+        Connector lockedConnector = connectorRepository.findByIdWithLock(route.getConnectorId())
+                .orElseThrow(() -> new AppException(
+                        StationErrorCode.CONNECTOR_NOT_FOUND,
+                        route.getConnectorId()
+                ));
+        Booking lockedBooking = bookingRepository
+                .findByIdAndDriverIdWithLock(bookingId, lockedDriver.getId())
+                .orElseThrow(() -> new AppException(
+                        CommonErrorCode.RESOURCE_NOT_FOUND,
+                        "Booking not found: " + bookingId
+                ));
+        Payment lockedPayment = paymentRepository.findByBookingIdWithLock(bookingId)
+                .orElseThrow(() -> new AppException(
+                        CommonErrorCode.RESOURCE_NOT_FOUND,
+                        "Payment not found for booking: " + bookingId
+                ));
+
+        Instant decisionAt = applicationClock.instant();
+
+        if (!Objects.equals(lockedBooking.getVersion(), request.expectedVersion())) {
+            throw new AppException(
+                    BookingErrorCode.STATE_CONFLICT,
+                    "Booking version changed"
+            );
+        }
+
+        checkInPolicy.requireCanCheckIn(
+                lockedDriver,
+                lockedBooking,
+                lockedConnector,
+                decisionAt
+        );
+
+        // Redis compare-and-delete is the last guard before DB mutation. It is
+        // intentionally not compensated if the surrounding DB transaction rolls back.
+        checkInChallengeService.validateAndConsume(
+                request.challengeToken(),
+                lockedConnector.getId()
+        );
+
+        BookingCommand command = bookingCommandRegistry.recordSuccess(
+                lockedDriver,
+                BookingCommandOperation.CONFIRM_CHECK_IN,
+                requestKey,
+                payloadHash,
+                lockedBooking,
+                decisionAt
+        );
+
+        bookingStatusHistoryRecorder.recordUserTransition(
+                command,
+                BookingStatusActorType.DRIVER,
+                BookingStatusReason.CHECK_IN_CONFIRMED,
+                decisionAt,
+                booking -> booking.checkIn(decisionAt)
+        );
+
+        equipmentStatusHistoryService.transitionConnectorRuntimeAsSystem(
+                lockedConnector,
+                RuntimeStatus.IN_USE,
+                decisionAt,
+                "BOOKING_CHECK_IN:" + bookingId
+        );
+
+        bookingRepository.flush();
+
+        return driverBookingDetailAssembler.assemble(
+                lockedBooking,
+                lockedPayment,
+                decisionAt
+        );
+    }
+
+    private BookingDetailResponse loadReplayBookingDetail(UUID bookingId) {
+        Booking booking = bookingRepository.findById(bookingId)
+                .orElseThrow(() -> new AppException(
+                        CommonErrorCode.RESOURCE_NOT_FOUND,
+                        "Booking command exists but booking was not found: " + bookingId
+                ));
+        Payment payment = paymentRepository.findByBookingId(bookingId)
+                .orElseThrow(() -> new AppException(
+                        CommonErrorCode.RESOURCE_NOT_FOUND,
+                        "Booking exists but payment was not found: " + bookingId
+                ));
+        return driverBookingDetailAssembler.assemble(
+                booking,
+                payment,
+                applicationClock.instant()
         );
     }
 
