@@ -89,6 +89,14 @@ app:
       # rồi chỉ cấp realm-management/view-users để đọc role của user.
       client-secret: ${KEYCLOAK_ADMIN_CLIENT_SECRET:}
   scheduling:
+    booking-no-show:
+      fixed-delay-ms: ${BOOKING_NO_SHOW_FIXED_DELAY_MS:30000}
+      initial-delay-ms: ${BOOKING_NO_SHOW_INITIAL_DELAY_MS:30000}
+      batch-size: ${BOOKING_NO_SHOW_BATCH_SIZE:50}
+    booking-session-completion:
+      fixed-delay-ms: ${BOOKING_SESSION_COMPLETION_FIXED_DELAY_MS:30000}
+      initial-delay-ms: ${BOOKING_SESSION_COMPLETION_INITIAL_DELAY_MS:45000}
+      batch-size: ${BOOKING_SESSION_COMPLETION_BATCH_SIZE:50}
     booking-expiration:
       fixed-delay-ms: ${BOOKING_EXPIRATION_FIXED_DELAY_MS:30000}
       initial-delay-ms: ${BOOKING_EXPIRATION_INITIAL_DELAY_MS:30000}
