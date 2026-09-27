@@ -4,6 +4,7 @@ import com.thang.chargeops.booking.repository.BookingRepository;
 import com.thang.chargeops.common.enums.OperationalChargePointStatus;
 import com.thang.chargeops.common.enums.ProvisioningStatus;
 import com.thang.chargeops.common.enums.RuntimeStatus;
+import com.thang.chargeops.common.enums.StationOperationalStatus;
 import com.thang.chargeops.common.enums.StationStatus;
 import com.thang.chargeops.exception.AppException;
 import com.thang.chargeops.exception.errorcode.StationErrorCode;
@@ -117,6 +118,7 @@ class ConnectorLifeCyclePolicyImplTest {
         when(connector.getChargePoint()).thenReturn(chargePoint);
         when(chargePoint.getStation()).thenReturn(station);
         when(station.getStatus()).thenReturn(StationStatus.ACTIVE);
+        when(station.getOperationalStatus()).thenReturn(StationOperationalStatus.OPERATING);
         when(chargePoint.getProvisioningStatus()).thenReturn(ProvisioningStatus.ACTIVE);
         when(chargePoint.getOperationalChargePointStatus())
                 .thenReturn(OperationalChargePointStatus.AVAILABLE);
@@ -125,6 +127,23 @@ class ConnectorLifeCyclePolicyImplTest {
         challengePolicy.requireCanIssue(connector, Instant.now());
 
         verifyNoInteractions(bookingRepository);
+    }
+
+    @Test
+    void checkInChallenge_throwsWhenStationNotOperating() {
+        Station station = mock(Station.class);
+        ChargePoint chargePoint = mock(ChargePoint.class);
+        Connector connector = mock(Connector.class);
+        when(connector.getChargePoint()).thenReturn(chargePoint);
+        when(chargePoint.getStation()).thenReturn(station);
+        when(station.getStatus()).thenReturn(StationStatus.ACTIVE);
+        when(station.getOperationalStatus()).thenReturn(StationOperationalStatus.PAUSED);
+        when(connector.getConnectorCode()).thenReturn("CN-01");
+
+        assertCode(
+                () -> challengePolicy.requireCanIssue(connector, Instant.now()),
+                StationErrorCode.CONNECTOR_NOT_AVAILABLE_FOR_CHECK_IN
+        );
     }
 
     private Connector activeConnector(RuntimeStatus runtimeStatus) {

@@ -12,6 +12,8 @@ public interface CheckInChallengeService {
 
     UUID resolve(String token);
 
+    ResolvedCheckInChallenge resolveWithExpiry(String token);
+
     void consume(String token);
 
     void validateAndConsume(String token, UUID expectedConnectorId);
