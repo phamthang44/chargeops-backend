@@ -2,7 +2,10 @@ package com.thang.chargeops.refund.repository;
 
 import com.thang.chargeops.refund.entity.Refund;
 import com.thang.chargeops.refund.model.RefundBasisType;
+import com.thang.chargeops.refund.model.RefundStatus;
+import com.thang.chargeops.refund.projection.RefundExecutionRouteProjection;
 import jakarta.persistence.LockModeType;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
@@ -11,15 +14,18 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
+import org.springframework.stereotype.Repository;
 
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
+@Repository
 public interface RefundRepository extends JpaRepository<Refund, UUID>, JpaSpecificationExecutor<Refund> {
 
     @Override
     @EntityGraph(attributePaths = {"booking", "booking.driver"})
-    Page<Refund> findAll(org.springframework.data.jpa.domain.Specification<Refund> specification, Pageable pageable);
+    Page<Refund> findAll(Specification<Refund> specification, Pageable pageable);
 
     Optional<Refund> findBySourcePaymentTransactionId(UUID sourcePaymentTransactionId);
 
@@ -44,11 +50,11 @@ public interface RefundRepository extends JpaRepository<Refund, UUID>, JpaSpecif
         FROM Refund r
         WHERE r.id = :refundId
     """)
-    Optional<com.thang.chargeops.refund.projection.RefundExecutionRouteProjection> findExecutionRouteById(
+    Optional<RefundExecutionRouteProjection> findExecutionRouteById(
             @Param("refundId") UUID refundId
     );
 
-    long countByStatus(com.thang.chargeops.refund.model.RefundStatus status);
+    long countByStatus(RefundStatus status);
 
-    java.util.List<Refund> findByBookingIdOrderByCreatedAtAscIdAsc(UUID bookingId);
+    List<Refund> findByBookingIdOrderByCreatedAtAscIdAsc(UUID bookingId);
 }

@@ -17,6 +17,7 @@ import com.thang.chargeops.refund.repository.RefundAttemptRepository;
 import com.thang.chargeops.refund.repository.RefundRepository;
 import com.thang.chargeops.refund.service.AdminRefundService;
 import com.thang.chargeops.refund.service.RefundDetailAssembler;
+import com.thang.chargeops.refund.service.RefundExecutionResultHandler;
 import com.thang.chargeops.refund.service.impl.AdminRefundServiceImpl;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -39,6 +40,7 @@ import org.testcontainers.postgresql.PostgreSQLContainer;
 import org.testcontainers.utility.DockerImageName;
 
 import java.math.BigDecimal;
+import java.sql.Timestamp;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
@@ -69,6 +71,7 @@ import static org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTest
         SimulatorRefundExecutor.class,
         ManualRecordRefundExecutor.class,
         RefundDetailAssembler.class,
+        RefundExecutionResultHandler.class,
         AdminRefundExecutionPostgresTest.TestConfig.class
 })
 @Transactional(propagation = Propagation.NOT_SUPPORTED)
@@ -276,7 +279,7 @@ class AdminRefundExecutionPostgresTest {
 
         RefundDetailResponse failResponse = executeInTransaction(fixture.refundId(), requestKey1, failRequest);
         assertThat(failResponse.status()).isEqualTo(RefundStatus.PENDING);
-        assertThat(failResponse.version()).isZero();
+        assertThat(failResponse.version()).isEqualTo(1L);
         assertThat(failResponse.successfulAttemptId()).isNull();
         assertThat(failResponse.attempts()).hasSize(1);
         assertThat(failResponse.attempts().getFirst().failureCode()).isEqualTo("SIMULATED_FAILURE");
@@ -293,7 +296,7 @@ class AdminRefundExecutionPostgresTest {
         // Subsequent retry with new requestKey and SUCCEEDED outcome
         UUID requestKey2 = UUID.randomUUID();
         ExecuteRefundRequest succeedRequest = new ExecuteRefundRequest(
-                0L,
+                1L,
                 RefundExecutionMode.SIMULATOR,
                 RefundExecutionOutcome.SUCCEEDED,
                 null,
@@ -303,7 +306,7 @@ class AdminRefundExecutionPostgresTest {
 
         RefundDetailResponse succeedResponse = executeInTransaction(fixture.refundId(), requestKey2, succeedRequest);
         assertThat(succeedResponse.status()).isEqualTo(RefundStatus.SUCCEEDED);
-        assertThat(succeedResponse.version()).isEqualTo(1L);
+        assertThat(succeedResponse.version()).isEqualTo(2L);
         assertThat(succeedResponse.successfulAttemptId()).isNotNull();
         assertThat(succeedResponse.attempts()).hasSize(2);
         assertThat(succeedResponse.attempts().get(0).sequenceNo()).isEqualTo(1);
@@ -440,8 +443,8 @@ class AdminRefundExecutionPostgresTest {
                     basis_type, basis_id, amount, currency, reason, status,
                     execution_policy, requires_admin_action, decided_by, decision_at, version)
                 VALUES (?, ?, ?, 'BOOKING_CANCELLATION', ?, 120000, 'VND', 'VOLUNTARY_GRACE', 'PENDING',
-                    'AUTO_FIRST_ATTEMPT', false, ?, now(), 0)
-                """, bookingId, paymentId, sourceTxId, basisId, adminId);
+                    'AUTO_FIRST_ATTEMPT', false, ?, ?, 0)
+                """, bookingId, paymentId, sourceTxId, basisId, adminId, Timestamp.from(NOW.minusSeconds(300)));
 
         UUID refundId = jdbc.queryForObject(
                 "SELECT id FROM refunds WHERE source_payment_transaction_id = ?", UUID.class, sourceTxId);
