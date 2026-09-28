@@ -1,6 +1,7 @@
 package com.thang.chargeops.refund.service.impl;
 
 import com.thang.chargeops.booking.repository.BookingRepository;
+import com.thang.chargeops.common.constant.LogConstant;
 import com.thang.chargeops.exception.AppException;
 import com.thang.chargeops.exception.errorcode.CommonErrorCode;
 import com.thang.chargeops.exception.errorcode.RefundErrorCode;
@@ -27,6 +28,7 @@ import com.thang.chargeops.refund.service.RefundExecutionPayloadHasher;
 import com.thang.chargeops.refund.service.RefundExecutionResultHandler;
 import com.thang.chargeops.station.repository.ConnectorRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -37,6 +39,7 @@ import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class AutomaticRefundExecutionServiceImpl implements AutomaticRefundExecutionService {
     private static final String AUTO_NOTE = "Automatic 100% grace-period refund";
 
@@ -55,6 +58,8 @@ public class AutomaticRefundExecutionServiceImpl implements AutomaticRefundExecu
     @Transactional
     public boolean processFirstAttempt(UUID refundId) {
         Objects.requireNonNull(refundId, "refundId must not be null");
+        log.info(LogConstant.SERVICE_LOG_FORMAT, LogConstant.ACTION_START, "processFirstAttempt", "SYSTEM",
+                "refundId=" + refundId);
 
         RefundExecutionRouteProjection route = refundRepository.findExecutionRouteById(refundId)
                 .orElseThrow(() -> new AppException(CommonErrorCode.RESOURCE_NOT_FOUND));
@@ -71,6 +76,8 @@ public class AutomaticRefundExecutionServiceImpl implements AutomaticRefundExecu
         RefundAutoDispatch dispatch = autoDispatchRepository.findByRefundIdWithLock(refundId)
                 .orElseThrow(() -> new AppException(RefundErrorCode.EXECUTION_CONFLICT));
         if (dispatch.getStatus() == RefundAutoDispatchStatus.PROCESSED) {
+            log.info(LogConstant.SERVICE_LOG_FORMAT, LogConstant.ACTION_SUCCESS, "processFirstAttempt", "SYSTEM",
+                    "refundId=" + refundId + ", processed=false, reason=dispatch_already_processed");
             return false;
         }
 
@@ -84,11 +91,16 @@ public class AutomaticRefundExecutionServiceImpl implements AutomaticRefundExecu
         }
         if (refund.getStatus() == RefundStatus.SUCCEEDED) {
             dispatch.markProcessed(executionAt);
+            log.info(LogConstant.SERVICE_LOG_FORMAT, LogConstant.ACTION_SUCCESS, "processFirstAttempt", "SYSTEM",
+                    "refundId=" + refundId + ", processed=false, reason=refund_already_succeeded");
             return false;
         }
         if (refundAttemptRepository.countByRefundId(refundId) > 0) {
             refund.requireAdminAction();
             dispatch.markProcessed(executionAt);
+            log.warn(LogConstant.SERVICE_LOG_FORMAT, LogConstant.ACTION_FAILED, "processFirstAttempt", "SYSTEM",
+                    "refundId=" + refundId
+                            + ", processed=false, reason=attempt_already_exists, adminActionRequired=true");
             return false;
         }
 
@@ -114,6 +126,10 @@ public class AutomaticRefundExecutionServiceImpl implements AutomaticRefundExecu
         ));
         resultHandler.apply(refund, payment, attempt, result, executionAt);
         dispatch.markProcessed(executionAt);
+        log.info(LogConstant.SERVICE_LOG_FORMAT, LogConstant.ACTION_SUCCESS, "processFirstAttempt", "SYSTEM",
+                "refundId=" + refundId + ", attemptId=" + attempt.getId() + ", outcome=" + result.outcome()
+                        + ", refundStatus=" + refund.getStatus()
+                        + ", adminActionRequired=" + refund.isRequiresAdminAction());
         return true;
     }
 }

@@ -25,6 +25,7 @@ import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
 import org.springframework.security.oauth2.server.resource.web.authentication.BearerTokenAuthenticationFilter;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.util.StringUtils;
 
 /**
  * Security configuration. The backend is a stateless OAuth2 resource server:
@@ -49,6 +50,9 @@ public class SecurityConfig {
 
     @Value("${spring.security.oauth2.resourceserver.jwt.issuer-uri}")
     private String issuerUri;
+
+    @Value("${KEYCLOAK_JWK_SET_URI:}")
+    private String configuredJwkSetUri;
 
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http) {
@@ -87,9 +91,10 @@ public class SecurityConfig {
     @Bean
     @Profile("!test")
     public JwtDecoder jwtDecoder() {
-        String jwkSetUri = issuerUri.replaceAll("/+$", "") + "/protocol/openid-connect/certs";
+        String jwkSetUri = StringUtils.hasText(configuredJwkSetUri)
+                ? configuredJwkSetUri
+                : issuerUri.replaceAll("/+$", "") + "/protocol/openid-connect/certs";
         NimbusJwtDecoder decoder = NimbusJwtDecoder.withJwkSetUri(jwkSetUri).build();
-
         OAuth2TokenValidator<Jwt> validator = new DelegatingOAuth2TokenValidator<>(
                 new JwtTimestampValidator(),
                 new JwtClaimValidator<String>("iss", iss -> iss != null && (iss.equals(issuerUri) || iss.contains("/realms/chargeops")))

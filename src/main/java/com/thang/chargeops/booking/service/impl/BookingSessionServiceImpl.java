@@ -16,6 +16,7 @@ import com.thang.chargeops.booking.service.BookingHoldCoordinator;
 import com.thang.chargeops.booking.service.BookingSessionCompletionCoordinator;
 import com.thang.chargeops.booking.service.BookingSessionService;
 import com.thang.chargeops.booking.service.DriverBookingDetailAssembler;
+import com.thang.chargeops.common.constant.LogConstant;
 import com.thang.chargeops.common.enums.BookingStatus;
 import com.thang.chargeops.common.enums.OperationalChargePointStatus;
 import com.thang.chargeops.common.enums.ProvisioningStatus;
@@ -35,6 +36,7 @@ import com.thang.chargeops.station.entity.Connector;
 import com.thang.chargeops.station.entity.Station;
 import com.thang.chargeops.station.repository.ConnectorRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -50,6 +52,7 @@ import java.util.UUID;
  */
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class BookingSessionServiceImpl implements BookingSessionService {
 
     private final BookingRepository bookingRepository;
@@ -72,6 +75,9 @@ public class BookingSessionServiceImpl implements BookingSessionService {
     ) {
         requireCommandArguments(bookingId, requestKey, request);
         UserProfile driver = currentProfileProvider.requireProfile();
+        log.info(LogConstant.SERVICE_LOG_FORMAT, LogConstant.ACTION_START, "startCharging", driver.getId(),
+                "bookingId=" + bookingId + ", requestKey=" + requestKey
+                        + ", expectedVersion=" + request.expectedVersion());
         String payloadHash = hashPayload(
                 BookingCommandOperation.START_CHARGING,
                 bookingId,
@@ -85,6 +91,8 @@ public class BookingSessionServiceImpl implements BookingSessionService {
                 payloadHash
         );
         if (replay.isPresent()) {
+            log.info(LogConstant.SERVICE_LOG_FORMAT, LogConstant.ACTION_SUCCESS, "startCharging", driver.getId(),
+                    "bookingId=" + replay.get() + ", requestKey=" + requestKey + ", replay=true");
             return loadReplay(replay.get());
         }
 
@@ -96,6 +104,8 @@ public class BookingSessionServiceImpl implements BookingSessionService {
                 payloadHash
         );
         if (context.replayBookingId() != null) {
+            log.info(LogConstant.SERVICE_LOG_FORMAT, LogConstant.ACTION_SUCCESS, "startCharging", driver.getId(),
+                    "bookingId=" + context.replayBookingId() + ", requestKey=" + requestKey + ", replay=true");
             return loadReplay(context.replayBookingId());
         }
 
@@ -119,6 +129,9 @@ public class BookingSessionServiceImpl implements BookingSessionService {
                 booking -> booking.startCharging(decisionAt)
         );
         bookingRepository.flush();
+        log.info(LogConstant.SERVICE_LOG_FORMAT, LogConstant.ACTION_SUCCESS, "startCharging", context.driver().getId(),
+                "bookingId=" + context.booking().getId() + ", connectorId=" + context.connector().getId()
+                        + ", decisionAt=" + decisionAt);
         return driverBookingDetailAssembler.assemble(
                 context.booking(),
                 context.payment(),
@@ -135,6 +148,9 @@ public class BookingSessionServiceImpl implements BookingSessionService {
     ) {
         requireCommandArguments(bookingId, requestKey, request);
         UserProfile driver = currentProfileProvider.requireProfile();
+        log.info(LogConstant.SERVICE_LOG_FORMAT, LogConstant.ACTION_START, "completeBooking", driver.getId(),
+                "bookingId=" + bookingId + ", requestKey=" + requestKey
+                        + ", expectedVersion=" + request.expectedVersion());
         String payloadHash = hashPayload(
                 BookingCommandOperation.COMPLETE_BOOKING,
                 bookingId,
@@ -148,6 +164,8 @@ public class BookingSessionServiceImpl implements BookingSessionService {
                 payloadHash
         );
         if (replay.isPresent()) {
+            log.info(LogConstant.SERVICE_LOG_FORMAT, LogConstant.ACTION_SUCCESS, "completeBooking", driver.getId(),
+                    "bookingId=" + replay.get() + ", requestKey=" + requestKey + ", replay=true");
             return loadReplay(replay.get());
         }
 
@@ -159,6 +177,8 @@ public class BookingSessionServiceImpl implements BookingSessionService {
                 payloadHash
         );
         if (context.replayBookingId() != null) {
+            log.info(LogConstant.SERVICE_LOG_FORMAT, LogConstant.ACTION_SUCCESS, "completeBooking", driver.getId(),
+                    "bookingId=" + context.replayBookingId() + ", requestKey=" + requestKey + ", replay=true");
             return loadReplay(context.replayBookingId());
         }
 
@@ -180,6 +200,13 @@ public class BookingSessionServiceImpl implements BookingSessionService {
                 context.connector(),
                 decisionAt
         );
+
+        log.info(LogConstant.SERVICE_LOG_FORMAT, LogConstant.ACTION_SUCCESS, "completeBooking",
+                context.driver().getId(),
+                "bookingId=" + context.booking().getId() + ", connectorId=" + context.connector().getId()
+                        + ", bookingStatus=" + context.booking().getStatus()
+                        + ", connectorStatus=" + context.connector().getRuntimeStatus()
+                        + ", decisionAt=" + decisionAt);
 
         return driverBookingDetailAssembler.assemble(
                 context.booking(),

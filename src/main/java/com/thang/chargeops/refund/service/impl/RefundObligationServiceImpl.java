@@ -3,6 +3,7 @@ package com.thang.chargeops.refund.service.impl;
 import com.thang.chargeops.common.enums.PaymentApplicationClassification;
 import com.thang.chargeops.common.enums.PaymentEnvironment;
 import com.thang.chargeops.common.enums.PaymentStatus;
+import com.thang.chargeops.common.constant.LogConstant;
 import com.thang.chargeops.exception.AppException;
 import com.thang.chargeops.exception.errorcode.RefundErrorCode;
 import com.thang.chargeops.payment.entity.Payment;
@@ -16,6 +17,7 @@ import com.thang.chargeops.refund.repository.RefundRepository;
 import com.thang.chargeops.refund.repository.RefundAutoDispatchRepository;
 import com.thang.chargeops.refund.service.RefundObligationService;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.hibernate.exception.ConstraintViolationException;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
@@ -32,6 +34,7 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class RefundObligationServiceImpl implements RefundObligationService {
     private final PaymentTransactionRepository transactionRepository;
     private final RefundRepository refundRepository;
@@ -42,6 +45,11 @@ public class RefundObligationServiceImpl implements RefundObligationService {
     public Refund createObligation(CreateRefundObligationCommand command) {
         requireComplete(command);
         Payment payment = command.lockedPayment();
+        log.info(LogConstant.SERVICE_LOG_FORMAT, LogConstant.ACTION_START, "createObligation",
+                command.lockedActor().getId(),
+                "bookingId=" + command.lockedBooking().getId() + ", paymentId=" + payment.getId()
+                        + ", sourceReceiptId=" + command.sourceReceiptId()
+                        + ", basisType=" + command.basisType() + ", basisId=" + command.basisId());
         if (!Objects.equals(command.lockedBooking().getId(), payment.getBooking().getId())) {
             throw conflict("Payment does not belong to the locked booking");
         }
@@ -64,6 +72,11 @@ public class RefundObligationServiceImpl implements RefundObligationService {
             Refund existing = refundRepository.findByIdWithLock(sameBasis.orElseThrow().getId())
                     .orElseThrow(() -> conflict("Refund basis disappeared"));
             if (sameDecision(existing, command, source)) {
+                log.info(LogConstant.SERVICE_LOG_FORMAT, LogConstant.ACTION_SUCCESS, "createObligation",
+                        command.lockedActor().getId(),
+                        "refundId=" + existing.getId() + ", bookingId=" + command.lockedBooking().getId()
+                                + ", paymentId=" + payment.getId() + ", basisType=" + command.basisType()
+                                + ", basisId=" + command.basisId() + ", replay=true");
                 return existing;
             }
             throw conflict("Refund basis already belongs to a different decision");
@@ -92,6 +105,12 @@ public class RefundObligationServiceImpl implements RefundObligationService {
                 );
                 autoDispatchRepository.save(RefundAutoDispatch.pending(saved, requestKey));
             }
+            log.info(LogConstant.SERVICE_LOG_FORMAT, LogConstant.ACTION_SUCCESS, "createObligation",
+                    command.lockedActor().getId(),
+                    "refundId=" + saved.getId() + ", bookingId=" + command.lockedBooking().getId()
+                            + ", paymentId=" + payment.getId() + ", sourceReceiptId=" + source.getId()
+                            + ", amount=" + saved.getAmount() + ", currency=" + saved.getCurrency()
+                            + ", reason=" + saved.getReason() + ", executionPolicy=" + saved.getExecutionPolicy());
             return saved;
         } catch (DataIntegrityViolationException exception) {
             if (isRefundUniquenessConflict(exception)) {

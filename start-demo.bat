@@ -34,21 +34,13 @@ start "ChargeOps - Driver Mobile (Expo Port 8082)" cmd /k "cd /d "%FRONTEND_DIR%
 
 echo.
 echo [4/4] Dang kich hoat Tailscale Funnel cong khai qua Internet...
-echo   - Mobile Driver Web (8082) -> https://thang.tail704409.ts.net/
-tailscale funnel --bg http://localhost:8082
+echo       Resetting legacy configuration...
+tailscale funnel reset >nul 2>&1
+echo   - Web Portal ^& Services (443)  -> https://thang.tail704409.ts.net/
+tailscale funnel --bg --https=443 http://127.0.0.1:8088
 
-echo   - Backend API (8081)       -> https://thang.tail704409.ts.net/api
-tailscale funnel --bg --set-path /api http://127.0.0.1:8081/api
-
-echo   - Keycloak Auth (8080)     -> https://thang.tail704409.ts.net/realms
-tailscale funnel --bg --set-path /realms http://127.0.0.1:8080/realms
-
-echo   - Keycloak Res & JS (8080) -> https://thang.tail704409.ts.net/resources, /js
-tailscale funnel --bg --set-path /resources http://127.0.0.1:8080/resources
-tailscale funnel --bg --set-path /js http://127.0.0.1:8080/js
-
-echo   - Web Portal (5173)        -> https://thang.tail704409.ts.net:8443/
-tailscale funnel --bg --https=8443 http://localhost:5173
+echo   - Driver Mobile Web (8443)      -> https://thang.tail704409.ts.net:8443/
+tailscale funnel --bg --https=8443 http://localhost:8082
 
 echo.
 echo Kiem tra trang thai Tailscale Funnel:
@@ -58,10 +50,11 @@ echo.
 echo =====================================================================
 echo                    HE THONG DEMO DA SAN SANG!
 echo =====================================================================
-echo * Mobile Driver App:        https://thang.tail704409.ts.net/
-echo                             (Hoac quet ma QR tren cua so Expo bang Expo Go)
-echo * Web Portal (Console):     https://thang.tail704409.ts.net:8443/
+echo * Web Portal (Console):     https://thang.tail704409.ts.net/
+echo * Driver Mobile (Web):      https://thang.tail704409.ts.net:8443/
+echo * Mobile Driver (Expo Go):  Quet ma QR tren cua so Expo (8082)
 echo * Keycloak Account:         https://thang.tail704409.ts.net/realms/chargeops/account/
+echo * Grafana Dashboard:        https://thang.tail704409.ts.net/grafana/
 echo * Backend Swagger:          http://localhost:8081/swagger-ui.html
 echo * SePay Webhook Endpoint:   https://thang.tail704409.ts.net/api/v1/webhooks/sepay
 echo * Mailpit Web Mailbox:      http://localhost:8025/

@@ -1,0 +1,66 @@
+map $http_x_forwarded_proto $chargeops_forwarded_proto {
+    default $http_x_forwarded_proto;
+    ""      $scheme;
+}
+
+map $http_upgrade $chargeops_connection_upgrade {
+    default upgrade;
+    ""      close;
+}
+
+server {
+    listen 80;
+    server_name _;
+    server_tokens off;
+
+    # Used by start-funnel.bat and Docker health checks. Never forwarded.
+    location = /healthz {
+        access_log off;
+        default_type text/plain;
+        return 200 "chargeops-gateway-ok\n";
+    }
+
+    # Do not expose the Keycloak administration console. /admin belongs to the
+    # ChargeOps Web Portal because every unmatched path is sent to WEB_UPSTREAM.
+    location ^~ /realms/master/ {
+        return 404;
+    }
+
+    # Preserve the /api prefix because Spring controllers are mounted below it.
+    location ^~ /api/ {
+        proxy_pass http://${API_UPSTREAM};
+        include /etc/nginx/proxy_params;
+    }
+
+    # Only the public Keycloak endpoints required by browser/mobile OIDC flows.
+    location ^~ /realms/ {
+        proxy_pass http://${KEYCLOAK_UPSTREAM};
+        include /etc/nginx/proxy_params;
+    }
+
+    location ^~ /resources/ {
+        proxy_pass http://${KEYCLOAK_UPSTREAM};
+        include /etc/nginx/proxy_params;
+    }
+
+    location ^~ /.well-known/ {
+        proxy_pass http://${KEYCLOAK_UPSTREAM};
+        include /etc/nginx/proxy_params;
+    }
+
+    # Grafana validates OBSERVABILITY_ADMIN itself through Keycloak OAuth.
+    location ^~ /grafana/ {
+        proxy_pass http://${GRAFANA_UPSTREAM};
+        include /etc/nginx/proxy_params;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection $chargeops_connection_upgrade;
+    }
+
+    # Web Portal and Vite HMR in dev. This must remain last.
+    location / {
+        proxy_pass http://${WEB_UPSTREAM};
+        include /etc/nginx/proxy_params;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection $chargeops_connection_upgrade;
+    }
+}

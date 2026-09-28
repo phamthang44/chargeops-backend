@@ -76,6 +76,32 @@ server:
   port: 8081
   shutdown: graceful              # cho request đang chạy hoàn tất khi tắt
 
+# --- Observability: health + Prometheus metrics ---
+# /actuator/** is permitted by Spring Security, but production ingress must only
+# expose these endpoints to the internal monitoring network.
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+  endpoint:
+    health:
+      show-details: never
+  prometheus:
+    metrics:
+      export:
+        enabled: true
+  metrics:
+    tags:
+      application: ${spring.application.name}
+    distribution:
+      percentiles-histogram:
+        http.server.requests: true
+      minimum-expected-value:
+        http.server.requests: 5ms
+      maximum-expected-value:
+        http.server.requests: 10s
+
 app:
   name: ChargeOps
   base-url: ${BACKEND_BASE_URL:http://localhost:8081}

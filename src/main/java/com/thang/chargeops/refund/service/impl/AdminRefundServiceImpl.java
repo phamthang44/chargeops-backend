@@ -2,6 +2,7 @@ package com.thang.chargeops.refund.service.impl;
 
 import com.thang.chargeops.booking.entity.Booking;
 import com.thang.chargeops.booking.repository.BookingRepository;
+import com.thang.chargeops.common.constant.LogConstant;
 import com.thang.chargeops.exception.AppException;
 import com.thang.chargeops.exception.errorcode.CommonErrorCode;
 import com.thang.chargeops.exception.errorcode.ProfileErrorCode;
@@ -34,6 +35,7 @@ import com.thang.chargeops.refund.service.RefundExecutionPayloadHasher;
 import com.thang.chargeops.refund.service.RefundExecutionResultHandler;
 import com.thang.chargeops.station.repository.ConnectorRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
@@ -51,6 +53,7 @@ import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class AdminRefundServiceImpl implements AdminRefundService {
     private final CurrentProfileProvider currentProfileProvider;
     private final UserProfileRepository userProfileRepository;
@@ -115,10 +118,17 @@ public class AdminRefundServiceImpl implements AdminRefundService {
         Objects.requireNonNull(refundId, "refundId must not be null");
         Objects.requireNonNull(requestKey, "requestKey must not be null");
         Objects.requireNonNull(request, "request must not be null");
+        UUID actorId = currentProfileProvider.requireProfileId();
+        log.info(LogConstant.SERVICE_LOG_FORMAT, LogConstant.ACTION_START, "execute", actorId,
+                "refundId=" + refundId + ", requestKey=" + requestKey
+                        + ", executionMode=" + request.executionMode()
+                        + ", expectedVersion=" + request.expectedVersion());
 
         String payloadHash = RefundExecutionPayloadHasher.sha256(refundId, request);
         Optional<RefundAttempt> fastReplay = refundAttemptRepository.findByRefundIdAndRequestKey(refundId, requestKey);
         if (fastReplay.isPresent()) {
+            log.info(LogConstant.SERVICE_LOG_FORMAT, LogConstant.ACTION_SUCCESS, "execute", actorId,
+                    "refundId=" + refundId + ", requestKey=" + requestKey + ", replay=true, phase=fast");
             return replay(fastReplay.get(), payloadHash);
         }
 
@@ -129,6 +139,9 @@ public class AdminRefundServiceImpl implements AdminRefundService {
 
         Optional<RefundAttempt> lockedReplay = refundAttemptRepository.findByRefundIdAndRequestKey(refundId, requestKey);
         if (lockedReplay.isPresent()) {
+            log.info(LogConstant.SERVICE_LOG_FORMAT, LogConstant.ACTION_SUCCESS, "execute", lockedActor.getId(),
+                    "refundId=" + refundId + ", requestKey=" + requestKey
+                            + ", replay=true, phase=actor_locked");
             return replay(lockedReplay.get(), payloadHash);
         }
 
@@ -148,6 +161,9 @@ public class AdminRefundServiceImpl implements AdminRefundService {
 
         Optional<RefundAttempt> refundLockedReplay = refundAttemptRepository.findByRefundIdAndRequestKey(refundId, requestKey);
         if (refundLockedReplay.isPresent()) {
+            log.info(LogConstant.SERVICE_LOG_FORMAT, LogConstant.ACTION_SUCCESS, "execute", lockedActor.getId(),
+                    "refundId=" + refundId + ", requestKey=" + requestKey
+                            + ", replay=true, phase=refund_locked");
             return replay(refundLockedReplay.get(), payloadHash);
         }
 
@@ -172,6 +188,12 @@ public class AdminRefundServiceImpl implements AdminRefundService {
         ));
 
         resultHandler.apply(refund, payment, attempt, result, executionAt);
+
+        log.info(LogConstant.SERVICE_LOG_FORMAT, LogConstant.ACTION_SUCCESS, "execute", lockedActor.getId(),
+                "refundId=" + refundId + ", attemptId=" + attempt.getId()
+                        + ", executionMode=" + request.executionMode() + ", outcome=" + result.outcome()
+                        + ", refundStatus=" + refund.getStatus()
+                        + ", adminActionRequired=" + refund.isRequiresAdminAction());
 
         return assembleDetail(refund);
     }

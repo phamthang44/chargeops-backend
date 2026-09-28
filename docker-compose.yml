@@ -1,4 +1,30 @@
 services:
+  gateway:
+    image: nginx:alpine
+    container_name: chargeops-gateway
+    ports:
+      - "127.0.0.1:${GATEWAY_PORT:-8088}:80"
+    restart: unless-stopped
+    environment:
+      NGINX_ENVSUBST_FILTER: "^(WEB_UPSTREAM|API_UPSTREAM|KEYCLOAK_UPSTREAM|GRAFANA_UPSTREAM)$"
+      WEB_UPSTREAM: host.docker.internal:5173
+      API_UPSTREAM: host.docker.internal:8081
+      KEYCLOAK_UPSTREAM: keycloak:8080
+      GRAFANA_UPSTREAM: grafana:3000
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ./gateway/templates:/etc/nginx/templates:ro
+      - ./gateway/proxy_params:/etc/nginx/proxy_params:ro
+    depends_on:
+      - keycloak
+      - grafana
+    healthcheck:
+      test: [ "CMD-SHELL", "wget -qO- http://127.0.0.1/healthz >/dev/null" ]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
   postgres:
     image: postgis/postgis:16-3.4      # PostGIS cho proximity; pgvector bật qua init
     ports:
@@ -68,8 +94,87 @@ services:
     ports:
       - "1025:1025"
       - "8025:8025"
+
+  loki:
+    image: grafana/loki:3.7.8
+    command: -config.file=/etc/loki/config.yml
+    restart: unless-stopped
+    volumes:
+      - ./observability/loki/config.yml:/etc/loki/config.yml:ro
+      - chargeops_loki_data:/loki
+
+  alloy:
+    image: grafana/alloy:v1.20.0
+    command:
+      - run
+      - --server.http.listen-addr=0.0.0.0:12345
+      - --storage.path=/var/lib/alloy/data
+      - --disable-reporting
+      - /etc/alloy/config.alloy
+    restart: unless-stopped
+    volumes:
+      - ./observability/alloy/config.alloy:/etc/alloy/config.alloy:ro
+      - ./logs:/var/log/chargeops:ro
+      - chargeops_alloy_data:/var/lib/alloy/data
+    depends_on:
+      - loki
+
+  prometheus:
+    image: prom/prometheus:v3.13.0
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=15d
+      - --web.enable-lifecycle
+    restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ./observability/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - chargeops_prometheus_data:/prometheus
+
+  grafana:
+    image: grafana/grafana:13.1.6
+    ports:
+      # Chỉ Vite dev proxy trên chính máy host được truy cập trực tiếp.
+      - "127.0.0.1:3000:3000"
+    restart: unless-stopped
+    environment:
+      GF_SERVER_ROOT_URL: ${GRAFANA_ROOT_URL:-http://localhost:8088/grafana/}
+      GF_SERVER_SERVE_FROM_SUB_PATH: "true"
+      GF_SECURITY_ALLOW_EMBEDDING: "true"
+      GF_SECURITY_COOKIE_SAMESITE: lax
+      GF_SECURITY_COOKIE_SECURE: ${GRAFANA_COOKIE_SECURE:-false}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_AUTH_BASIC_ENABLED: "false"
+      GF_AUTH_DISABLE_LOGIN_FORM: "true"
+      GF_AUTH_GENERIC_OAUTH_ENABLED: "true"
+      GF_AUTH_GENERIC_OAUTH_NAME: ChargeOps
+      GF_AUTH_GENERIC_OAUTH_CLIENT_ID: ${GRAFANA_OAUTH_CLIENT_ID:-chargeops-observability}
+      GF_AUTH_GENERIC_OAUTH_CLIENT_SECRET: ${GRAFANA_OAUTH_CLIENT_SECRET:-}
+      GF_AUTH_GENERIC_OAUTH_SCOPES: openid profile email roles
+      GF_AUTH_GENERIC_OAUTH_AUTH_URL: ${KEYCLOAK_PUBLIC_URL:-http://localhost:8080}/realms/chargeops/protocol/openid-connect/auth
+      GF_AUTH_GENERIC_OAUTH_TOKEN_URL: http://keycloak:8080/realms/chargeops/protocol/openid-connect/token
+      GF_AUTH_GENERIC_OAUTH_API_URL: http://keycloak:8080/realms/chargeops/protocol/openid-connect/userinfo
+      GF_AUTH_GENERIC_OAUTH_ALLOW_SIGN_UP: "true"
+      GF_AUTH_GENERIC_OAUTH_AUTO_LOGIN: "true"
+      GF_AUTH_GENERIC_OAUTH_ROLE_ATTRIBUTE_PATH: "contains(realm_access.roles[*], 'OBSERVABILITY_ADMIN') && 'Admin'"
+      GF_AUTH_GENERIC_OAUTH_ROLE_ATTRIBUTE_STRICT: "true"
+      GF_AUTH_GENERIC_OAUTH_ALLOW_ASSIGN_GRAFANA_ADMIN: "false"
+    volumes:
+      - chargeops_grafana_data:/var/lib/grafana
+      - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    depends_on:
+      - loki
+      - prometheus
+      - keycloak
 volumes:
   chargeops_postgres_data:
+  chargeops_loki_data:
+  chargeops_alloy_data:
+  chargeops_prometheus_data:
+  chargeops_grafana_data:
 
 networks:
   chargeops_network:
