@@ -360,6 +360,69 @@ class StationStaffServiceImplTest {
         verifyNoInteractions(identityRoleService);
     }
 
+    @Test
+    void listOwnerStaff_whenNoStationId_queriesAllStationsForOwner() {
+        UUID ownerId = UUID.randomUUID();
+        when(currentProfileProvider.requireProfileId()).thenReturn(ownerId);
+
+        Station st = station(UUID.randomUUID());
+        UserProfile staffUser = profile("keycloak-staff", "staff@chargeops.vn", UserStatus.ACTIVE);
+        StationStaffAssignment assignment = StationStaffAssignment.builder()
+                .station(st)
+                .staff(staffUser)
+                .status(StaffAssignmentStatus.ACTIVE)
+                .assignedAt(Instant.now())
+                .assignedBy(ownerId)
+                .build();
+        assignment.setId(UUID.randomUUID());
+
+        org.springframework.data.domain.Page<StationStaffAssignment> page =
+                new org.springframework.data.domain.PageImpl<>(java.util.List.of(assignment));
+
+        when(assignmentRepository.findAllByOwner(
+                org.mockito.ArgumentMatchers.eq(ownerId),
+                org.mockito.ArgumentMatchers.isNull(),
+                org.mockito.ArgumentMatchers.eq(StaffAssignmentStatus.ACTIVE),
+                any(org.springframework.data.domain.Pageable.class)
+        )).thenReturn(page);
+
+        org.springframework.data.domain.Page<StationStaffResponse> result =
+                service.listAllOwnerStaff(null, 1, 50, null);
+
+        assertThat(result.getContent()).hasSize(1);
+        assertThat(result.getContent().get(0).stationName()).isEqualTo("ChargeOps Station");
+        assertThat(result.getContent().get(0).email()).isEqualTo("staff@chargeops.vn");
+        verifyNoInteractions(stationRepository);
+        verifyNoInteractions(policy);
+    }
+
+    @Test
+    void listOwnerStaff_whenStationIdProvided_validatesOwnership() {
+        UUID ownerId = UUID.randomUUID();
+        UUID stationId = UUID.randomUUID();
+        when(currentProfileProvider.requireProfileId()).thenReturn(ownerId);
+
+        Station st = station(stationId);
+        when(stationRepository.findById(stationId)).thenReturn(Optional.of(st));
+
+        org.springframework.data.domain.Page<StationStaffAssignment> page =
+                new org.springframework.data.domain.PageImpl<>(java.util.Collections.emptyList());
+
+        when(assignmentRepository.findAllByOwner(
+                org.mockito.ArgumentMatchers.eq(ownerId),
+                org.mockito.ArgumentMatchers.eq(stationId),
+                org.mockito.ArgumentMatchers.eq(StaffAssignmentStatus.ACTIVE),
+                any(org.springframework.data.domain.Pageable.class)
+        )).thenReturn(page);
+
+        org.springframework.data.domain.Page<StationStaffResponse> result =
+                service.listAllOwnerStaff(stationId, 1, 50, null);
+
+        assertThat(result.getContent()).isEmpty();
+        verify(stationRepository).findById(stationId);
+        verify(policy).requireOwnerCanManageStaff(st, ownerId);
+    }
+
     private UserProfile profile(String keycloakId, String email, UserStatus status) {
         UserProfile profile = UserProfile.builder()
                 .keycloakId(keycloakId)

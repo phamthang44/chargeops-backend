@@ -128,6 +128,38 @@ public class StationStaffServiceImpl implements StationStaffService {
     }
 
     @Override
+    public Page<StationStaffResponse> listAllOwnerStaff(
+            UUID stationId,
+            int pageNo,
+            int pageSize,
+            StaffAssignmentStatus assignmentStatus) {
+        int pageIndex = Math.max(pageNo - 1, 0);
+        Pageable pageable = PageRequest.of(pageIndex, pageSize);
+
+        UUID currentOwnerId = currentProfileProvider.requireProfileId();
+
+        if (stationId != null) {
+            Station station = stationRepository.findById(stationId)
+                    .orElseThrow(() -> new AppException(StationErrorCode.STATION_NOT_FOUND, stationId));
+            policy.requireOwnerCanManageStaff(station, currentOwnerId);
+        }
+
+        StaffAssignmentStatus targetStatus = assignmentStatus == null
+                ? StaffAssignmentStatus.ACTIVE
+                : assignmentStatus;
+
+        Page<StationStaffAssignment> staffAssignments =
+                stationStaffAssignmentRepository.findAllByOwner(
+                        currentOwnerId,
+                        stationId,
+                        targetStatus,
+                        pageable
+                );
+
+        return staffAssignments.map(this::convertToResponse);
+    }
+
+    @Override
     @Transactional
     public StationStaffResponse assignStaff(UUID stationId, String email, String note) {
         UUID currentOwnerId = currentProfileProvider.requireProfileId();

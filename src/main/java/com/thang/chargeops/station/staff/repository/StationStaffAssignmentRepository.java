@@ -6,6 +6,8 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.util.Optional;
@@ -35,6 +37,21 @@ public interface StationStaffAssignmentRepository extends JpaRepository<StationS
     Page<StationStaffAssignment> findAllByStation_IdAndStatus(
             UUID stationId,
             StaffAssignmentStatus status,
+            Pageable pageable
+    );
+
+    @EntityGraph(attributePaths = {"station", "staff"})
+    @Query("""
+            SELECT a FROM StationStaffAssignment a
+            WHERE a.station.owner.id = :ownerId
+              AND (:stationId IS NULL OR a.station.id = :stationId)
+              AND a.status = :status
+            ORDER BY a.assignedAt DESC
+            """)
+    Page<StationStaffAssignment> findAllByOwner(
+            @Param("ownerId") UUID ownerId,
+            @Param("stationId") UUID stationId,
+            @Param("status") StaffAssignmentStatus status,
             Pageable pageable
     );
 }

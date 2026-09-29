@@ -22,6 +22,12 @@ public interface StationStaffService {
 
     StationStaffResponse revokeStaff(UUID stationId, UUID assignmentId);
 
-    CurrentStaffContextResponse getCurrentStaffContext();
+    Page<StationStaffResponse> listAllOwnerStaff(
+            UUID stationId,
+            int pageNo,
+            int pageSize,
+            StaffAssignmentStatus assignmentStatus
+    );
 
+    CurrentStaffContextResponse getCurrentStaffContext();
 }
