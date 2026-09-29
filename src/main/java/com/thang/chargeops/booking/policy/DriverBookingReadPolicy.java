@@ -16,7 +16,6 @@ import com.thang.chargeops.station.entity.Station;
 import org.springframework.stereotype.Component;
 
 import java.time.Instant;
-import java.util.Locale;
 import java.util.Objects;
 
 /**
@@ -25,6 +24,9 @@ import java.util.Objects;
  */
 @Component
 public class DriverBookingReadPolicy {
+
+    private final BookingEffectiveStatePolicy effectiveStatePolicy =
+            new BookingEffectiveStatePolicy();
 
     public BookingReadSnapshot snapshotForList(
             Booking booking,
@@ -45,30 +47,19 @@ public class DriverBookingReadPolicy {
         Objects.requireNonNull(booking, "booking must not be null");
         Objects.requireNonNull(snapshot, "snapshot must not be null");
 
-        BookingStatus effectiveStatus = effectiveStatus(
-                booking,
-                snapshot.evaluatedAt()
-        );
+        BookingEffectiveStatePolicy.Evaluation state = effectiveStatePolicy.evaluate(
+                booking, snapshot.evaluatedAt());
+        BookingStatus effectiveStatus = state.effectiveStatus();
         return new BookingReadEvaluation(
                 effectiveStatus,
-                effectiveStatus != booking.getStatus(),
-                cancellationReason(booking, effectiveStatus),
+                state.stateReconciliationPending(),
+                state.cancellationReason(),
                 capabilities(booking, effectiveStatus, snapshot)
         );
     }
 
     BookingStatus effectiveStatus(Booking booking, Instant evaluatedAt) {
-        if (booking.getStatus() == BookingStatus.PENDING
-                && booking.getExpiresAt() != null
-                && !evaluatedAt.isBefore(booking.getExpiresAt())) {
-            return BookingStatus.EXPIRED;
-        }
-        if (booking.getStatus() == BookingStatus.CONFIRMED
-                && booking.getCheckInDeadline() != null
-                && !evaluatedAt.isBefore(booking.getCheckInDeadline())) {
-            return BookingStatus.CANCELLED;
-        }
-        return booking.getStatus();
+        return effectiveStatePolicy.evaluate(booking, evaluatedAt).effectiveStatus();
     }
 
     private DriverBookingCapabilities capabilities(
@@ -157,29 +148,6 @@ public class DriverBookingReadPolicy {
             return DriverBookingCapabilities.CheckInReason.STATION_UNAVAILABLE;
         }
         return DriverBookingCapabilities.CheckInReason.AVAILABLE;
-    }
-
-    private BookingReadEvaluation.CancellationReason cancellationReason(
-            Booking booking,
-            BookingStatus effectiveStatus
-    ) {
-        if (booking.getStatus() == BookingStatus.CONFIRMED
-                && effectiveStatus == BookingStatus.CANCELLED) {
-            return BookingReadEvaluation.CancellationReason.NO_SHOW;
-        }
-        if (booking.getCancellationReason() == null
-                || booking.getCancellationReason().isBlank()) {
-            return null;
-        }
-        try {
-            return BookingReadEvaluation.CancellationReason.valueOf(
-                    booking.getCancellationReason()
-                            .trim()
-                            .toUpperCase(Locale.ROOT)
-            );
-        } catch (IllegalArgumentException ignored) {
-            return null;
-        }
     }
 
     private boolean isStationAvailable(Booking booking) {

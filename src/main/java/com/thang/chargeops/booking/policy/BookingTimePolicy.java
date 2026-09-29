@@ -4,7 +4,6 @@ import com.thang.chargeops.booking.config.BookingPolicyConfig;
 import com.thang.chargeops.exception.AppException;
 import com.thang.chargeops.exception.errorcode.BookingErrorCode;
 import com.thang.chargeops.station.entity.StationOperatingSchedule;
-import com.thang.chargeops.station.service.model.OperatingWindow;
 import com.thang.chargeops.station.service.support.StationOperatingHoursResolver;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
