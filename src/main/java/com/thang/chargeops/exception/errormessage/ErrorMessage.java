@@ -77,7 +77,8 @@ public final class ErrorMessage {
                         CommandErrorMessage.templates(),
                         PaymentErrorMessage.templates(),
                         RefundErrorMessage.templates(),
-                        TicketErrorMessage.templates()
+                        TicketErrorMessage.templates(),
+                        PayoutErrorMessage.templates()
                 )
                 .flatMap(List::stream)
                 .collect(toUnmodifiableMap(Template::key, Function.identity()));
