@@ -9,9 +9,21 @@ import org.springframework.data.repository.query.Param;
 
 import com.thang.chargeops.payment.projection.OrderPaymentMatchProjection;
 import java.util.Optional;
+import java.math.BigDecimal;
 import java.util.UUID;
 
 public interface PaymentRepository extends JpaRepository<Payment, UUID> {
+
+    @Query("""
+        SELECT COALESCE(SUM(p.amount - COALESCE(p.refundAmount, 0)), 0)
+        FROM Payment p
+        WHERE p.booking.driver.id = :driverId
+          AND p.status IN (
+              com.thang.chargeops.common.enums.PaymentStatus.PAID,
+              com.thang.chargeops.common.enums.PaymentStatus.PARTIALLY_REFUNDED
+          )
+    """)
+    BigDecimal sumNetPaidAmountByDriverId(@Param("driverId") UUID driverId);
 
     Optional<Payment> findByBookingId(UUID bookingId);
 

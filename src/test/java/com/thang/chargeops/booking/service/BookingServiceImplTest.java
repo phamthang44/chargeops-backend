@@ -598,29 +598,29 @@ class BookingServiceImplTest {
         when(applicationClock.instant()).thenReturn(DECISION_AT);
 
         BookingCompletedSessionProjection session1 = mock(BookingCompletedSessionProjection.class);
-        when(session1.getTotalAmount()).thenReturn(BigDecimal.valueOf(120_000));
         when(session1.getStartAt()).thenReturn(START_AT);
         when(session1.getEndAt()).thenReturn(START_AT.plusSeconds(3600)); // 60 mins
 
         BookingCompletedSessionProjection session2 = mock(BookingCompletedSessionProjection.class);
-        when(session2.getTotalAmount()).thenReturn(BigDecimal.valueOf(60_000));
         when(session2.getStartAt()).thenReturn(START_AT.plusSeconds(7200));
         when(session2.getEndAt()).thenReturn(START_AT.plusSeconds(9000)); // 30 mins
 
         when(bookingRepository.findCompletedSessionsByDriverId(DRIVER_ID))
                 .thenReturn(List.of(session1, session2));
+        when(paymentRepository.sumNetPaidAmountByDriverId(DRIVER_ID))
+                .thenReturn(BigDecimal.valueOf(240_000));
         when(bookingRepository.countByDriverId(DRIVER_ID)).thenReturn(5L);
         when(bookingRepository.count(any(Specification.class))).thenReturn(2L);
 
         BookingStatsResponse stats = service.getMyBookingStats();
 
-        assertThat(stats.totalSpending()).isEqualByComparingTo(BigDecimal.valueOf(180_000));
+        assertThat(stats.totalSpending()).isEqualByComparingTo(BigDecimal.valueOf(240_000));
         assertThat(stats.totalChargingSessions()).isEqualTo(2L);
         assertThat(stats.totalBookings()).isEqualTo(5L);
         assertThat(stats.totalCompletedBookings()).isEqualTo(2L);
         assertThat(stats.totalCancelledBookings()).isEqualTo(2L);
         assertThat(stats.totalHours()).isEqualTo(1.5);
-        assertThat(stats.spent()).isEqualByComparingTo(BigDecimal.valueOf(180_000));
+        assertThat(stats.spent()).isEqualByComparingTo(BigDecimal.valueOf(240_000));
         assertThat(stats.sessions()).isEqualTo(2L);
         assertThat(stats.hours()).isEqualTo(1.5);
     }
@@ -632,6 +632,8 @@ class BookingServiceImplTest {
 
         when(bookingRepository.findCompletedSessionsByDriverId(DRIVER_ID))
                 .thenReturn(List.of());
+        when(paymentRepository.sumNetPaidAmountByDriverId(DRIVER_ID))
+                .thenReturn(BigDecimal.ZERO);
         when(bookingRepository.countByDriverId(DRIVER_ID)).thenReturn(0L);
         when(bookingRepository.count(any(Specification.class))).thenReturn(0L);
 

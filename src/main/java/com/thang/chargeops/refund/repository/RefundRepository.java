@@ -16,6 +16,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -57,4 +58,6 @@ public interface RefundRepository extends JpaRepository<Refund, UUID>, JpaSpecif
     long countByStatus(RefundStatus status);
 
     List<Refund> findByBookingIdOrderByCreatedAtAscIdAsc(UUID bookingId);
+
+    List<Refund> findByBookingIdInOrderByCreatedAtAscIdAsc(Collection<UUID> bookingIds);
 }

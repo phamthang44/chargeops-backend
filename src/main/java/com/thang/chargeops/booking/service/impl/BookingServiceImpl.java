@@ -400,10 +400,7 @@ public class BookingServiceImpl implements BookingService {
         List<BookingCompletedSessionProjection> completedSessions =
                 bookingRepository.findCompletedSessionsByDriverId(driverId);
 
-        BigDecimal totalSpending = completedSessions.stream()
-                .map(BookingCompletedSessionProjection::getTotalAmount)
-                .filter(Objects::nonNull)
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal totalSpending = paymentRepository.sumNetPaidAmountByDriverId(driverId);
 
         long totalCompleted = completedSessions.size();
 
