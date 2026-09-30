@@ -9,6 +9,7 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 
 import java.time.Instant;
+import java.util.UUID;
 
 @Entity
 @Table(name = "ticket_messages", indexes = {
@@ -36,6 +37,9 @@ public class TicketMessage extends BaseEntity {
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
+    @Column(name = "client_message_id", updatable = false)
+    private UUID clientMessageId;
+
     public static TicketMessage create(
             SupportTicket ticket,
             UserProfile author,
@@ -57,6 +61,19 @@ public class TicketMessage extends BaseEntity {
         message.authorKind = authorKind;
         message.body = normalizedBody;
         message.createdAt = createdAt;
+        return message;
+    }
+
+    public static TicketMessage create(
+            SupportTicket ticket,
+            UserProfile author,
+            TicketActorKind authorKind,
+            String body,
+            Instant createdAt,
+            UUID clientMessageId
+    ) {
+        TicketMessage message = create(ticket, author, authorKind, body, createdAt);
+        message.clientMessageId = clientMessageId;
         return message;
     }
 }

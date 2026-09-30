@@ -33,7 +33,8 @@ class TicketSchemaMigrationTest {
                 .load();
         flyway.migrate();
         flyway.validate();
-        assertThat(flyway.info().current().getVersion().getVersion()).isEqualTo("40");
+        assertThat(Integer.parseInt(flyway.info().current().getVersion().getVersion()))
+                .isGreaterThanOrEqualTo(40);
 
         try (Connection connection = DriverManager.getConnection(
                 POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword())) {

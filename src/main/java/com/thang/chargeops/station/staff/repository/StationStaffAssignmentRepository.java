@@ -10,6 +10,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -26,6 +27,12 @@ public interface StationStaffAssignmentRepository extends JpaRepository<StationS
 
     @EntityGraph(attributePaths = {"station", "staff"})
     Optional<StationStaffAssignment> findByStaff_IdAndStatus(
+            UUID staffId,
+            StaffAssignmentStatus status
+    );
+
+    @EntityGraph(attributePaths = {"station", "staff"})
+    List<StationStaffAssignment> findAllByStaff_IdAndStatus(
             UUID staffId,
             StaffAssignmentStatus status
     );

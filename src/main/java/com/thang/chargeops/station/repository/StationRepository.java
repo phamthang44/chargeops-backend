@@ -17,6 +17,7 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -144,6 +145,8 @@ public interface StationRepository extends JpaRepository<Station, UUID>, JpaSpec
     );
 
     Optional<Station> findByOwner_Id(UUID ownerId);
+
+    List<Station> findAllByOwner_Id(UUID ownerId);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @EntityGraph(attributePaths = "owner")
