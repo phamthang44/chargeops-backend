@@ -44,7 +44,8 @@ public class TicketResponseService {
         if (ticket == null) return null;
         TicketResponse snapshot = toResponse(ticket);
         TicketEscalationService.State state = escalationService.describe(ticket);
-        return TicketDetailResponse.from(snapshot, state.escalation(), state.availability());
+        UUID ownerId = ticket.getStation() == null ? null : ticket.getStation().getOwner().getId();
+        return TicketDetailResponse.from(snapshot, state.escalation(), state.availability(), ownerId);
     }
 
     public List<TicketResponse> toResponses(List<SupportTicket> tickets) {

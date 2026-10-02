@@ -13,7 +13,7 @@ Owner có thể claim/assign cho Owner hoặc Staff đúng trạm qua `/owner/ti
 - Không dùng `isInProgress` hoặc tên fallback để kết luận đã có handler. Chỉ `participants.assignedHandlerId != null` là có handler trong detail; danh sách dùng `assignedHandlerId`.
 - `escalationAvailability.canRequest` là quyết định của server cho nút chuyển Admin. `WAITING_FOR_STATION` đi kèm `availableAt` cho đồng hồ 24 giờ. `escalation != null` chỉ có nghĩa yêu cầu đã được gửi, chưa khẳng định Admin đang phân xử.
 - `GET /tickets/{id}/escalation` trả `200` với `data: null` nếu chưa chuyển case. HTTP client phải giữ `null`, không biến cả envelope thành một escalation object. Frontend mới nên dùng dữ liệu escalation trong GET detail, không polling endpoint này riêng.
-- Backend `TicketEscalationResponse` hiện chỉ có `requestedBy` UUID, không có `requestedByRole`; UI không được mặc định hiển thị "Chủ trạm" khi field này vắng. Cần đối chiếu reporter/owner theo dữ liệu được phép hoặc chờ backend bổ sung role tường minh.
+- `TicketDetailResponse.escalation.requestedByRole` trả `owner`, `driver` hoặc `null` nếu dữ liệu cũ bất thường. UI phải hiển thị theo field này; `null` dùng nhãn trung tính, không mặc định "Chủ trạm". Endpoint escalation độc lập vẫn trả `TicketEscalationResponse` tối giản.
 - `refundIds` biểu thị các nghĩa vụ hoàn liên quan, **không** chứng minh hoàn đã thành công. Không hiển thị "Hoàn 100%" chỉ dựa vào mảng này; trạng thái `PENDING` và `SUCCEEDED` thuộc refund API.
 - `GET /owner/tickets/{id}/messages` nay có trên backend và dùng cùng quyền sở hữu ticket của Owner. Admin có `/admin/tickets/{id}/messages`. Có thể dùng `conversation.messages` trong detail cho lần tải đầu và endpoint messages cho polling chat.
 

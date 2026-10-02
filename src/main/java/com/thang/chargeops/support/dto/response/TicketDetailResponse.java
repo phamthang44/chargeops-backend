@@ -17,12 +17,13 @@ public record TicketDetailResponse(
         Conversation conversation,
         Resolution resolution,
         boolean isEscalated,
-        @JsonInclude(JsonInclude.Include.ALWAYS) TicketEscalationResponse escalation,
+        @JsonInclude(JsonInclude.Include.ALWAYS) TicketEscalationDetailResponse escalation,
         TicketEscalationAvailabilityResponse escalationAvailability
 ) {
     public static TicketDetailResponse from(TicketResponse ticket,
                                             TicketEscalationResponse escalation,
-                                            TicketEscalationAvailabilityResponse availability) {
+                                            TicketEscalationAvailabilityResponse availability,
+                                            UUID ownerId) {
         return new TicketDetailResponse(
                 new Overview(ticket.ticketId(), ticket.ticketCode(), ticket.category(), ticket.priority(),
                         ticket.subject(), ticket.status(), ticket.version(), ticket.description(),
@@ -35,7 +36,8 @@ public record TicketDetailResponse(
                 new Conversation(ticket.messages(), ticket.lastMessagePreview(), ticket.messageCount()),
                 new Resolution(ticket.findings(), ticket.refundIds(), ticket.resolvedAt(), ticket.autoCloseAt(),
                         ticket.closeReason(), ticket.resolutionCycle(), ticket.closedAt(), ticket.resolutionReason()),
-                escalation != null, escalation, availability);
+                escalation != null,
+                TicketEscalationDetailResponse.from(escalation, ownerId, ticket.reporterId()), availability);
     }
 
     public record Overview(UUID ticketId, String ticketCode, TicketCategory category, TicketPriority priority,
