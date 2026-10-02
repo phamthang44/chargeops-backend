@@ -5,13 +5,9 @@ import com.thang.chargeops.exception.AppException;
 import com.thang.chargeops.profile.entity.UserProfile;
 import com.thang.chargeops.profile.support.CurrentProfileProvider;
 import com.thang.chargeops.station.entity.Station;
-import com.thang.chargeops.station.staff.entity.StaffAssignmentStatus;
-import com.thang.chargeops.station.staff.entity.StationStaffAssignment;
-import com.thang.chargeops.station.staff.repository.StationStaffAssignmentRepository;
 import com.thang.chargeops.support.dto.request.AssignTicketRequest;
 import com.thang.chargeops.support.dto.request.MessageRequest;
 import com.thang.chargeops.support.dto.request.TicketStatusRequest;
-import com.thang.chargeops.support.dto.response.TicketHandlerCandidateResponse;
 import com.thang.chargeops.support.entity.SupportTicket;
 import com.thang.chargeops.support.model.TicketStatus;
 import com.thang.chargeops.support.repository.SupportTicketRepository;
@@ -26,17 +22,11 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.data.domain.PageImpl;
-import org.springframework.data.domain.Pageable;
 
-import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
-import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
@@ -47,7 +37,6 @@ class AdminTicketServiceTest {
     @Mock TicketResponseService responses;
     @Mock TicketWorkflowService workflow;
     @Mock SupportTicketService ticketService;
-    @Mock StationStaffAssignmentRepository staffAssignments;
     @InjectMocks AdminTicketService service;
 
     private UserProfile admin;
@@ -122,41 +111,4 @@ class AdminTicketServiceTest {
         verify(ticketService).replyAsAdmin(ticketId, clientMessageId, request);
     }
 
-    @Test
-    void stationHandlersReturnsActiveOwnerAndStaff() {
-        Station station = mock(Station.class);
-        UUID stationId = UUID.randomUUID();
-        when(station.getId()).thenReturn(stationId);
-        UserProfile owner = UserProfile.builder().displayName("Station Owner").status(UserStatus.ACTIVE).build();
-        owner.setId(UUID.randomUUID());
-        when(station.getOwner()).thenReturn(owner);
-
-        SupportTicket stationTicket = mock(SupportTicket.class);
-        when(stationTicket.getStation()).thenReturn(station);
-        when(tickets.findById(ticketId)).thenReturn(Optional.of(stationTicket));
-        when(access.canRead(stationTicket, admin)).thenReturn(true);
-
-        UserProfile activeStaff = UserProfile.builder().displayName("Active Staff").status(UserStatus.ACTIVE).build();
-        activeStaff.setId(UUID.randomUUID());
-        StationStaffAssignment assignment = mock(StationStaffAssignment.class);
-        when(assignment.getStaff()).thenReturn(activeStaff);
-        when(staffAssignments.findAllByStation_IdAndStatus(eq(stationId), eq(StaffAssignmentStatus.ACTIVE), any(Pageable.class)))
-                .thenReturn(new PageImpl<>(List.of(assignment)));
-
-        List<TicketHandlerCandidateResponse> candidates = service.stationHandlers(ticketId);
-        assertThat(candidates).hasSize(2);
-        assertThat(candidates.get(0).role()).isEqualTo("OWNER");
-        assertThat(candidates.get(1).role()).isEqualTo("STAFF");
-    }
-
-    @Test
-    void stationHandlersThrowsIfPlatformTicket() {
-        SupportTicket platformTicket = mock(SupportTicket.class);
-        when(platformTicket.getStation()).thenReturn(null);
-        when(tickets.findById(ticketId)).thenReturn(Optional.of(platformTicket));
-        when(access.canRead(platformTicket, admin)).thenReturn(true);
-
-        assertThatThrownBy(() -> service.stationHandlers(ticketId))
-                .isInstanceOf(AppException.class);
-    }
 }

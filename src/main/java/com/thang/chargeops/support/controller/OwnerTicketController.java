@@ -49,6 +49,11 @@ public class OwnerTicketController {
         return ResponseEntity.ok(ApiResult.success(service.getDetail(ticketId)));
     }
 
+    @GetMapping("/{ticketId}/messages")
+    public ResponseEntity<ApiResult<List<TicketMessageResponse>>> messages(@PathVariable UUID ticketId) {
+        return ResponseEntity.ok(ApiResult.success(service.get(ticketId).messages()));
+    }
+
     @GetMapping("/{ticketId}/events")
     public ResponseEntity<ApiResult<List<TicketEventResponse>>> events(@PathVariable UUID ticketId,
             @RequestParam(defaultValue = "1") @Min(1) int page,
