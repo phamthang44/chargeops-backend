@@ -4,6 +4,8 @@ import com.thang.chargeops.exception.GlobalHandlerError;
 import com.thang.chargeops.infra.security.RestAccessDeniedHandler;
 import com.thang.chargeops.infra.security.RestAuthenticationEntryPoint;
 import com.thang.chargeops.support.controller.SupportTicketController;
+import com.thang.chargeops.support.dto.response.TicketDetailResponse;
+import com.thang.chargeops.support.dto.response.TicketEscalationAvailabilityResponse;
 import com.thang.chargeops.support.service.SupportTicketService;
 import com.thang.chargeops.support.service.TicketFindingService;
 import com.thang.chargeops.support.service.TicketEventQueryService;
@@ -32,10 +34,12 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
+import static org.hamcrest.Matchers.nullValue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 
 @WebMvcTest(SupportTicketController.class)
 @Import({GlobalHandlerError.class, SupportTicketControllerTest.SecurityConfig.class})
@@ -194,12 +198,21 @@ class SupportTicketControllerTest {
     @WithMockUser(roles = "DRIVER")
     void authenticatedGetTicketReturnsOk() throws Exception {
         UUID ticketId = UUID.randomUUID();
-        when(ticketService.getTicket(ticketId)).thenReturn(null);
+        var detail = new TicketDetailResponse(
+                new TicketDetailResponse.Overview(ticketId, "TKT-1", null, null, "Help", null,
+                        0L, "Details", null, null),
+                null, null, null, null, null, false, null,
+                new TicketEscalationAvailabilityResponse(false, null,
+                        TicketEscalationAvailabilityResponse.Reason.WAITING_FOR_STATION));
+        when(ticketService.getTicketDetail(ticketId)).thenReturn(detail);
 
         mockMvc.perform(get("/api/v1/tickets/" + ticketId))
-                .andExpect(status().isOk());
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.overview.ticketId").value(ticketId.toString()))
+                .andExpect(jsonPath("$.data.isEscalated").value(false))
+                .andExpect(jsonPath("$.data.escalation").value(nullValue()));
 
-        verify(ticketService).getTicket(ticketId);
+        verify(ticketService).getTicketDetail(ticketId);
     }
 
     @Test

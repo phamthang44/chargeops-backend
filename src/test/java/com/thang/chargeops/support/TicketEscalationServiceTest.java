@@ -5,7 +5,9 @@ import com.thang.chargeops.profile.entity.UserProfile;
 import com.thang.chargeops.profile.support.CurrentProfileProvider;
 import com.thang.chargeops.station.entity.Station;
 import com.thang.chargeops.support.dto.request.EscalateTicketRequest;
+import com.thang.chargeops.support.dto.response.TicketEscalationAvailabilityResponse;
 import com.thang.chargeops.support.entity.SupportTicket;
+import com.thang.chargeops.support.entity.TicketEscalation;
 import com.thang.chargeops.support.entity.TicketMessage;
 import com.thang.chargeops.support.model.TicketActorKind;
 import com.thang.chargeops.support.model.TicketStatus;
@@ -58,6 +60,7 @@ class TicketEscalationServiceTest {
         lenient().when(currentProfile.requireProfile()).thenReturn(driver);
         lenient().when(tickets.findByIdForUpdate(ticketId)).thenReturn(Optional.of(ticket));
         lenient().when(clock.instant()).thenReturn(now);
+        lenient().when(access.hasRole("DRIVER")).thenReturn(true);
     }
 
     @Test
@@ -103,5 +106,41 @@ class TicketEscalationServiceTest {
         var result = service.request(ticketId, new EscalateTicketRequest("Unable to agree"));
         assertThat(result.requestedBy()).isEqualTo(owner.getId());
         verifyNoInteractions(findings, messages);
+    }
+
+    @Test
+    void detailExplainsWhenDriverCanEscalateWithoutGuessingFrom404() {
+        when(access.canRead(ticket, driver)).thenReturn(true);
+        when(findings.findFirstByTicket_IdOrderByRecordedAtDescIdDesc(ticketId)).thenReturn(Optional.empty());
+        var message = TicketMessage.create(ticket, driver, TicketActorKind.REPORTER,
+                "Station cannot serve", now.minusSeconds(23 * 3600));
+        when(messages.findByTicketIdOrderByCreatedAtAscIdAsc(ticketId)).thenReturn(List.of(message));
+
+        var state = service.describe(ticket);
+        assertThat(state.escalation()).isNull();
+        assertThat(state.availability().canRequest()).isFalse();
+        assertThat(state.availability().availableAt()).isEqualTo(now.plusSeconds(3600));
+        assertThat(state.availability().reason())
+                .isEqualTo(TicketEscalationAvailabilityResponse.Reason.WAITING_FOR_STATION);
+    }
+
+    @Test
+    void existingEscalationIsReturnedWithoutOfferingAnotherRequest() {
+        when(access.canRead(ticket, driver)).thenReturn(true);
+        when(escalations.findByTicket_Id(ticketId)).thenReturn(Optional.of(
+                TicketEscalation.request(ticket, driver, now.minusSeconds(60), "Owner denied")));
+
+        var state = service.describe(ticket);
+        assertThat(state.escalation().reason()).isEqualTo("Owner denied");
+        assertThat(state.availability().canRequest()).isFalse();
+        assertThat(state.availability().reason())
+                .isEqualTo(TicketEscalationAvailabilityResponse.Reason.ALREADY_ESCALATED);
+    }
+
+    @Test
+    void lookupReturnsNullForReadableTicketWithoutEscalation() {
+        when(tickets.findById(ticketId)).thenReturn(Optional.of(ticket));
+        when(access.canRead(ticket, driver)).thenReturn(true);
+        assertThat(service.get(ticketId)).isNull();
     }
 }

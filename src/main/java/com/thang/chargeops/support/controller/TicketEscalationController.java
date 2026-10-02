@@ -4,6 +4,7 @@ import com.thang.chargeops.common.constant.SystemConstant;
 import com.thang.chargeops.common.response.ApiResult;
 import com.thang.chargeops.support.dto.request.EscalateTicketRequest;
 import com.thang.chargeops.support.dto.response.TicketEscalationResponse;
+import com.thang.chargeops.support.dto.response.TicketEscalationLookupResponse;
 import com.thang.chargeops.support.service.TicketEscalationService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
@@ -33,8 +34,8 @@ public class TicketEscalationController {
 
     @GetMapping(SystemConstant.API_URL_PATTERN + "tickets/{ticketId}/escalation")
     @PreAuthorize("isAuthenticated()")
-    public ResponseEntity<ApiResult<TicketEscalationResponse>> get(@PathVariable UUID ticketId) {
-        return ResponseEntity.ok(ApiResult.success(service.get(ticketId)));
+    public ResponseEntity<TicketEscalationLookupResponse> get(@PathVariable UUID ticketId) {
+        return ResponseEntity.ok(TicketEscalationLookupResponse.of(service.get(ticketId)));
     }
 
     @GetMapping(SystemConstant.API_URL_PATTERN + "admin/ticket-escalations")

@@ -14,6 +14,7 @@ import com.thang.chargeops.support.repository.TicketEventRepository;
 import com.thang.chargeops.support.entity.TicketEvent;
 import com.thang.chargeops.support.service.support.TicketResponseMapper;
 import com.thang.chargeops.support.service.support.TicketResponseService;
+import com.thang.chargeops.support.service.TicketEscalationService;
 import org.junit.jupiter.api.Test;
 
 import java.time.Instant;
@@ -68,7 +69,7 @@ class SupportTicketResponseAssemblerTest {
         when(events.findWorkflowFacts(eq(List.of(ticketId)), any())).thenReturn(List.of(closed, resolved));
 
         var response = new TicketResponseService(messages, findings, refunds, tickets, events,
-                new TicketResponseMapper()).toResponse(ticket);
+                new TicketResponseMapper(), mock(TicketEscalationService.class)).toResponse(ticket);
         assertThat(response.description()).isEqualTo("Charged twice");
         assertThat(response.reporterName()).isEqualTo("Driver");
         assertThat(response.assignedHandlerName()).isEqualTo("Driver");

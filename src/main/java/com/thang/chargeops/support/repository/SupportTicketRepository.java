@@ -55,9 +55,18 @@ public interface SupportTicketRepository extends JpaRepository<SupportTicket, UU
         select t from SupportTicket t
         where t.status = com.thang.chargeops.support.model.TicketStatus.RESOLVED
           and t.autoCloseAt <= :now
-          and (:cursorAt is null or t.autoCloseAt > :cursorAt
+        order by t.autoCloseAt, t.id
+        """)
+    List<SupportTicket> findDueFirst(@Param("now") Instant now, Pageable pageable);
+
+    @Query("""
+        select t from SupportTicket t
+        where t.status = com.thang.chargeops.support.model.TicketStatus.RESOLVED
+          and t.autoCloseAt <= :now
+          and (t.autoCloseAt > :cursorAt
                or (t.autoCloseAt = :cursorAt and t.id > :cursorId))
         order by t.autoCloseAt, t.id
         """)
-    List<SupportTicket> findDueAfter(Instant now, Instant cursorAt, UUID cursorId, Pageable pageable);
+    List<SupportTicket> findDueAfter(@Param("now") Instant now, @Param("cursorAt") Instant cursorAt,
+                                    @Param("cursorId") UUID cursorId, Pageable pageable);
 }

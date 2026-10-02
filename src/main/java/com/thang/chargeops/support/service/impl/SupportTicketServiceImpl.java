@@ -16,6 +16,7 @@ import com.thang.chargeops.support.dto.request.CreateTicketRequest;
 import com.thang.chargeops.support.dto.request.MessageRequest;
 import com.thang.chargeops.support.dto.response.TicketMessageResponse;
 import com.thang.chargeops.support.dto.response.TicketResponse;
+import com.thang.chargeops.support.dto.response.TicketDetailResponse;
 import com.thang.chargeops.support.entity.SupportTicket;
 import com.thang.chargeops.support.entity.TicketMessage;
 import com.thang.chargeops.support.model.TicketActorKind;
@@ -27,6 +28,7 @@ import com.thang.chargeops.support.service.SupportTicketService;
 import com.thang.chargeops.support.service.TicketAccessPolicy;
 import com.thang.chargeops.support.service.support.TicketResponseService;
 import com.thang.chargeops.support.specification.SupportTicketSpecifications;
+import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
@@ -53,6 +55,7 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 
 @Service
+@RequiredArgsConstructor(onConstructor_ = @Autowired)
 public class SupportTicketServiceImpl implements SupportTicketService {
     private static final ZoneId STATION_ZONE = ZoneId.of(SystemConstant.SYSTEM_REGION_TIMEZONE);
     private static final DateTimeFormatter CODE_DATE = DateTimeFormatter.BASIC_ISO_DATE;
@@ -73,29 +76,6 @@ public class SupportTicketServiceImpl implements SupportTicketService {
     @Autowired(required = false)
     void setWorkflowService(TicketWorkflowService workflowService) {
         this.workflowService = workflowService;
-    }
-
-    @Autowired
-    public SupportTicketServiceImpl(
-            CurrentProfileProvider currentProfileProvider,
-            BookingRepository bookingRepository,
-            StationRepository stationRepository,
-            SupportTicketRepository ticketRepository,
-            TicketMessageRepository messageRepository,
-            Clock clock,
-            StationStaffAssignmentRepository stationStaffAssignmentRepository,
-            TicketResponseService ticketResponseAssembler,
-            TicketAccessPolicy accessPolicy
-    ) {
-        this.currentProfileProvider = currentProfileProvider;
-        this.bookingRepository = bookingRepository;
-        this.stationRepository = stationRepository;
-        this.ticketRepository = ticketRepository;
-        this.messageRepository = messageRepository;
-        this.clock = clock;
-        this.stationStaffAssignmentRepository = stationStaffAssignmentRepository;
-        this.ticketResponseAssembler = ticketResponseAssembler;
-        this.accessPolicy = accessPolicy;
     }
 
     public SupportTicketServiceImpl(
@@ -205,6 +185,16 @@ public class SupportTicketServiceImpl implements SupportTicketService {
     @Override
     @Transactional(readOnly = true)
     public TicketResponse getTicket(UUID ticketId) {
+        return ticketResponseAssembler.toResponse(requireReadableTicket(ticketId));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public TicketDetailResponse getTicketDetail(UUID ticketId) {
+        return ticketResponseAssembler.toDetail(requireReadableTicket(ticketId));
+    }
+
+    private SupportTicket requireReadableTicket(UUID ticketId) {
         UserProfile profile = currentProfileProvider.requireProfile();
         Set<String> roles = getCurrentRoles();
 
@@ -215,7 +205,7 @@ public class SupportTicketServiceImpl implements SupportTicketService {
             throw new AppException(TicketErrorCode.ACCESS_DENIED);
         }
 
-        return ticketResponseAssembler.toResponse(ticket);
+        return ticket;
     }
 
     @Override

@@ -28,6 +28,7 @@ import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
@@ -222,6 +223,10 @@ class TicketWorkflowPostgresTest {
         var resolved = workflow.changeStatus(ticket.getId(),
             new TicketStatusRequest(claimed.version(), TicketStatus.RESOLVED, "Transaction reviewed"));
         assertThat(resolved.autoCloseAt()).isEqualTo(Instant.parse("2026-10-11T00:00:00Z"));
+        assertThat(tickets.findDueFirst(resolved.autoCloseAt(), PageRequest.of(0, 100)))
+            .extracting(SupportTicket::getId).contains(ticket.getId());
+        assertThat(tickets.findDueAfter(resolved.autoCloseAt(), resolved.autoCloseAt(), ticket.getId(),
+            PageRequest.of(0, 100))).extracting(SupportTicket::getId).doesNotContain(ticket.getId());
         assertThat(jdbc.queryForObject("SELECT count(*) FROM app_notifications WHERE recipient_id = ?", Long.class, reporter.getId())).isEqualTo(1);
         assertThat(events.events(ticket.getId(), 1, 20).getTotalElements()).isEqualTo(2);
 

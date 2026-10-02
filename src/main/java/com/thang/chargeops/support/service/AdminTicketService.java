@@ -9,6 +9,7 @@ import com.thang.chargeops.support.dto.request.TicketStatusRequest;
 import com.thang.chargeops.support.dto.response.TicketMessageResponse;
 import com.thang.chargeops.support.dto.response.TicketHandlerCandidateResponse;
 import com.thang.chargeops.support.dto.response.TicketResponse;
+import com.thang.chargeops.support.dto.response.TicketDetailResponse;
 import com.thang.chargeops.support.entity.SupportTicket;
 import com.thang.chargeops.support.entity.TicketEscalation;
 import com.thang.chargeops.support.model.TicketStatus;
@@ -93,6 +94,16 @@ public class AdminTicketService {
         if (!access.canRead(ticket, currentProfile.requireProfile()))
             throw new AppException(TicketErrorCode.ACCESS_DENIED);
         return responses.toResponse(ticket);
+    }
+
+    @Transactional(readOnly = true)
+    public TicketDetailResponse getDetail(UUID ticketId) {
+        requireAdmin();
+        var ticket = tickets.findById(ticketId)
+                .orElseThrow(() -> new AppException(TicketErrorCode.NOT_FOUND));
+        if (!access.canRead(ticket, currentProfile.requireProfile()))
+            throw new AppException(TicketErrorCode.ACCESS_DENIED);
+        return responses.toDetail(ticket);
     }
 
     @Transactional(readOnly = true)

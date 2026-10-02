@@ -10,6 +10,7 @@ import com.thang.chargeops.support.dto.request.MessageRequest;
 import com.thang.chargeops.support.dto.request.TicketStatusRequest;
 import com.thang.chargeops.support.dto.response.TicketMessageResponse;
 import com.thang.chargeops.support.dto.response.TicketResponse;
+import com.thang.chargeops.support.dto.response.TicketDetailResponse;
 import com.thang.chargeops.support.entity.SupportTicket;
 import com.thang.chargeops.support.model.TicketStatus;
 import com.thang.chargeops.support.repository.SupportTicketRepository;
@@ -68,6 +69,11 @@ public class OwnerTicketService {
     @Transactional(readOnly = true)
     public TicketResponse get(UUID ticketId) {
         return responses.toResponse(owned(ticketId));
+    }
+
+    @Transactional(readOnly = true)
+    public TicketDetailResponse getDetail(UUID ticketId) {
+        return responses.toDetail(owned(ticketId));
     }
 
     @Transactional(readOnly = true)

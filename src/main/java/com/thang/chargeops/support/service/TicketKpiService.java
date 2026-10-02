@@ -37,11 +37,12 @@ public class TicketKpiService {
         if (staff && !owner && !admin && staffId != null && !staffId.equals(actor.getId()))
             throw new AppException(TicketErrorCode.ACCESS_DENIED);
         UUID target = staffId == null && staff && !owner && !admin ? actor.getId() : staffId;
-        long claimed = kpis.countActorEvents(stationId, target, "CLAIMED", from, to);
-        long assigned = kpis.countAssigned(stationId, target, from, to);
-        long resolved = kpis.countActorEvents(stationId, target, "RESOLVED", from, to);
-        long confirmed = kpis.countCompleted(stationId, target, "REPORTER_CONFIRMED", from, to);
-        long autoClosed = kpis.countCompleted(stationId, target, "AUTO_CLOSED_NO_RESPONSE", from, to);
+        boolean allStaff = target == null;
+        long claimed = kpis.countActorEvents(stationId, target, allStaff, "CLAIMED", from, to);
+        long assigned = kpis.countAssigned(stationId, target, allStaff, from, to);
+        long resolved = kpis.countActorEvents(stationId, target, allStaff, "RESOLVED", from, to);
+        long confirmed = kpis.countCompleted(stationId, target, allStaff, "REPORTER_CONFIRMED", from, to);
+        long autoClosed = kpis.countCompleted(stationId, target, allStaff, "AUTO_CLOSED_NO_RESPONSE", from, to);
         return new TicketKpiResponse(stationId, target, from, to, claimed, assigned, resolved,
                 confirmed + autoClosed, confirmed, autoClosed);
     }

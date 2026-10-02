@@ -9,6 +9,7 @@ import com.thang.chargeops.support.dto.request.TicketStatusRequest;
 import com.thang.chargeops.support.dto.response.TicketEventResponse;
 import com.thang.chargeops.support.dto.response.TicketMessageResponse;
 import com.thang.chargeops.support.dto.response.TicketResponse;
+import com.thang.chargeops.support.dto.response.TicketDetailResponse;
 import com.thang.chargeops.support.model.TicketStatus;
 import com.thang.chargeops.support.service.OwnerTicketService;
 import com.thang.chargeops.support.service.TicketEventQueryService;
@@ -44,8 +45,8 @@ public class OwnerTicketController {
     }
 
     @GetMapping("/{ticketId}")
-    public ResponseEntity<ApiResult<TicketResponse>> get(@PathVariable UUID ticketId) {
-        return ResponseEntity.ok(ApiResult.success(service.get(ticketId)));
+    public ResponseEntity<ApiResult<TicketDetailResponse>> get(@PathVariable UUID ticketId) {
+        return ResponseEntity.ok(ApiResult.success(service.getDetail(ticketId)));
     }
 
     @GetMapping("/{ticketId}/events")

@@ -14,6 +14,7 @@ import com.thang.chargeops.refund.model.RefundAttemptStatus;
 import com.thang.chargeops.refund.model.RefundStatus;
 import com.thang.chargeops.refund.repository.RefundAttemptRepository;
 import com.thang.chargeops.refund.repository.RefundRepository;
+import com.thang.chargeops.refund.service.AutomaticRefundExecutionService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -94,6 +95,7 @@ class BookingCancellationRefundLifecyclePostgresTest {
     @Autowired private PaymentConfirmationService paymentConfirmationService;
     @Autowired private RefundRepository refundRepository;
     @Autowired private RefundAttemptRepository refundAttemptRepository;
+    @Autowired private AutomaticRefundExecutionService automaticRefundExecutionService;
 
     @MockitoBean private CurrentProfileProvider currentProfileProvider;
     @MockitoBean private Clock applicationClock;
@@ -124,7 +126,7 @@ class BookingCancellationRefundLifecyclePostgresTest {
     }
 
     @Test
-    @DisplayName("REST create -> Simulator paid -> grace cancel -> pending refund -> execute -> refunded")
+    @DisplayName("REST create -> Simulator paid -> grace cancel -> automatic first refund -> refunded")
     void fullRestLifecycleIsReplaySafeAndNeverExceedsCollectedAmount() throws Exception {
         PaidBooking paid = createAndPayBooking(START_AT);
         UUID cancelKey = UUID.randomUUID();
@@ -143,15 +145,16 @@ class BookingCancellationRefundLifecyclePostgresTest {
         assertThat(refundRepository.findByBookingIdOrderByCreatedAtAscIdAsc(paid.bookingId()))
                 .hasSize(1);
 
-        currentActorId.set(adminId);
-        UUID executeKey = UUID.randomUUID();
-        JsonNode executed = executeRefund(refundId, executeKey, 0L, 200);
-        assertThat(executed.at("/data/status").asText()).isEqualTo("SUCCEEDED");
-        assertThat(executed.at("/data/attempts/0/status").asText()).isEqualTo("SUCCEEDED");
-
-        JsonNode executeReplay = executeRefund(refundId, executeKey, 0L, 200);
-        assertThat(executeReplay.at("/data/successfulAttemptId").asText())
-                .isEqualTo(executed.at("/data/successfulAttemptId").asText());
+        assertThat(automaticRefundExecutionService.processFirstAttempt(refundId)).isTrue();
+        assertThat(refundRepository.findById(refundId).orElseThrow().getStatus())
+                .isEqualTo(RefundStatus.SUCCEEDED);
+        var successfulAttempt = refundAttemptRepository.findByRefundIdOrderBySequenceNoAsc(refundId)
+                .stream().filter(attempt -> attempt.getStatus() == RefundAttemptStatus.SUCCEEDED)
+                .toList();
+        assertThat(successfulAttempt).hasSize(1);
+        assertThat(automaticRefundExecutionService.processFirstAttempt(refundId)).isFalse();
+        assertThat(refundAttemptRepository.findByRefundIdOrderBySequenceNoAsc(refundId))
+                .hasSize(1);
 
         currentActorId.set(driverId);
         mockMvc.perform(get("/api/v1/bookings/{bookingId}", paid.bookingId())
@@ -196,7 +199,7 @@ class BookingCancellationRefundLifecyclePostgresTest {
     }
 
     @Test
-    @DisplayName("Two cancels and two execute commands still create one obligation and one success")
+    @DisplayName("Two cancels and two automatic dispatches still create one obligation and one success")
     void concurrentCancellationAndExecutionKeepSingleRefundSuccess() throws Exception {
         PaidBooking paid = createAndPayBooking(START_AT.plusSeconds(10800));
         CountDownLatch cancelReady = new CountDownLatch(2);
@@ -222,24 +225,22 @@ class BookingCancellationRefundLifecyclePostgresTest {
         assertThat(refunds).singleElement();
         UUID refundId = refunds.getFirst().getId();
 
-        currentActorId.set(adminId);
         CountDownLatch executeReady = new CountDownLatch(2);
         CountDownLatch executeStart = new CountDownLatch(1);
-        List<Integer> executeStatuses;
+        List<Boolean> executeResults;
         try (var pool = Executors.newFixedThreadPool(2)) {
-            Future<Integer> first = pool.submit(() -> concurrentExecute(
-                    refundId, UUID.randomUUID(), executeReady, executeStart));
-            Future<Integer> second = pool.submit(() -> concurrentExecute(
-                    refundId, UUID.randomUUID(), executeReady, executeStart));
+            Future<Boolean> first = pool.submit(() -> concurrentExecute(
+                    refundId, executeReady, executeStart));
+            Future<Boolean> second = pool.submit(() -> concurrentExecute(
+                    refundId, executeReady, executeStart));
             assertThat(executeReady.await(5, TimeUnit.SECONDS)).isTrue();
             executeStart.countDown();
-            executeStatuses = List.of(
+            executeResults = List.of(
                     first.get(30, TimeUnit.SECONDS),
                     second.get(30, TimeUnit.SECONDS)
             );
         }
-        assertThat(executeStatuses).contains(200);
-        assertThat(executeStatuses).allMatch(code -> code == 200 || code == 409);
+        assertThat(executeResults).containsExactlyInAnyOrder(true, false);
 
         assertThat(refundRepository.findById(refundId)).get()
                 .extracting(refund -> refund.getStatus())
@@ -439,21 +440,6 @@ class BookingCancellationRefundLifecyclePostgresTest {
         return body(action.andExpect(status().is(expectedStatus)).andReturn());
     }
 
-    private JsonNode executeRefund(UUID refundId, UUID requestKey, long expectedVersion, int expectedStatus)
-            throws Exception {
-        var action = mockMvc.perform(post("/api/v1/admin/refunds/{refundId}/execute", refundId)
-                .with(user("admin").roles("ADMIN"))
-                .header("Idempotency-Key", requestKey)
-                .contentType("application/json")
-                .content(json(Map.of(
-                        "expectedVersion", expectedVersion,
-                        "executionMode", "SIMULATOR",
-                        "outcome", "SUCCEEDED",
-                        "note", "BKG-038 deterministic simulator verification"
-                ))));
-        return body(action.andExpect(status().is(expectedStatus)).andReturn());
-    }
-
     private int concurrentCancel(
             PaidBooking paid,
             UUID requestKey,
@@ -474,25 +460,14 @@ class BookingCancellationRefundLifecyclePostgresTest {
                 .andReturn().getResponse().getStatus();
     }
 
-    private int concurrentExecute(
+    private boolean concurrentExecute(
             UUID refundId,
-            UUID requestKey,
             CountDownLatch ready,
             CountDownLatch start
     ) throws Exception {
         ready.countDown();
         assertThat(start.await(5, TimeUnit.SECONDS)).isTrue();
-        return mockMvc.perform(post("/api/v1/admin/refunds/{refundId}/execute", refundId)
-                        .with(user("admin").roles("ADMIN"))
-                        .header("Idempotency-Key", requestKey)
-                        .contentType("application/json")
-                        .content(json(Map.of(
-                                "expectedVersion", 0,
-                                "executionMode", "SIMULATOR",
-                                "outcome", "SUCCEEDED",
-                                "note", "BKG-038 concurrent execution"
-                        ))))
-                .andReturn().getResponse().getStatus();
+        return automaticRefundExecutionService.processFirstAttempt(refundId);
     }
 
     private void assertFinancialInvariant(PaidBooking paid) {

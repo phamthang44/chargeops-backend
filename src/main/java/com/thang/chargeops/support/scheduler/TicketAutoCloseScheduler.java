@@ -36,7 +36,7 @@ public class TicketAutoCloseScheduler {
         while (hasMore) {
             List<SupportTicket> batch = List.of();
             try {
-                batch = tickets.findDueAfter(now, cursorAt, cursorId, PageRequest.of(0, BATCH_SIZE));
+                batch = loadDueBatch(now, cursorAt, cursorId);
             } catch (Exception exception) {
                 failed++;
                 log.error("Failed to load due tickets after deadline {} and ticket {}", cursorAt, cursorId, exception);
@@ -56,5 +56,11 @@ public class TicketAutoCloseScheduler {
         }
         if (closed + skipped + failed > 0) log.info("Ticket auto-close: closed={}, skipped={}, failed={}", closed, skipped, failed);
         if (failed > 0) log.error("Ticket auto-close batch had {} failures; due tickets will be retried on next poll", failed);
+    }
+
+    private List<SupportTicket> loadDueBatch(Instant now, Instant cursorAt, UUID cursorId) {
+        var page = PageRequest.of(0, BATCH_SIZE);
+        return cursorAt == null ? tickets.findDueFirst(now, page)
+                : tickets.findDueAfter(now, cursorAt, cursorId, page);
     }
 }

@@ -9,6 +9,7 @@ import com.thang.chargeops.support.model.TicketCategory;
 import com.thang.chargeops.support.model.TicketPriority;
 import com.thang.chargeops.support.repository.SupportTicketRepository;
 import com.thang.chargeops.support.repository.TicketMessageRepository;
+import com.thang.chargeops.support.service.TicketAccessPolicy;
 import com.thang.chargeops.support.service.SupportTicketService;
 import com.thang.chargeops.support.service.impl.SupportTicketServiceImpl;
 import com.thang.chargeops.support.service.support.TicketResponseService;
@@ -69,6 +70,7 @@ class SupportTicketCreatePostgresTest {
     @Autowired JdbcTemplate jdbc;
     @Autowired EntityManager entityManager;
     @MockitoBean CurrentProfileProvider currentProfileProvider;
+    @MockitoBean TicketAccessPolicy ticketAccessPolicy;
 
     @Test
     void chargingIssueCreationPersistsFirstMessageAndHoldsPayout() {

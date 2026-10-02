@@ -5,6 +5,8 @@ import com.thang.chargeops.refund.repository.RefundRepository;
 import com.thang.chargeops.support.dto.response.TicketFindingResponse;
 import com.thang.chargeops.support.dto.response.TicketMessageResponse;
 import com.thang.chargeops.support.dto.response.TicketResponse;
+import com.thang.chargeops.support.dto.response.TicketDetailResponse;
+import com.thang.chargeops.support.service.TicketEscalationService;
 import com.thang.chargeops.support.entity.SupportTicket;
 import com.thang.chargeops.support.entity.TicketFinding;
 import com.thang.chargeops.support.entity.TicketMessage;
@@ -29,12 +31,20 @@ public class TicketResponseService {
     private final SupportTicketRepository ticketRepository;
     private final TicketEventRepository eventRepository;
     private final TicketResponseMapper mapper;
+    private final TicketEscalationService escalationService;
 
     public TicketResponse toResponse(SupportTicket ticket) {
         if (ticket == null) {
             return null;
         }
         return toResponses(List.of(ticket)).getFirst();
+    }
+
+    public TicketDetailResponse toDetail(SupportTicket ticket) {
+        if (ticket == null) return null;
+        TicketResponse snapshot = toResponse(ticket);
+        TicketEscalationService.State state = escalationService.describe(ticket);
+        return TicketDetailResponse.from(snapshot, state.escalation(), state.availability());
     }
 
     public List<TicketResponse> toResponses(List<SupportTicket> tickets) {

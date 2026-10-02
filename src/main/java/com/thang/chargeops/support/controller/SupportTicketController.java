@@ -10,6 +10,7 @@ import com.thang.chargeops.support.dto.request.AssignTicketRequest;
 import com.thang.chargeops.support.dto.request.TicketStatusRequest;
 import com.thang.chargeops.support.dto.response.TicketMessageResponse;
 import com.thang.chargeops.support.dto.response.TicketResponse;
+import com.thang.chargeops.support.dto.response.TicketDetailResponse;
 import com.thang.chargeops.support.model.TicketStatus;
 import com.thang.chargeops.support.service.SupportTicketService;
 import com.thang.chargeops.support.service.TicketFindingService;
@@ -95,8 +96,8 @@ public class SupportTicketController {
 
     @GetMapping("/{ticketId}")
     @PreAuthorize("isAuthenticated()")
-    public ResponseEntity<ApiResult<TicketResponse>> getTicket(@PathVariable UUID ticketId) {
-        return ResponseEntity.ok(ApiResult.success(ticketService.getTicket(ticketId)));
+    public ResponseEntity<ApiResult<TicketDetailResponse>> getTicket(@PathVariable UUID ticketId) {
+        return ResponseEntity.ok(ApiResult.success(ticketService.getTicketDetail(ticketId)));
     }
 
     @PostMapping("/{ticketId}/messages")
