@@ -4,6 +4,7 @@ import com.thang.chargeops.profile.entity.UserProfile;
 import com.thang.chargeops.station.staff.entity.StaffAssignmentStatus;
 import com.thang.chargeops.station.staff.repository.StationStaffAssignmentRepository;
 import com.thang.chargeops.support.entity.SupportTicket;
+import com.thang.chargeops.support.repository.TicketEscalationRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Component;
@@ -14,6 +15,7 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class TicketAccessPolicy {
     private final StationStaffAssignmentRepository staffAssignments;
+    private final TicketEscalationRepository escalations;
 
     public boolean hasRole(String role) {
         var authentication = SecurityContextHolder.getContext().getAuthentication();
@@ -32,7 +34,10 @@ public class TicketAccessPolicy {
     }
 
     public boolean canRead(SupportTicket ticket, UserProfile actor) {
-        return hasRole("ADMIN") || ticket.getReporter().getId().equals(actor.getId())
+        if (hasRole("ADMIN")) {
+            return ticket.getStation() == null || escalations.existsByTicket_Id(ticket.getId());
+        }
+        return ticket.getReporter().getId().equals(actor.getId())
                 || isOwner(ticket, actor.getId()) || isStaff(ticket, actor.getId());
     }
 

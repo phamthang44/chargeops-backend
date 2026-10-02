@@ -71,7 +71,7 @@ class SupportTicketServiceTest {
     void setUp() {
         service = new SupportTicketServiceImpl(currentProfileProvider, bookingRepository, stationRepository,
                 ticketRepository, messageRepository, Clock.fixed(NOW, ZoneOffset.UTC),
-                stationStaffAssignmentRepository, ticketResponseAssembler);
+                stationStaffAssignmentRepository, ticketResponseAssembler, null);
         reporter = UserProfile.builder().email("driver@example.test").displayName("Driver").build();
         reporter.setId(REPORTER_ID);
         when(currentProfileProvider.requireProfile()).thenReturn(reporter);
@@ -128,7 +128,7 @@ class SupportTicketServiceTest {
     }
 
     @Test
-    void stationBookingTicketKeepsStationScopeWhilePaymentRoutesWithoutIt() {
+    void bookingLinkedPaymentTicketRoutesToStationOwner() {
         Station station = mock(Station.class);
         when(station.getId()).thenReturn(STATION_ID);
         when(stationRepository.findById(STATION_ID)).thenReturn(Optional.of(station));
@@ -141,7 +141,7 @@ class SupportTicketServiceTest {
         var paymentTicket = service.create(request(TicketCategory.PAYMENT, BOOKING_ID, STATION_ID));
 
         assertThat(stationTicket.stationId()).isEqualTo(STATION_ID);
-        assertThat(paymentTicket.stationId()).isNull();
+        assertThat(paymentTicket.stationId()).isEqualTo(STATION_ID);
         assertThat(paymentTicket.bookingId()).isEqualTo(BOOKING_ID);
         assertThat(stationTicket.assignedHandlerId()).isNull();
         assertThat(paymentTicket.assignedHandlerId()).isNull();
@@ -254,6 +254,22 @@ class SupportTicketServiceTest {
         assertThat(actual).isEqualTo(expectedResponse);
         verify(messageRepository).insertIgnoreDuplicate(any(), any(), any(), any(), any(), any());
         verify(messageRepository, never()).saveAndFlush(any(TicketMessage.class));
+    }
+
+    @Test
+    void adminCannotChatOnStationTicketWithoutEscalation() {
+        UUID ticketId = UUID.randomUUID();
+        UUID clientMsgId = UUID.randomUUID();
+        SupportTicket ticket = mock(SupportTicket.class);
+        when(ticketRepository.findByIdForUpdate(ticketId)).thenReturn(Optional.of(ticket));
+        SecurityContextHolder.getContext().setAuthentication(UsernamePasswordAuthenticationToken.authenticated(
+                "admin", "", List.of(new SimpleGrantedAuthority("ROLE_ADMIN"))));
+
+        assertThatThrownBy(() -> service.replyAsAdmin(ticketId, clientMsgId,
+                new MessageRequest("Please inspect this station issue"))).isInstanceOf(AppException.class);
+
+        verifyNoInteractions(messageRepository);
+        verify(ticketRepository, never()).saveAndFlush(any(SupportTicket.class));
     }
 
     @Test

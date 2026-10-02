@@ -24,6 +24,7 @@ import com.thang.chargeops.support.model.TicketStatus;
 import com.thang.chargeops.support.repository.SupportTicketRepository;
 import com.thang.chargeops.support.repository.TicketMessageRepository;
 import com.thang.chargeops.support.service.SupportTicketService;
+import com.thang.chargeops.support.service.TicketAccessPolicy;
 import com.thang.chargeops.support.service.support.TicketResponseService;
 import com.thang.chargeops.support.specification.SupportTicketSpecifications;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -66,6 +67,7 @@ public class SupportTicketServiceImpl implements SupportTicketService {
     private final Clock clock;
     private final StationStaffAssignmentRepository stationStaffAssignmentRepository;
     private final TicketResponseService ticketResponseAssembler;
+    private final TicketAccessPolicy accessPolicy;
     private TicketWorkflowService workflowService;
 
     @Autowired(required = false)
@@ -82,7 +84,8 @@ public class SupportTicketServiceImpl implements SupportTicketService {
             TicketMessageRepository messageRepository,
             Clock clock,
             StationStaffAssignmentRepository stationStaffAssignmentRepository,
-            TicketResponseService ticketResponseAssembler
+            TicketResponseService ticketResponseAssembler,
+            TicketAccessPolicy accessPolicy
     ) {
         this.currentProfileProvider = currentProfileProvider;
         this.bookingRepository = bookingRepository;
@@ -92,6 +95,7 @@ public class SupportTicketServiceImpl implements SupportTicketService {
         this.clock = clock;
         this.stationStaffAssignmentRepository = stationStaffAssignmentRepository;
         this.ticketResponseAssembler = ticketResponseAssembler;
+        this.accessPolicy = accessPolicy;
     }
 
     public SupportTicketServiceImpl(
@@ -103,7 +107,7 @@ public class SupportTicketServiceImpl implements SupportTicketService {
             Clock clock
     ) {
         this(currentProfileProvider, bookingRepository, stationRepository, ticketRepository,
-                messageRepository, clock, null, null);
+                messageRepository, clock, null, null, null);
     }
 
     @Override
@@ -134,9 +138,11 @@ public class SupportTicketServiceImpl implements SupportTicketService {
             throw new AppException(TicketErrorCode.INVALID_SCOPE);
         }
 
-        // Only station-routed categories expose station scope to Owner/Staff reads.
+        // Payment disputes tied to a booking belong to that station's Owner first.
+        // Standalone account/payment issues remain platform tickets.
         Station routedStation = request.category() == TicketCategory.CHARGING_ISSUE
-                || request.category() == TicketCategory.BOOKING ? station : null;
+                || request.category() == TicketCategory.BOOKING
+                || (request.category() == TicketCategory.PAYMENT && booking != null) ? station : null;
         SupportTicket ticket = ticketRepository.saveAndFlush(SupportTicket.open(
                 nextTicketCode(), request.category(), request.priority(), reporter, routedStation, booking,
                 new SupportTicket.TicketDetails(request.subject(), request.description())
@@ -215,14 +221,30 @@ public class SupportTicketServiceImpl implements SupportTicketService {
     @Override
     @Transactional
     public TicketMessageResponse replyTicket(UUID ticketId, UUID clientMessageId, MessageRequest request) {
+        return saveReply(ticketId, clientMessageId, request, false);
+    }
+
+    @Override
+    @Transactional
+    public TicketMessageResponse replyAsAdmin(UUID ticketId, UUID clientMessageId, MessageRequest request) {
+        return saveReply(ticketId, clientMessageId, request, true);
+    }
+
+    private TicketMessageResponse saveReply(UUID ticketId, UUID clientMessageId, MessageRequest request,
+                                            boolean adminConsole) {
         UserProfile author = currentProfileProvider.requireProfile();
         Set<String> roles = getCurrentRoles();
 
+        if (adminConsole && !roles.contains(ROLE_ADMIN)) throw new AppException(TicketErrorCode.ACCESS_DENIED);
+
         SupportTicket ticket = ticketRepository.findByIdForUpdate(ticketId)
                 .orElseThrow(() -> new AppException(TicketErrorCode.NOT_FOUND));
+        if (roles.contains(ROLE_ADMIN) && (accessPolicy == null || !accessPolicy.canRead(ticket, author))) {
+            throw new AppException(TicketErrorCode.ACCESS_DENIED);
+        }
 
-        TicketActorKind authorKind = resolveAuthorKind(ticket, author, roles);
-        prepareReply(ticket, ticketId, author, authorKind, request.body());
+        TicketActorKind authorKind = adminConsole ? TicketActorKind.ADMIN : resolveAuthorKind(ticket, author, roles);
+        prepareReply(ticket, ticketId, author, authorKind, request.body(), adminConsole);
 
         TicketMessage message = TicketMessage.create(
                 ticket, author, authorKind, request.body(), clock.instant(), clientMessageId);
@@ -241,7 +263,7 @@ public class SupportTicketServiceImpl implements SupportTicketService {
     }
 
     private void prepareReply(SupportTicket ticket, UUID ticketId, UserProfile author,
-                              TicketActorKind authorKind, String body) {
+                              TicketActorKind authorKind, String body, boolean adminConsole) {
         if (authorKind == null) {
             throw new AppException(TicketErrorCode.ACCESS_DENIED);
         }
@@ -254,6 +276,7 @@ public class SupportTicketServiceImpl implements SupportTicketService {
             workflowService.continueFromReply(ticketId, author, body);
             return;
         }
+        if (adminConsole && ticket.getStation() != null) return;
         if (authorKind != TicketActorKind.REPORTER) requireCurrentHandler(ticket, author);
     }
 
@@ -269,7 +292,7 @@ public class SupportTicketServiceImpl implements SupportTicketService {
 
     private boolean canAccessTicket(SupportTicket ticket, UserProfile profile, Set<String> roles) {
         if (roles.contains(ROLE_ADMIN)) {
-            return true;
+            return accessPolicy != null && accessPolicy.canRead(ticket, profile);
         }
         if (ticket.getReporter() != null && ticket.getReporter().getId().equals(profile.getId())) {
             return true;

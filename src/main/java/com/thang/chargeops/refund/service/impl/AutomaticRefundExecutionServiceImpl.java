@@ -1,6 +1,7 @@
 package com.thang.chargeops.refund.service.impl;
 
 import com.thang.chargeops.booking.repository.BookingRepository;
+import com.thang.chargeops.common.enums.PaymentEnvironment;
 import com.thang.chargeops.common.constant.LogConstant;
 import com.thang.chargeops.exception.AppException;
 import com.thang.chargeops.exception.errorcode.CommonErrorCode;
@@ -41,7 +42,7 @@ import java.util.UUID;
 @RequiredArgsConstructor
 @Slf4j
 public class AutomaticRefundExecutionServiceImpl implements AutomaticRefundExecutionService {
-    private static final String AUTO_NOTE = "Automatic 100% grace-period refund";
+    private static final String AUTO_NOTE = "Automatic full-package refund after approved business decision";
 
     private final ConnectorRepository connectorRepository;
     private final BookingRepository bookingRepository;
@@ -85,8 +86,15 @@ public class AutomaticRefundExecutionServiceImpl implements AutomaticRefundExecu
                 .orElseThrow(() -> new AppException(CommonErrorCode.RESOURCE_NOT_FOUND));
         Instant executionAt = applicationClock.instant();
 
-        if (refund.getExecutionPolicy() != RefundExecutionPolicy.AUTO_FIRST_ATTEMPT
-                || refund.getReason() != RefundReason.VOLUNTARY_GRACE) {
+        if (payment.getEnvironment() != PaymentEnvironment.SIMULATOR) {
+            refund.requireAdminAction();
+            dispatch.markProcessed(executionAt);
+            log.warn(LogConstant.SERVICE_LOG_FORMAT, LogConstant.ACTION_FAILED, "processFirstAttempt", "SYSTEM",
+                    "refundId=" + refundId + ", processed=false, reason=non_simulator_payment");
+            return false;
+        }
+
+        if (refund.getExecutionPolicy() != RefundExecutionPolicy.AUTO_FIRST_ATTEMPT) {
             throw new AppException(RefundErrorCode.EXECUTION_CONFLICT, "Refund is not auto-execution eligible");
         }
         if (refund.getStatus() == RefundStatus.SUCCEEDED) {

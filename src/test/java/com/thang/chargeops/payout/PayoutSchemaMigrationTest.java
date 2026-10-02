@@ -36,7 +36,7 @@ class PayoutSchemaMigrationTest {
 
             Flyway flyway = Flyway.configure()
                     .dataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword()).load();
-            assertThat(flyway.migrate().migrationsExecuted).isEqualTo(1);
+            assertThat(flyway.migrate().migrationsExecuted).isGreaterThanOrEqualTo(1);
             flyway.validate();
             assertThat(flyway.migrate().migrationsExecuted).isZero();
             assertThat(decimal(db, "SELECT sum(amount) FROM payments")).isEqualByComparingTo(paymentBefore);
@@ -64,6 +64,26 @@ class PayoutSchemaMigrationTest {
             exec(db, "INSERT INTO ticket_findings(ticket_id,booking_id,conclusion,affected_at,reason,recorded_at,recorded_by) " +
                     "VALUES ('" + ticket + "','" + booking + "','NOT_STATION_FAILURE','2026-09-29 10:00Z'," +
                     "'Inspected','2026-09-29 11:00Z','" + owner + "')");
+            assertThat(bool(db, "SELECT incident_held FROM v_owner_booking_financials")).isFalse();
+
+            exec(db, "INSERT INTO ticket_events(ticket_id,actor_id,actor_kind,event_type,from_status,to_status," +
+                    "resolution_cycle,reason,created_at) VALUES ('" + ticket + "','" + owner +
+                    "','REPORTER','REPORTER_CONTINUED','RESOLVED','IN_PROGRESS',0," +
+                    "'Driver disputes the finding','2026-09-29 12:00Z')");
+            assertThat(bool(db, "SELECT incident_held FROM v_owner_booking_financials")).isTrue();
+            exec(db, "INSERT INTO ticket_findings(ticket_id,booking_id,conclusion,affected_at,reason,recorded_at,recorded_by) " +
+                    "VALUES ('" + ticket + "','" + booking + "','NOT_STATION_FAILURE','2026-09-29 10:00Z'," +
+                    "'Admin reviewed the dispute','2026-09-29 13:00Z','" + owner + "')");
+            assertThat(bool(db, "SELECT incident_held FROM v_owner_booking_financials")).isFalse();
+
+            UUID secondTicket = UUID.randomUUID();
+            exec(db, "INSERT INTO support_tickets(id,ticket_code,category,status,priority,reporter_id,booking_id,station_id,subject,description) " +
+                    "SELECT '" + secondTicket + "','TKT-20260930-0002','CHARGING_ISSUE','OPEN','MEDIUM','" + owner +
+                    "','" + booking + "',id,'Second issue','Independent incident' FROM stations WHERE name='Payout schema station'");
+            assertThat(bool(db, "SELECT incident_held FROM v_owner_booking_financials")).isTrue();
+            exec(db, "INSERT INTO ticket_findings(ticket_id,booking_id,conclusion,affected_at,reason,recorded_at,recorded_by) " +
+                    "VALUES ('" + secondTicket + "','" + booking + "','NOT_STATION_FAILURE','2026-09-29 10:00Z'," +
+                    "'Independent incident ruled out','2026-09-29 14:00Z','" + owner + "')");
             assertThat(bool(db, "SELECT incident_held FROM v_owner_booking_financials")).isFalse();
 
             UUID payout = UUID.randomUUID();

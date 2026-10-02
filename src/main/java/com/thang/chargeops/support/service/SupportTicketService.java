@@ -19,5 +19,7 @@ public interface SupportTicketService {
     TicketResponse getTicket(UUID ticketId);
 
     TicketMessageResponse replyTicket(UUID ticketId, UUID clientMessageId, MessageRequest request);
+
+    TicketMessageResponse replyAsAdmin(UUID ticketId, UUID clientMessageId, MessageRequest request);
 }
 

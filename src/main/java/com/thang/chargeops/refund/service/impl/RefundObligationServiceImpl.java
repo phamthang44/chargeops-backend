@@ -61,9 +61,9 @@ public class RefundObligationServiceImpl implements RefundObligationService {
                 || source.getApplicationClassification() != PaymentApplicationClassification.APPLIED) {
             throw conflict("Source is not an applied receipt for this payment");
         }
-        if (payment.getEnvironment() == null || payment.getEnvironment() == PaymentEnvironment.LEGACY
+        if (payment.getEnvironment() != PaymentEnvironment.SIMULATOR
                 || payment.isNeedsReconciliation() || payment.getPaymentCode() == null) {
-            throw conflict("Historical or unresolved payment requires reconciliation");
+            throw conflict("Only a reconciled Simulator payment may create a demo refund");
         }
 
         Optional<Refund> sameBasis = refundRepository.findByBasisTypeAndBasisId(
@@ -99,7 +99,7 @@ public class RefundObligationServiceImpl implements RefundObligationService {
                 command.basisId(), command.decisionAt(), command.lockedActor()));
         try {
             Refund saved = refundRepository.saveAndFlush(pending);
-            if (saved.getReason() == com.thang.chargeops.refund.model.RefundReason.VOLUNTARY_GRACE) {
+            if (saved.getExecutionPolicy() == com.thang.chargeops.refund.model.RefundExecutionPolicy.AUTO_FIRST_ATTEMPT) {
                 UUID requestKey = UUID.nameUUIDFromBytes(
                         ("refund-auto-first-attempt:" + saved.getId()).getBytes(UTF_8)
                 );

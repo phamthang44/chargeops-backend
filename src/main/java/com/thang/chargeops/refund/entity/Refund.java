@@ -132,10 +132,10 @@ public class Refund extends AuditableEntity {
         refund.basisType = spec.basisType();
         refund.basisId = spec.basisId();
         refund.status = RefundStatus.PENDING;
-        refund.executionPolicy = spec.reason() == RefundReason.VOLUNTARY_GRACE
-                ? RefundExecutionPolicy.AUTO_FIRST_ATTEMPT
-                : RefundExecutionPolicy.ADMIN_REQUIRED;
-        refund.requiresAdminAction = refund.executionPolicy == RefundExecutionPolicy.ADMIN_REQUIRED;
+        // The business decision has already been made by the Owner or a binding
+        // dispute ruling. Execution is a simulator outcome, not an Admin approval.
+        refund.executionPolicy = RefundExecutionPolicy.AUTO_FIRST_ATTEMPT;
+        refund.requiresAdminAction = false;
         refund.decisionAt = spec.decisionAt();
         refund.decidedBy = spec.decidedBy();
         return refund;

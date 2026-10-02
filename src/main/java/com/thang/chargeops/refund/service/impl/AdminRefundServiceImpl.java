@@ -49,7 +49,8 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 
-@Service
+// Historical implementation retained for migration tests only. No HTTP route or
+// production bean grants Admin global access to Owner refund evidence.
 @RequiredArgsConstructor
 @Slf4j
 public class AdminRefundServiceImpl implements AdminRefundService {

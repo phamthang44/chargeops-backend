@@ -1,6 +1,9 @@
 package com.thang.chargeops.payment.repository;
 
 import com.thang.chargeops.payment.entity.Payment;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.repository.EntityGraph;
 import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
@@ -13,6 +16,30 @@ import java.math.BigDecimal;
 import java.util.UUID;
 
 public interface PaymentRepository extends JpaRepository<Payment, UUID> {
+
+    @EntityGraph(attributePaths = {"booking", "booking.connector", "booking.connector.chargePoint",
+            "booking.connector.chargePoint.station"})
+    @Query("""
+        SELECT p FROM Payment p
+        WHERE p.booking.connector.chargePoint.station.owner.id = :ownerId
+          AND p.environment = com.thang.chargeops.common.enums.PaymentEnvironment.SIMULATOR
+          AND p.status IN (com.thang.chargeops.common.enums.PaymentStatus.PAID,
+                           com.thang.chargeops.common.enums.PaymentStatus.REFUNDED)
+    """)
+    Page<Payment> findOwnerSimulatorLedger(@Param("ownerId") UUID ownerId, Pageable pageable);
+
+    @EntityGraph(attributePaths = {"booking", "booking.connector", "booking.connector.chargePoint",
+            "booking.connector.chargePoint.station"})
+    @Query("""
+        SELECT p FROM Payment p
+        WHERE p.booking.id = :bookingId
+          AND p.booking.connector.chargePoint.station.owner.id = :ownerId
+          AND p.environment = com.thang.chargeops.common.enums.PaymentEnvironment.SIMULATOR
+          AND p.status IN (com.thang.chargeops.common.enums.PaymentStatus.PAID,
+                           com.thang.chargeops.common.enums.PaymentStatus.REFUNDED)
+    """)
+    Optional<Payment> findOwnerSimulatorBookingPayment(
+            @Param("ownerId") UUID ownerId, @Param("bookingId") UUID bookingId);
 
     @Query("""
         SELECT COALESCE(SUM(p.amount - COALESCE(p.refundAmount, 0)), 0)

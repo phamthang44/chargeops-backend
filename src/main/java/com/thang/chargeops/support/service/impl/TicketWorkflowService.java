@@ -117,22 +117,25 @@ public class TicketWorkflowService {
         }
         SupportTicket t = locked(id, request.expectedVersion());
         requireAssigner(t, actor.getId());
-        UserProfile handler = assignmentHandler(t, request.handlerId());
+        boolean platformCase = t.getStation() == null;
+        UserProfile handler = assignmentHandler(t, request.handlerId(), platformCase);
         UUID oldHandler = t.getAssignedHandler() == null ? null : t.getAssignedHandler().getId();
         if (handler.getId().equals(oldHandler)) throw new AppException(TicketErrorCode.STATE_CONFLICT);
         TicketStatus before = t.getStatus();
         t.assign(handler);
-        event(t, actor.getId(), kind(t, actor.getId()), before == TicketStatus.OPEN ? "ASSIGNED" : "REASSIGNED", before, oldHandler, request.reason());
+        event(t, actor.getId(), platformCase ? ADMIN : kind(t, actor.getId()),
+                before == TicketStatus.OPEN ? "ASSIGNED" : "REASSIGNED", before, oldHandler, request.reason());
         return saved(t);
     }
 
     private void requireAssigner(SupportTicket ticket, UUID actorId) {
-        if (ticket.getStation() == null ? !access.hasRole(ADMIN) : !owner(ticket, actorId)) {
+        if (ticket.getStation() == null ? !access.hasRole(ADMIN) :
+                !owner(ticket, actorId)) {
             throw new AppException(TicketErrorCode.ACCESS_DENIED);
         }
     }
 
-    private UserProfile assignmentHandler(SupportTicket t, UUID handlerId) {
+    private UserProfile assignmentHandler(SupportTicket t, UUID handlerId, boolean adminActor) {
         if (t.getStatus() != TicketStatus.OPEN && t.getStatus() != TicketStatus.IN_PROGRESS) throw new AppException(TicketErrorCode.STATE_CONFLICT);
         UserProfile handler = profiles.findById(handlerId).orElseThrow(() -> new AppException(TicketErrorCode.ASSIGNMENT_INVALID));
         if (handler.getStatus() != UserStatus.ACTIVE) throw new AppException(TicketErrorCode.ASSIGNMENT_INVALID);
@@ -141,7 +144,7 @@ public class TicketWorkflowService {
             throw new AppException(TicketErrorCode.ASSIGNMENT_INVALID);
         if (t.getStation() == null && !identityRoles.getRoles(handler.getKeycloakId()).contains(Role.ADMIN))
             throw new AppException(TicketErrorCode.ASSIGNMENT_INVALID);
-        if (t.getStation() != null && t.getStatus() == TicketStatus.OPEN &&
+        if (!adminActor && t.getStation() != null && t.getStatus() == TicketStatus.OPEN &&
             handler.getId().equals(t.getStation().getOwner().getId()))
             throw new AppException(TicketErrorCode.ASSIGNMENT_INVALID);
         return handler;

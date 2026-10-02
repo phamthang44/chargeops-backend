@@ -75,6 +75,10 @@ public class PaymentSimulationServiceImpl implements PaymentSimulationService {
         }
 
         UserProfile actor = currentProfileProvider.requireProfile();
+        // A simulator receipt must never be posted to another Driver's booking,
+        // including when the caller replays an idempotency key.
+        bookingRepository.findByIdAndDriverId(bookingId, actor.getId())
+                .orElseThrow(() -> new AppException(CommonErrorCode.RESOURCE_NOT_FOUND));
         return bookingCommandInFlightLock.executeWithLock(
                 actor.getId(),
                 BookingCommandOperation.SIMULATE_PAYMENT,

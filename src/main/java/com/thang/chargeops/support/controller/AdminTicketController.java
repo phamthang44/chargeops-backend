@@ -8,6 +8,7 @@ import com.thang.chargeops.support.dto.request.MessageRequest;
 import com.thang.chargeops.support.dto.request.TicketStatusRequest;
 import com.thang.chargeops.support.dto.response.TicketEventResponse;
 import com.thang.chargeops.support.dto.response.TicketMessageResponse;
+import com.thang.chargeops.support.dto.response.TicketHandlerCandidateResponse;
 import com.thang.chargeops.support.dto.response.TicketResponse;
 import com.thang.chargeops.support.model.TicketStatus;
 import com.thang.chargeops.support.service.AdminTicketService;
@@ -42,8 +43,8 @@ public class AdminTicketController {
         return ResponseEntity.ok(ApiResult.successPage(service.platformQueue(status, page, size)));
     }
 
-    @GetMapping("/station-audit")
-    public ResponseEntity<ApiResult<List<TicketResponse>>> stationAudit(
+    @GetMapping("/escalated")
+    public ResponseEntity<ApiResult<List<TicketResponse>>> escalated(
             @RequestParam(required = false) UUID stationId,
             @RequestParam(required = false) TicketStatus status,
             @RequestParam(defaultValue = "1") @Min(1) int page,
@@ -54,6 +55,11 @@ public class AdminTicketController {
     @GetMapping("/{ticketId}")
     public ResponseEntity<ApiResult<TicketResponse>> get(@PathVariable UUID ticketId) {
         return ResponseEntity.ok(ApiResult.success(service.get(ticketId)));
+    }
+
+    @GetMapping("/{ticketId}/messages")
+    public ResponseEntity<ApiResult<List<TicketMessageResponse>>> messages(@PathVariable UUID ticketId) {
+        return ResponseEntity.ok(ApiResult.success(service.get(ticketId).messages()));
     }
 
     @GetMapping("/{ticketId}/events")

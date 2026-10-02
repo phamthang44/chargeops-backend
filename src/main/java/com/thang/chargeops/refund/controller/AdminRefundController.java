@@ -27,8 +27,8 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.List;
 import java.util.UUID;
 
-@RestController
-@RequestMapping(SystemConstant.API_URL_PATTERN + "admin/refunds")
+// Legacy controller retained for contract migration only. It is deliberately not
+// registered as an HTTP endpoint: platform Admin has no global Owner refund access.
 @RequiredArgsConstructor
 @PreAuthorize("hasRole('ADMIN')")
 @Validated

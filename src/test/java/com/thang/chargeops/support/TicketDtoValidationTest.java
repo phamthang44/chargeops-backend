@@ -66,7 +66,7 @@ class TicketDtoValidationTest {
                 -1L, null, null, " "
         ))).hasSize(4);
         assertThat(validator.validate(new TicketStatusRequest(
-                -1L, null, " "
+                -1L, null, "x".repeat(2001)
         ))).hasSize(3);
         assertThat(validator.validate(new AssignTicketRequest(
                 -1L, null, " "

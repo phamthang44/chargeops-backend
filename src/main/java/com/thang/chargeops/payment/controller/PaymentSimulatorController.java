@@ -18,7 +18,7 @@ import java.util.UUID;
 @Profile({"dev", "demo", "test"})
 @RequiredArgsConstructor
 @RequestMapping(SystemConstant.API_URL_PATTERN + "bookings")
-@PreAuthorize("isAuthenticated()")
+@PreAuthorize("hasRole('DRIVER')")
 public class PaymentSimulatorController {
 
     private final PaymentSimulationService paymentSimulationService;

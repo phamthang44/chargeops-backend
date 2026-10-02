@@ -69,7 +69,7 @@ class PaymentSimulatorControllerTest {
     }
 
     @Test
-    @DisplayName("Controller is available only in non-production simulator profiles and requires ADMIN authority")
+    @DisplayName("Controller is available only in non-production simulator profiles and requires DRIVER authority")
     void controllerHasExpectedRuntimeGuards() {
         Profile profile = PaymentSimulatorController.class.getAnnotation(Profile.class);
         assertThat(profile).isNotNull();
@@ -77,6 +77,6 @@ class PaymentSimulatorControllerTest {
 
         PreAuthorize preAuthorize = PaymentSimulatorController.class.getAnnotation(PreAuthorize.class);
         assertThat(preAuthorize).isNotNull();
-        assertThat(preAuthorize.value()).isEqualTo("hasRole('ADMIN')");
+        assertThat(preAuthorize.value()).isEqualTo("hasRole('DRIVER')");
     }
 }

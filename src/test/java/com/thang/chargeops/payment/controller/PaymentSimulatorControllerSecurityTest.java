@@ -60,31 +60,25 @@ class PaymentSimulatorControllerSecurityTest {
 
     @Test
     @WithMockUser(roles = "DRIVER")
-    void driverCannotSimulatePayment() throws Exception {
+    void driverCanSimulateOwnPayment() throws Exception {
+        UUID bookingId = UUID.randomUUID();
+        UUID requestKey = UUID.randomUUID();
+        when(paymentSimulationService.simulate(eq(bookingId), eq(requestKey), any()))
+                .thenReturn(new SimulationResultResponse(SimulationRequest.Outcome.SUCCESS, false, null, null));
+
+        mockMvc.perform(simulationRequest(bookingId, requestKey))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    @WithMockUser(roles = "ADMIN")
+    void adminCannotSimulateDriverPayment() throws Exception {
         UUID bookingId = UUID.randomUUID();
         UUID requestKey = UUID.randomUUID();
 
         mockMvc.perform(simulationRequest(bookingId, requestKey))
                 .andExpect(status().isForbidden());
-
         verifyNoInteractions(paymentSimulationService);
-    }
-
-    @Test
-    @WithMockUser(roles = "ADMIN")
-    void adminCanSimulatePayment() throws Exception {
-        UUID bookingId = UUID.randomUUID();
-        UUID requestKey = UUID.randomUUID();
-        when(paymentSimulationService.simulate(eq(bookingId), eq(requestKey), any()))
-                .thenReturn(new SimulationResultResponse(
-                        SimulationRequest.Outcome.SUCCESS,
-                        false,
-                        null,
-                        null
-                ));
-
-        mockMvc.perform(simulationRequest(bookingId, requestKey))
-                .andExpect(status().isOk());
     }
 
     @Test

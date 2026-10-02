@@ -89,7 +89,9 @@ public class RefundAttempt extends AuditableEntity {
                 || spec.requestKey() == null || spec.executionTrigger() == null || spec.startedAt() == null
                 || spec.sequenceNo() <= 0 || spec.payloadHash() == null
                 || !SHA_256.matcher(spec.payloadHash()).matches()
-                || (spec.executionTrigger() == RefundExecutionTrigger.ADMIN && spec.performedBy() == null)
+                || ((spec.executionTrigger() == RefundExecutionTrigger.ADMIN
+                        || spec.executionTrigger() == RefundExecutionTrigger.OWNER)
+                        && spec.performedBy() == null)
                 || (spec.executionTrigger() == RefundExecutionTrigger.SYSTEM_POLICY && spec.performedBy() != null)) {
             throw conflict("Complete refund attempt data and a lowercase SHA-256 payload hash are required");
         }

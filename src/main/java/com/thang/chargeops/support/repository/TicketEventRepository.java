@@ -10,8 +10,10 @@ import org.springframework.data.repository.query.Param;
 import java.util.Collection;
 import java.util.List;
 import java.util.UUID;
+import java.util.Optional;
 
 public interface TicketEventRepository extends JpaRepository<TicketEvent, UUID> {
+    Optional<TicketEvent> findFirstByTicketIdAndEventTypeOrderByCreatedAtDescIdDesc(UUID ticketId, String eventType);
     Page<TicketEvent> findByTicketId(UUID ticketId, Pageable pageable);
 
     @Query("""

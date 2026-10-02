@@ -3,6 +3,7 @@ package com.thang.chargeops.support.controller;
 import com.thang.chargeops.common.constant.SystemConstant;
 import com.thang.chargeops.common.response.ApiResult;
 import com.thang.chargeops.support.dto.request.CreateTicketRequest;
+import com.thang.chargeops.support.dto.request.FindingRequest;
 import com.thang.chargeops.support.dto.request.MessageRequest;
 import com.thang.chargeops.support.dto.request.ClaimTicketRequest;
 import com.thang.chargeops.support.dto.request.AssignTicketRequest;
@@ -11,6 +12,7 @@ import com.thang.chargeops.support.dto.response.TicketMessageResponse;
 import com.thang.chargeops.support.dto.response.TicketResponse;
 import com.thang.chargeops.support.model.TicketStatus;
 import com.thang.chargeops.support.service.SupportTicketService;
+import com.thang.chargeops.support.service.TicketFindingService;
 import com.thang.chargeops.support.service.impl.TicketWorkflowService;
 import com.thang.chargeops.support.service.TicketEventQueryService;
 import com.thang.chargeops.support.dto.response.TicketEventResponse;
@@ -36,6 +38,15 @@ public class SupportTicketController {
     private final SupportTicketService ticketService;
     private final TicketWorkflowService workflowService;
     private final TicketEventQueryService ticketEvents;
+    private final TicketFindingService findings;
+
+    @PostMapping("/{ticketId}/findings")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<ApiResult<TicketResponse>> recordFinding(@PathVariable UUID ticketId,
+            @Valid @RequestBody FindingRequest request) {
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(ApiResult.success(findings.record(ticketId, request)));
+    }
 
     @GetMapping("/{ticketId}/events")
     @PreAuthorize("isAuthenticated()")

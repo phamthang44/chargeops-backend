@@ -127,6 +127,8 @@ class PaymentSimulationServiceTest {
         ));
 
         lenient().when(bookingRepository.findById(bookingId)).thenReturn(Optional.of(booking));
+        lenient().when(bookingRepository.findByIdAndDriverId(bookingId, adminId))
+                .thenReturn(Optional.of(booking));
         lenient().when(paymentRepository.findByBookingId(bookingId)).thenReturn(Optional.of(payment));
 
         BookingReadSnapshot listSnapshot = mock(BookingReadSnapshot.class);
@@ -429,6 +431,7 @@ class PaymentSimulationServiceTest {
         ));
         bindCheckout(otherPayment);
         when(bookingRepository.findById(otherBookingId)).thenReturn(Optional.of(otherBooking));
+        when(bookingRepository.findByIdAndDriverId(otherBookingId, adminId)).thenReturn(Optional.of(otherBooking));
         when(paymentRepository.findByBookingId(otherBookingId)).thenReturn(Optional.of(otherPayment));
 
         SimulationRequest request = new SimulationRequest(
@@ -493,13 +496,23 @@ class PaymentSimulationServiceTest {
                 NOW
         );
 
-        when(bookingRepository.findById(unknownBooking)).thenReturn(Optional.empty());
-
         assertThatThrownBy(() -> service.simulate(unknownBooking, requestKey, request))
                 .isInstanceOf(AppException.class)
                 .satisfies(e -> {
                     AppException appException = (AppException) e;
                     assertThat(appException.getErrorCode()).isEqualTo(CommonErrorCode.RESOURCE_NOT_FOUND);
                 });
+    }
+
+    @Test
+    void driverCannotSimulateAnotherDriversBookingEvenIfUuidIsKnown() {
+        UUID otherBooking = UUID.randomUUID();
+        SimulationRequest request = new SimulationRequest("TX-FOREIGN",
+                SimulationRequest.Outcome.SUCCESS, 100000L, "VND", NOW);
+        assertThatThrownBy(() -> service.simulate(otherBooking, UUID.randomUUID(), request))
+                .isInstanceOf(AppException.class)
+                .satisfies(error -> assertThat(((AppException) error).getErrorCode())
+                        .isEqualTo(CommonErrorCode.RESOURCE_NOT_FOUND));
+        verifyNoInteractions(paymentConfirmationService, bookingCommandRegistry);
     }
 }

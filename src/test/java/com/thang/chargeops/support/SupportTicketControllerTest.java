@@ -5,6 +5,7 @@ import com.thang.chargeops.infra.security.RestAccessDeniedHandler;
 import com.thang.chargeops.infra.security.RestAuthenticationEntryPoint;
 import com.thang.chargeops.support.controller.SupportTicketController;
 import com.thang.chargeops.support.service.SupportTicketService;
+import com.thang.chargeops.support.service.TicketFindingService;
 import com.thang.chargeops.support.service.TicketEventQueryService;
 import com.thang.chargeops.support.service.impl.TicketWorkflowService;
 import org.junit.jupiter.api.Test;
@@ -43,6 +44,17 @@ class SupportTicketControllerTest {
     @MockitoBean SupportTicketService ticketService;
     @MockitoBean TicketWorkflowService workflowService;
     @MockitoBean TicketEventQueryService ticketReadService;
+    @MockitoBean TicketFindingService findings;
+
+    @Test
+    @WithMockUser(roles = "STAFF")
+    void findingEndpointRequiresValidatedEvidence() throws Exception {
+        UUID ticketId = UUID.randomUUID();
+        mockMvc.perform(post("/api/v1/tickets/{ticketId}/findings", ticketId)
+                .contentType(MediaType.APPLICATION_JSON).content("{}"))
+            .andExpect(status().isBadRequest());
+        verifyNoInteractions(findings);
+    }
     @MockitoBean RestAuthenticationEntryPoint authenticationEntryPoint;
     @MockitoBean RestAccessDeniedHandler accessDeniedHandler;
 
@@ -75,6 +87,60 @@ class SupportTicketControllerTest {
                 .content("{\"expectedVersion\":1,\"status\":\"CLOSED\"}"))
             .andExpect(status().isOk());
         verify(workflowService).changeStatus(eq(ticketId), any());
+    }
+
+    @Test
+    @WithMockUser(roles = "STAFF")
+    void findingEndpointDelegatesToFindingServiceWhenValid() throws Exception {
+        UUID ticketId = UUID.randomUUID();
+        when(findings.record(eq(ticketId), any())).thenReturn(null);
+
+        mockMvc.perform(post("/api/v1/tickets/{ticketId}/findings", ticketId)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                    {"expectedVersion":1,"conclusion":"STATION_FAILURE",
+                     "affectedAt":"2026-10-02T10:00:00Z","reason":"Hardware failure verified"}
+                    """))
+            .andExpect(status().isCreated());
+        verify(findings).record(eq(ticketId), any());
+    }
+
+    @Test
+    @WithMockUser(roles = "STAFF")
+    void claimDelegatesWhenValid() throws Exception {
+        UUID ticketId = UUID.randomUUID();
+        when(workflowService.claim(eq(ticketId), eq(0L))).thenReturn(null);
+
+        mockMvc.perform(post("/api/v1/tickets/{ticketId}/claim", ticketId)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"expectedVersion\":0}"))
+            .andExpect(status().isOk());
+        verify(workflowService).claim(eq(ticketId), eq(0L));
+    }
+
+    @Test
+    @WithMockUser(roles = "OWNER")
+    void assignDelegatesWhenValid() throws Exception {
+        UUID ticketId = UUID.randomUUID();
+        UUID handlerId = UUID.randomUUID();
+        when(workflowService.assign(eq(ticketId), any())).thenReturn(null);
+
+        mockMvc.perform(post("/api/v1/tickets/{ticketId}/assignment", ticketId)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"expectedVersion\":0,\"handlerId\":\"" + handlerId + "\",\"reason\":\"Assign technician\"}"))
+            .andExpect(status().isOk());
+        verify(workflowService).assign(eq(ticketId), any());
+    }
+
+    @Test
+    @WithMockUser(roles = "OWNER")
+    void assignRejectsInvalidPayload() throws Exception {
+        UUID ticketId = UUID.randomUUID();
+        mockMvc.perform(post("/api/v1/tickets/{ticketId}/assignment", ticketId)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"expectedVersion\":0,\"handlerId\":\"" + UUID.randomUUID() + "\",\"reason\":\"  \"}"))
+            .andExpect(status().isBadRequest());
+        verifyNoInteractions(workflowService);
     }
 
     @Test

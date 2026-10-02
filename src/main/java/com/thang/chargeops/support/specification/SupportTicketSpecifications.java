@@ -4,6 +4,7 @@ import com.thang.chargeops.profile.entity.UserProfile;
 import com.thang.chargeops.support.entity.SupportTicket;
 import com.thang.chargeops.support.model.TicketStatus;
 import jakarta.persistence.criteria.Predicate;
+import com.thang.chargeops.support.entity.TicketEscalation;
 import org.springframework.data.jpa.domain.Specification;
 
 import java.util.ArrayList;
@@ -28,7 +29,13 @@ public final class  SupportTicketSpecifications {
         return (root, query, cb) -> {
             List<Predicate> predicates = new ArrayList<>();
 
-            if (roles == null || !roles.contains("ROLE_ADMIN")) {
+            if (roles != null && roles.contains("ROLE_ADMIN")) {
+                var escalated = query.subquery(UUID.class);
+                var escalation = escalated.from(TicketEscalation.class);
+                escalated.select(escalation.get("ticket").get("id"));
+                predicates.add(cb.or(cb.isNull(root.get(STATION_FIELD)),
+                        root.get("id").in(escalated)));
+            } else {
                 List<Predicate> roleOrPredicates = new ArrayList<>();
 
                 // Always view tickets created by the user
