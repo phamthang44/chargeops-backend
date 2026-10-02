@@ -23,14 +23,17 @@ import com.thang.chargeops.support.model.TicketStatus;
 import com.thang.chargeops.support.repository.SupportTicketRepository;
 import com.thang.chargeops.support.repository.TicketMessageRepository;
 import com.thang.chargeops.support.service.impl.SupportTicketServiceImpl;
-import com.thang.chargeops.support.service.support.SupportTicketResponseAssembler;
+import com.thang.chargeops.support.service.support.TicketResponseService;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.dao.DataIntegrityViolationException;
-import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.data.domain.Page;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.core.context.SecurityContextHolder;
 
 import java.time.Clock;
 import java.time.Instant;
@@ -58,9 +61,8 @@ class SupportTicketServiceTest {
     @Mock StationRepository stationRepository;
     @Mock SupportTicketRepository ticketRepository;
     @Mock TicketMessageRepository messageRepository;
-    @Mock JdbcTemplate jdbcTemplate;
     @Mock StationStaffAssignmentRepository stationStaffAssignmentRepository;
-    @Mock SupportTicketResponseAssembler ticketResponseAssembler;
+    @Mock TicketResponseService ticketResponseAssembler;
 
     private SupportTicketServiceImpl service;
     private UserProfile reporter;
@@ -68,11 +70,16 @@ class SupportTicketServiceTest {
     @BeforeEach
     void setUp() {
         service = new SupportTicketServiceImpl(currentProfileProvider, bookingRepository, stationRepository,
-                ticketRepository, messageRepository, jdbcTemplate, Clock.fixed(NOW, ZoneOffset.UTC),
+                ticketRepository, messageRepository, Clock.fixed(NOW, ZoneOffset.UTC),
                 stationStaffAssignmentRepository, ticketResponseAssembler);
         reporter = UserProfile.builder().email("driver@example.test").displayName("Driver").build();
         reporter.setId(REPORTER_ID);
         when(currentProfileProvider.requireProfile()).thenReturn(reporter);
+    }
+
+    @AfterEach
+    void tearDown() {
+        SecurityContextHolder.clearContext();
     }
 
     @Test
@@ -90,6 +97,12 @@ class SupportTicketServiceTest {
         assertThat(response.stationId()).isEqualTo(STATION_ID);
         assertThat(response.bookingId()).isEqualTo(BOOKING_ID);
         assertThat(response.assignedHandlerId()).isNull();
+        assertThat(response.description()).isEqualTo("Connector stopped");
+        assertThat(response.reporterName()).isEqualTo("Driver");
+        assertThat(response.bookingId()).isEqualTo(BOOKING_ID);
+        assertThat(response.messageCount()).isEqualTo(1);
+        assertThat(response.lastMessagePreview()).isEqualTo("Connector stopped");
+        assertThat(response.updatedAt()).isNotNull();
         assertThat(response.messages()).singleElement().satisfies(message ->
                 assertThat(message.body()).isEqualTo("Connector stopped"));
         verify(ticketRepository).saveAndFlush(any(SupportTicket.class));
@@ -111,7 +124,7 @@ class SupportTicketServiceTest {
                 .thenReturn(Optional.of(forgedBooking));
         assertThatThrownBy(() -> service.create(request(TicketCategory.CHARGING_ISSUE,
                 BOOKING_ID, UUID.randomUUID()))).isInstanceOf(AppException.class);
-        verifyNoInteractions(ticketRepository, messageRepository, jdbcTemplate);
+        verifyNoInteractions(ticketRepository, messageRepository);
     }
 
     @Test
@@ -146,8 +159,7 @@ class SupportTicketServiceTest {
     }
 
     private void stubPersistence() {
-        when(jdbcTemplate.queryForObject(eq("SELECT nextval('support_ticket_code_seq')"), eq(Long.class)))
-                .thenReturn(1L, 2L);
+        when(ticketRepository.nextTicketCodeSequence()).thenReturn(1L, 2L);
         when(ticketRepository.saveAndFlush(any(SupportTicket.class))).thenAnswer(invocation -> {
             SupportTicket ticket = invocation.getArgument(0);
             ticket.setId(UUID.randomUUID());
@@ -158,6 +170,24 @@ class SupportTicketServiceTest {
             TicketMessage message = invocation.getArgument(0);
             message.setId(UUID.randomUUID());
             return message;
+        });
+        when(ticketResponseAssembler.toResponse(any(SupportTicket.class))).thenAnswer(invocation -> {
+            SupportTicket ticket = invocation.getArgument(0);
+            var first = new TicketMessageResponse(UUID.randomUUID(), reporter.getDisplayName(),
+                    TicketActorKind.REPORTER, ticket.getDescription(), NOW);
+            var booking = ticket.getBooking();
+            var station = ticket.getStation();
+            return new TicketResponse(ticket.getId(), ticket.getTicketCode(), ticket.getCategory(),
+                    ticket.getPriority(), ticket.getSubject(), ticket.getStatus(), ticket.getVersion(),
+                    booking == null ? null : booking.getId(), station == null ? null : station.getId(),
+                    reporter.getId(), null, ticket.getCreatedAt(), List.of(first), List.of(), List.of(),
+                    null, null, null, 0, ticket.getDescription(),
+                    station == null ? null : station.getName(), station == null ? null : station.getStationCode(),
+                    station == null ? null : station.getAddressLine(), null,
+                    booking == null ? null : booking.getBookingCode(),
+                    booking == null ? null : booking.getStartAt(), booking == null ? null : booking.getEndAt(),
+                    reporter.getDisplayName(), reporter.getPhone(), null, null,
+                    ticket.getUpdatedAt(), null, null, first.body(), 1);
         });
     }
 
@@ -194,7 +224,6 @@ class SupportTicketServiceTest {
         UserProfile unrelatedUser = UserProfile.builder().email("stranger@example.test").build();
         unrelatedUser.setId(UUID.randomUUID());
         when(ticket.getReporter()).thenReturn(unrelatedUser);
-        when(ticket.getAssignedHandler()).thenReturn(null);
         when(ticket.getStation()).thenReturn(null);
         when(ticketRepository.findById(ticketId)).thenReturn(Optional.of(ticket));
 
@@ -209,10 +238,11 @@ class SupportTicketServiceTest {
         SupportTicket ticket = mock(SupportTicket.class);
         when(ticket.getStatus()).thenReturn(TicketStatus.OPEN);
         when(ticket.getReporter()).thenReturn(reporter);
-        when(ticketRepository.findById(ticketId)).thenReturn(Optional.of(ticket));
+        when(ticketRepository.findByIdForUpdate(ticketId)).thenReturn(Optional.of(ticket));
 
         TicketMessage savedMessage = mock(TicketMessage.class);
-        when(messageRepository.saveAndFlush(any(TicketMessage.class))).thenReturn(savedMessage);
+        when(messageRepository.findByAuthor_IdAndClientMessageId(REPORTER_ID, clientMsgId))
+                .thenReturn(Optional.of(savedMessage));
 
         TicketMessageResponse expectedResponse = new TicketMessageResponse(
                 UUID.randomUUID(), "Driver", TicketActorKind.REPORTER, "Updated details", NOW
@@ -222,7 +252,8 @@ class SupportTicketServiceTest {
         TicketMessageResponse actual = service.replyTicket(ticketId, clientMsgId, new MessageRequest("Updated details"));
 
         assertThat(actual).isEqualTo(expectedResponse);
-        verify(messageRepository).saveAndFlush(any(TicketMessage.class));
+        verify(messageRepository).insertIgnoreDuplicate(any(), any(), any(), any(), any(), any());
+        verify(messageRepository, never()).saveAndFlush(any(TicketMessage.class));
     }
 
     @Test
@@ -232,10 +263,7 @@ class SupportTicketServiceTest {
         SupportTicket ticket = mock(SupportTicket.class);
         when(ticket.getStatus()).thenReturn(TicketStatus.OPEN);
         when(ticket.getReporter()).thenReturn(reporter);
-        when(ticketRepository.findById(ticketId)).thenReturn(Optional.of(ticket));
-
-        when(messageRepository.saveAndFlush(any(TicketMessage.class)))
-                .thenThrow(new DataIntegrityViolationException("ERROR: duplicate key value violates unique constraint ux_ticket_messages_client_id"));
+        when(ticketRepository.findByIdForUpdate(ticketId)).thenReturn(Optional.of(ticket));
 
         TicketMessage existingMessage = mock(TicketMessage.class);
         when(messageRepository.findByAuthor_IdAndClientMessageId(REPORTER_ID, clientMsgId))
@@ -249,7 +277,74 @@ class SupportTicketServiceTest {
         TicketMessageResponse actual = service.replyTicket(ticketId, clientMsgId, new MessageRequest("Original message"));
 
         assertThat(actual).isEqualTo(expectedResponse);
+        verify(messageRepository).insertIgnoreDuplicate(any(), any(), any(), any(), any(), any());
         verify(messageRepository).findByAuthor_IdAndClientMessageId(REPORTER_ID, clientMsgId);
+    }
+
+    @Test
+    void replyWithoutClientMessageIdUsesRegularPersistence() {
+        UUID ticketId = UUID.randomUUID();
+        SupportTicket ticket = mock(SupportTicket.class);
+        when(ticket.getStatus()).thenReturn(TicketStatus.OPEN);
+        when(ticket.getReporter()).thenReturn(reporter);
+        when(ticketRepository.findByIdForUpdate(ticketId)).thenReturn(Optional.of(ticket));
+        TicketMessage savedMessage = mock(TicketMessage.class);
+        when(messageRepository.saveAndFlush(any(TicketMessage.class))).thenReturn(savedMessage);
+
+        service.replyTicket(ticketId, null, new MessageRequest("No key"));
+
+        verify(messageRepository).saveAndFlush(any(TicketMessage.class));
+        verify(messageRepository, never()).insertIgnoreDuplicate(any(), any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void unrelatedActorCannotLearnWhetherTicketIsClosed() {
+        UUID ticketId = UUID.randomUUID();
+        SupportTicket ticket = mock(SupportTicket.class);
+        when(ticket.getReporter()).thenReturn(null);
+        when(ticket.getStation()).thenReturn(null);
+        when(ticketRepository.findByIdForUpdate(ticketId)).thenReturn(Optional.of(ticket));
+
+        assertThatThrownBy(() -> service.replyTicket(ticketId, UUID.randomUUID(), new MessageRequest("Probe")))
+                .isInstanceOf(AppException.class)
+                .satisfies(ex -> assertThat(((AppException) ex).getErrorCodeStr()).isEqualTo("TKT_ACCESS_DENIED"));
+        verify(ticket, never()).getStatus();
+    }
+
+    @Test
+    void adminWithOwnerRoleCanFilterAnyStation() {
+        UUID otherStationId = UUID.randomUUID();
+        SecurityContextHolder.getContext().setAuthentication(
+                UsernamePasswordAuthenticationToken.authenticated("admin", "", List.of(
+                        new SimpleGrantedAuthority("ROLE_ADMIN"),
+                        new SimpleGrantedAuthority("ROLE_OWNER"))));
+        when(stationRepository.findAllByOwner_Id(REPORTER_ID)).thenReturn(List.of());
+        when(ticketRepository.findAll(any(org.springframework.data.jpa.domain.Specification.class),
+                any(org.springframework.data.domain.Pageable.class))).thenReturn(Page.empty());
+        when(ticketResponseAssembler.toResponses(List.of())).thenReturn(List.of());
+
+        assertThat(service.getTickets(null, otherStationId, 1, 20).getContent()).isEmpty();
+        verify(ticketRepository).findAll(any(org.springframework.data.jpa.domain.Specification.class),
+                any(org.springframework.data.domain.Pageable.class));
+    }
+
+    @Test
+    void ownerWithStaffRoleCanFilterOwnedStationWithoutStaffAssignment() {
+        Station station = mock(Station.class);
+        when(station.getId()).thenReturn(STATION_ID);
+        SecurityContextHolder.getContext().setAuthentication(
+                UsernamePasswordAuthenticationToken.authenticated("owner", "", List.of(
+                        new SimpleGrantedAuthority("ROLE_OWNER"),
+                        new SimpleGrantedAuthority("ROLE_DRIVER"))));
+        when(stationRepository.findAllByOwner_Id(REPORTER_ID)).thenReturn(List.of(station));
+        when(stationStaffAssignmentRepository.findAllByStaff_IdAndStatus(
+                REPORTER_ID, com.thang.chargeops.station.staff.entity.StaffAssignmentStatus.ACTIVE))
+                .thenReturn(List.of());
+        when(ticketRepository.findAll(any(org.springframework.data.jpa.domain.Specification.class),
+                any(org.springframework.data.domain.Pageable.class))).thenReturn(Page.empty());
+        when(ticketResponseAssembler.toResponses(List.of())).thenReturn(List.of());
+
+        assertThat(service.getTickets(null, STATION_ID, 1, 20).getContent()).isEmpty();
     }
 
     @Test
@@ -257,7 +352,8 @@ class SupportTicketServiceTest {
         UUID ticketId = UUID.randomUUID();
         SupportTicket ticket = mock(SupportTicket.class);
         when(ticket.getStatus()).thenReturn(TicketStatus.CLOSED);
-        when(ticketRepository.findById(ticketId)).thenReturn(Optional.of(ticket));
+        when(ticket.getReporter()).thenReturn(reporter);
+        when(ticketRepository.findByIdForUpdate(ticketId)).thenReturn(Optional.of(ticket));
 
         assertThatThrownBy(() -> service.replyTicket(ticketId, UUID.randomUUID(), new MessageRequest("Late reply")))
                 .isInstanceOf(AppException.class);

@@ -18,6 +18,31 @@ import static org.mockito.Mockito.mock;
 class SupportTicketEntityTest {
 
     @Test
+    void resolutionCycleUsesExactTenDaysAndContinuationCancelsOldDeadline() {
+        UserProfile reporter = mock(UserProfile.class);
+        UserProfile handler = mock(UserProfile.class);
+        SupportTicket ticket = SupportTicket.open("TKT-20261001-0001", TicketCategory.OTHER,
+            TicketPriority.MEDIUM, reporter, null, null, new SupportTicket.TicketDetails("Issue", "Description"));
+        Instant first = Instant.parse("2026-10-01T00:00:00Z");
+
+        ticket.assign(handler);
+        ticket.resolve(first);
+        assertThat(ticket.getAutoCloseAt()).isEqualTo(first.plusSeconds(10L * 24 * 60 * 60));
+        assertThat(ticket.getResolutionCycle()).isEqualTo(1);
+
+        ticket.continueWork(handler);
+        assertThat(ticket.getAutoCloseAt()).isNull();
+        ticket.resolve(first.plusSeconds(3600));
+        assertThat(ticket.getResolutionCycle()).isEqualTo(2);
+        assertThat(ticket.getAutoCloseAt()).isEqualTo(first.plusSeconds(3600 + 10L * 24 * 60 * 60));
+
+        ticket.close("AUTO_CLOSED_NO_RESPONSE");
+        assertThat(ticket.getAutoCloseAt()).isNull();
+        assertThat(ticket.getCloseReason()).isEqualTo("AUTO_CLOSED_NO_RESPONSE");
+        assertThatThrownBy(() -> ticket.assign(handler)).isInstanceOf(IllegalStateException.class);
+    }
+
+    @Test
     void createsOpenTicketAndImmutableAuditRecords() {
         UserProfile reporter = mock(UserProfile.class);
         Station station = mock(Station.class);
@@ -29,8 +54,8 @@ class SupportTicketEntityTest {
                 reporter,
                 station,
                 booking,
-                " Charger stopped ",
-                " The charging connector stopped unexpectedly. "
+                new SupportTicket.TicketDetails(" Charger stopped ",
+                        " The charging connector stopped unexpectedly. ")
         );
 
         assertThat(ticket.getTicketCode()).isEqualTo("TKT-20260929-0001");
@@ -72,8 +97,7 @@ class SupportTicketEntityTest {
                 actor,
                 null,
                 null,
-                "Subject",
-                "Description"
+                new SupportTicket.TicketDetails("Subject", "Description")
         )).isInstanceOf(IllegalArgumentException.class);
 
         SupportTicket ticket = SupportTicket.open(
@@ -83,8 +107,7 @@ class SupportTicketEntityTest {
                 actor,
                 null,
                 null,
-                "Subject",
-                "Description"
+                new SupportTicket.TicketDetails("Subject", "Description")
         );
         Instant now = Instant.parse("2026-09-29T08:00:00Z");
 

@@ -4,12 +4,15 @@ import com.thang.chargeops.booking.repository.BookingRepository;
 import com.thang.chargeops.profile.repository.UserProfileRepository;
 import com.thang.chargeops.profile.support.CurrentProfileProvider;
 import com.thang.chargeops.support.dto.request.CreateTicketRequest;
+import com.thang.chargeops.support.dto.request.MessageRequest;
 import com.thang.chargeops.support.model.TicketCategory;
 import com.thang.chargeops.support.model.TicketPriority;
 import com.thang.chargeops.support.repository.SupportTicketRepository;
 import com.thang.chargeops.support.repository.TicketMessageRepository;
 import com.thang.chargeops.support.service.SupportTicketService;
 import com.thang.chargeops.support.service.impl.SupportTicketServiceImpl;
+import com.thang.chargeops.support.service.support.TicketResponseService;
+import com.thang.chargeops.support.service.support.TicketResponseMapper;
 import jakarta.persistence.EntityManager;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -42,7 +45,8 @@ import static org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTest
         "spring.docker.compose.enabled=false"
 })
 @AutoConfigureTestDatabase(replace = NONE)
-@Import({SupportTicketServiceImpl.class, SupportTicketCreatePostgresTest.FixedClockConfig.class})
+@Import({SupportTicketServiceImpl.class, TicketResponseService.class, TicketResponseMapper.class,
+        SupportTicketCreatePostgresTest.FixedClockConfig.class})
 class SupportTicketCreatePostgresTest {
     @Container
     @ServiceConnection
@@ -116,5 +120,14 @@ class SupportTicketCreatePostgresTest {
                 "WHERE booking_id = ?", Boolean.class, bookingId)).isTrue();
         assertThat(jdbc.queryForObject("SELECT is_eligible_for_payout FROM v_owner_booking_financials " +
                 "WHERE booking_id = ?", Boolean.class, bookingId)).isFalse();
+
+        UUID clientMessageId = UUID.randomUUID();
+        var firstReply = ticketService.replyTicket(created.ticketId(), clientMessageId,
+                new MessageRequest("Additional details"));
+        var replayed = ticketService.replyTicket(created.ticketId(), clientMessageId,
+                new MessageRequest("Changed text on retry"));
+
+        assertThat(replayed).isEqualTo(firstReply);
+        assertThat(messages.findByTicketIdOrderByCreatedAtAscIdAsc(created.ticketId())).hasSize(2);
     }
 }

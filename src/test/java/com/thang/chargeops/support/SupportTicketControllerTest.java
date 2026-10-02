@@ -5,6 +5,8 @@ import com.thang.chargeops.infra.security.RestAccessDeniedHandler;
 import com.thang.chargeops.infra.security.RestAuthenticationEntryPoint;
 import com.thang.chargeops.support.controller.SupportTicketController;
 import com.thang.chargeops.support.service.SupportTicketService;
+import com.thang.chargeops.support.service.TicketEventQueryService;
+import com.thang.chargeops.support.service.impl.TicketWorkflowService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.TestConfiguration;
@@ -31,6 +33,7 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @WebMvcTest(SupportTicketController.class)
@@ -38,6 +41,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class SupportTicketControllerTest {
     @Autowired MockMvc mockMvc;
     @MockitoBean SupportTicketService ticketService;
+    @MockitoBean TicketWorkflowService workflowService;
+    @MockitoBean TicketEventQueryService ticketReadService;
     @MockitoBean RestAuthenticationEntryPoint authenticationEntryPoint;
     @MockitoBean RestAccessDeniedHandler accessDeniedHandler;
 
@@ -49,6 +54,27 @@ class SupportTicketControllerTest {
                     .authorizeHttpRequests(auth -> auth.anyRequest().authenticated())
                     .build();
         }
+    }
+
+    @Test
+    @WithMockUser(roles = "DRIVER")
+    void claimRequiresExpectedVersion() throws Exception {
+        UUID ticketId = UUID.randomUUID();
+        mockMvc.perform(post("/api/v1/tickets/{ticketId}/claim", ticketId)
+                .contentType(MediaType.APPLICATION_JSON).content("{}"))
+            .andExpect(status().isBadRequest());
+        verifyNoInteractions(workflowService);
+    }
+
+    @Test
+    @WithMockUser(roles = "DRIVER")
+    void statusEndpointDelegatesValidatedTransition() throws Exception {
+        UUID ticketId = UUID.randomUUID();
+        mockMvc.perform(patch("/api/v1/tickets/{ticketId}/status", ticketId)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"expectedVersion\":1,\"status\":\"CLOSED\"}"))
+            .andExpect(status().isOk());
+        verify(workflowService).changeStatus(eq(ticketId), any());
     }
 
     @Test
@@ -112,18 +138,31 @@ class SupportTicketControllerTest {
 
     @Test
     @WithMockUser(roles = "DRIVER")
-    void authenticatedReplyTicketWithIdempotencyHeaderReturnsCreated() throws Exception {
+    void authenticatedReplyTicketWithOptionalClientMessageIdReturnsCreated() throws Exception {
         UUID ticketId = UUID.randomUUID();
-        UUID idempotencyKey = UUID.randomUUID();
+        UUID clientMessageId = UUID.randomUUID();
 
         mockMvc.perform(post("/api/v1/tickets/" + ticketId + "/messages")
-                        .header("Idempotency-Key", idempotencyKey.toString())
+                        .header("Client-Message-Id", clientMessageId.toString())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"body":"Thank you for checking this."}
                                 """))
                 .andExpect(status().isCreated());
 
-        verify(ticketService).replyTicket(eq(ticketId), eq(idempotencyKey), any());
+        verify(ticketService).replyTicket(eq(ticketId), eq(clientMessageId), any());
+    }
+
+    @Test
+    @WithMockUser(roles = "DRIVER")
+    void replyTicketWithoutClientKeyIsAllowed() throws Exception {
+        UUID ticketId = UUID.randomUUID();
+
+        mockMvc.perform(post("/api/v1/tickets/" + ticketId + "/messages")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"body\":\"No client key\"}"))
+                .andExpect(status().isCreated());
+
+        verify(ticketService).replyTicket(eq(ticketId), eq(null), any());
     }
 }

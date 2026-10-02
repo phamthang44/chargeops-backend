@@ -11,6 +11,8 @@ import org.springframework.http.HttpStatus;
 public enum TicketErrorCode implements BaseErrorCode {
     NOT_FOUND(HttpStatus.NOT_FOUND, "TKT_NOT_FOUND", TicketErrorMessage.NOT_FOUND),
     ACCESS_DENIED(HttpStatus.FORBIDDEN, "TKT_ACCESS_DENIED", TicketErrorMessage.ACCESS_DENIED),
+    CLAIM_REQUIRED(HttpStatus.CONFLICT, "TKT_CLAIM_REQUIRED", TicketErrorMessage.CLAIM_REQUIRED),
+    NOT_CURRENT_HANDLER(HttpStatus.FORBIDDEN, "TKT_NOT_CURRENT_HANDLER", TicketErrorMessage.NOT_CURRENT_HANDLER),
     INVALID_SCOPE(HttpStatus.BAD_REQUEST, "TKT_INVALID_SCOPE", TicketErrorMessage.INVALID_SCOPE),
     STATE_CONFLICT(HttpStatus.CONFLICT, "TKT_STATE_CONFLICT", TicketErrorMessage.STATE_CONFLICT),
     VERSION_CONFLICT(HttpStatus.CONFLICT, "TKT_VERSION_CONFLICT", TicketErrorMessage.VERSION_CONFLICT),

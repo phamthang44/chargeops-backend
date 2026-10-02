@@ -21,6 +21,8 @@ import com.thang.chargeops.station.staff.entity.StationStaffAssignment;
 import com.thang.chargeops.station.staff.policy.StationStaffPolicy;
 import com.thang.chargeops.station.staff.repository.StationStaffAssignmentRepository;
 import com.thang.chargeops.station.staff.service.StationStaffService;
+import com.thang.chargeops.support.service.impl.TicketWorkflowService;
+import org.springframework.beans.factory.annotation.Autowired;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.hibernate.exception.ConstraintViolationException;
@@ -50,6 +52,12 @@ public class StationStaffServiceImpl implements StationStaffService {
     private final CurrentProfileProvider currentProfileProvider;
     private final StationStaffPolicy policy;
     private final IdentityRoleService identityRoleService;
+    private TicketWorkflowService ticketWorkflowService;
+
+    @Autowired(required = false)
+    void setTicketWorkflowService(TicketWorkflowService ticketWorkflowService) {
+        this.ticketWorkflowService = ticketWorkflowService;
+    }
 
     @Override
     @Transactional(readOnly = true)
@@ -236,6 +244,10 @@ public class StationStaffServiceImpl implements StationStaffService {
         assignment.setRevokedAt(Instant.now());
         StationStaffAssignment savedAssignment =
                 stationStaffAssignmentRepository.saveAndFlush(assignment);
+
+        if (ticketWorkflowService != null) {
+            ticketWorkflowService.releaseRevokedStaff(stationId, savedAssignment.getStaff().getId(), currentOwnerId);
+        }
 
         log.info(LogConstant.SERVICE_LOG_FORMAT, LogConstant.ACTION_SUCCESS, "revokeStaff", currentOwnerId,
                 "stationId=" + stationId + ", assignmentId=" + savedAssignment.getId()

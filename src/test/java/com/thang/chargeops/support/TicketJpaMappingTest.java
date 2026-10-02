@@ -101,8 +101,8 @@ class TicketJpaMappingTest {
                 actor,
                 station,
                 booking,
-                "Connector stopped",
-                "Connector stopped during the paid session"
+                new SupportTicket.TicketDetails("Connector stopped",
+                        "Connector stopped during the paid session")
         ));
         Instant affectedAt = Instant.parse("2026-09-29T08:20:00Z");
         TicketMessage message = messageRepository.saveAndFlush(TicketMessage.create(

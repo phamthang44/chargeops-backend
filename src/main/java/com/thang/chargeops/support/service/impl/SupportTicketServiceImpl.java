@@ -24,17 +24,15 @@ import com.thang.chargeops.support.model.TicketStatus;
 import com.thang.chargeops.support.repository.SupportTicketRepository;
 import com.thang.chargeops.support.repository.TicketMessageRepository;
 import com.thang.chargeops.support.service.SupportTicketService;
-import com.thang.chargeops.support.service.support.SupportTicketResponseAssembler;
+import com.thang.chargeops.support.service.support.TicketResponseService;
 import com.thang.chargeops.support.specification.SupportTicketSpecifications;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
-import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -57,16 +55,23 @@ import java.util.stream.Collectors;
 public class SupportTicketServiceImpl implements SupportTicketService {
     private static final ZoneId STATION_ZONE = ZoneId.of(SystemConstant.SYSTEM_REGION_TIMEZONE);
     private static final DateTimeFormatter CODE_DATE = DateTimeFormatter.BASIC_ISO_DATE;
+    private static final String ROLE_ADMIN = "ROLE_ADMIN";
+    private static final String ROLE_OWNER = "ROLE_OWNER";
 
     private final CurrentProfileProvider currentProfileProvider;
     private final BookingRepository bookingRepository;
     private final StationRepository stationRepository;
     private final SupportTicketRepository ticketRepository;
     private final TicketMessageRepository messageRepository;
-    private final JdbcTemplate jdbcTemplate;
     private final Clock clock;
     private final StationStaffAssignmentRepository stationStaffAssignmentRepository;
-    private final SupportTicketResponseAssembler ticketResponseAssembler;
+    private final TicketResponseService ticketResponseAssembler;
+    private TicketWorkflowService workflowService;
+
+    @Autowired(required = false)
+    void setWorkflowService(TicketWorkflowService workflowService) {
+        this.workflowService = workflowService;
+    }
 
     @Autowired
     public SupportTicketServiceImpl(
@@ -75,17 +80,15 @@ public class SupportTicketServiceImpl implements SupportTicketService {
             StationRepository stationRepository,
             SupportTicketRepository ticketRepository,
             TicketMessageRepository messageRepository,
-            JdbcTemplate jdbcTemplate,
             Clock clock,
             StationStaffAssignmentRepository stationStaffAssignmentRepository,
-            SupportTicketResponseAssembler ticketResponseAssembler
+            TicketResponseService ticketResponseAssembler
     ) {
         this.currentProfileProvider = currentProfileProvider;
         this.bookingRepository = bookingRepository;
         this.stationRepository = stationRepository;
         this.ticketRepository = ticketRepository;
         this.messageRepository = messageRepository;
-        this.jdbcTemplate = jdbcTemplate;
         this.clock = clock;
         this.stationStaffAssignmentRepository = stationStaffAssignmentRepository;
         this.ticketResponseAssembler = ticketResponseAssembler;
@@ -97,11 +100,10 @@ public class SupportTicketServiceImpl implements SupportTicketService {
             StationRepository stationRepository,
             SupportTicketRepository ticketRepository,
             TicketMessageRepository messageRepository,
-            JdbcTemplate jdbcTemplate,
             Clock clock
     ) {
         this(currentProfileProvider, bookingRepository, stationRepository, ticketRepository,
-                messageRepository, jdbcTemplate, clock, null, null);
+                messageRepository, clock, null, null);
     }
 
     @Override
@@ -137,30 +139,17 @@ public class SupportTicketServiceImpl implements SupportTicketService {
                 || request.category() == TicketCategory.BOOKING ? station : null;
         SupportTicket ticket = ticketRepository.saveAndFlush(SupportTicket.open(
                 nextTicketCode(), request.category(), request.priority(), reporter, routedStation, booking,
-                request.subject(), request.description()
+                new SupportTicket.TicketDetails(request.subject(), request.description())
         ));
-        TicketMessage firstMessage = messageRepository.saveAndFlush(TicketMessage.create(
+        messageRepository.saveAndFlush(TicketMessage.create(
                 ticket, reporter, TicketActorKind.REPORTER, request.description(), clock.instant()
         ));
-        String displayName = reporter.getDisplayName();
-        if (displayName == null || displayName.isBlank()) {
-            displayName = reporter.getEmail();
-        }
-        return new TicketResponse(
-                ticket.getId(), ticket.getTicketCode(), ticket.getCategory(), ticket.getPriority(),
-                ticket.getSubject(), ticket.getStatus(), ticket.getVersion(),
-                booking == null ? null : booking.getId(),
-                routedStation == null ? null : routedStation.getId(),
-                reporter.getId(), null, ticket.getCreatedAt(),
-                List.of(new TicketMessageResponse(firstMessage.getId(), displayName,
-                        firstMessage.getAuthorKind(), firstMessage.getBody(), firstMessage.getCreatedAt())),
-                List.of(), List.of()
-        );
+        return ticketResponseAssembler.toResponse(ticket);
     }
 
+
     private String nextTicketCode() {
-        Long sequence = Objects.requireNonNull(jdbcTemplate.queryForObject(
-                "SELECT nextval('support_ticket_code_seq')", Long.class));
+        Long sequence = Objects.requireNonNull(ticketRepository.nextTicketCodeSequence());
         String date = LocalDate.ofInstant(clock.instant(), STATION_ZONE).format(CODE_DATE);
         return String.format(Locale.ROOT, "TKT-%s-%04d", date, sequence);
     }
@@ -171,26 +160,9 @@ public class SupportTicketServiceImpl implements SupportTicketService {
         UserProfile profile = currentProfileProvider.requireProfile();
         Set<String> roles = getCurrentRoles();
 
-        Set<UUID> ownedStationIds = Collections.emptySet();
-        if (roles.contains("ROLE_STATION_OWNER")) {
-            ownedStationIds = stationRepository.findAllByOwner_Id(profile.getId()).stream()
-                    .map(Station::getId)
-                    .collect(Collectors.toSet());
-            if (stationId != null && !ownedStationIds.contains(stationId)) {
-                throw new AppException(TicketErrorCode.ACCESS_DENIED);
-            }
-        }
-
-        Set<UUID> activeStaffStationIds = Collections.emptySet();
-        if (roles.contains("ROLE_STATION_STAFF")) {
-            activeStaffStationIds = stationStaffAssignmentRepository
-                    .findAllByStaff_IdAndStatus(profile.getId(), StaffAssignmentStatus.ACTIVE).stream()
-                    .map(a -> a.getStation().getId())
-                    .collect(Collectors.toSet());
-            if (stationId != null && !activeStaffStationIds.contains(stationId)) {
-                throw new AppException(TicketErrorCode.ACCESS_DENIED);
-            }
-        }
+        Set<UUID> ownedStationIds = ownedStationIds(profile, roles);
+        Set<UUID> activeStaffStationIds = activeStaffStationIds(profile);
+        requireStationScope(stationId, roles, ownedStationIds, activeStaffStationIds);
 
         Pageable pageable = PageRequest.of(page - 1, size, Sort.by(Sort.Order.desc("createdAt"), Sort.Order.desc("id")));
         Specification<SupportTicket> spec = SupportTicketSpecifications.forActor(
@@ -199,6 +171,29 @@ public class SupportTicketServiceImpl implements SupportTicketService {
         Page<SupportTicket> ticketPage = ticketRepository.findAll(spec, pageable);
         List<TicketResponse> responses = ticketResponseAssembler.toResponses(ticketPage.getContent());
         return new PageImpl<>(responses, pageable, ticketPage.getTotalElements());
+    }
+
+    private Set<UUID> ownedStationIds(UserProfile profile, Set<String> roles) {
+        if (!roles.contains(ROLE_OWNER)) return Collections.emptySet();
+        return stationRepository.findAllByOwner_Id(profile.getId()).stream()
+                .map(Station::getId)
+                .collect(Collectors.toSet());
+    }
+
+    private Set<UUID> activeStaffStationIds(UserProfile profile) {
+        return stationStaffAssignmentRepository
+                .findAllByStaff_IdAndStatus(profile.getId(), StaffAssignmentStatus.ACTIVE).stream()
+                .map(assignment -> assignment.getStation().getId())
+                .collect(Collectors.toSet());
+    }
+
+    private void requireStationScope(UUID stationId, Set<String> roles, Set<UUID> ownedStationIds,
+                                     Set<UUID> activeStaffStationIds) {
+        if (stationId != null && !roles.contains(ROLE_ADMIN)
+                && (roles.contains(ROLE_OWNER) || !activeStaffStationIds.isEmpty())
+                && !ownedStationIds.contains(stationId) && !activeStaffStationIds.contains(stationId)) {
+            throw new AppException(TicketErrorCode.ACCESS_DENIED);
+        }
     }
 
     @Override
@@ -223,49 +218,68 @@ public class SupportTicketServiceImpl implements SupportTicketService {
         UserProfile author = currentProfileProvider.requireProfile();
         Set<String> roles = getCurrentRoles();
 
-        SupportTicket ticket = ticketRepository.findById(ticketId)
+        SupportTicket ticket = ticketRepository.findByIdForUpdate(ticketId)
                 .orElseThrow(() -> new AppException(TicketErrorCode.NOT_FOUND));
 
-        if (ticket.getStatus() == TicketStatus.CLOSED) {
-            throw new AppException(TicketErrorCode.CLOSED);
+        TicketActorKind authorKind = resolveAuthorKind(ticket, author, roles);
+        prepareReply(ticket, ticketId, author, authorKind, request.body());
+
+        TicketMessage message = TicketMessage.create(
+                ticket, author, authorKind, request.body(), clock.instant(), clientMessageId);
+        if (clientMessageId == null) {
+            // Messages without a client key are allowed, but cannot be replayed safely.
+            return ticketResponseAssembler.toMessageResponse(messageRepository.saveAndFlush(message));
         }
 
-        TicketActorKind authorKind = resolveAuthorKind(ticket, author, roles);
+        // The unique index remains the final duplicate guard. ON CONFLICT avoids
+        // aborting the PostgreSQL transaction before we read the original message.
+        messageRepository.insertIgnoreDuplicate(ticketId, author.getId(), authorKind.name(),
+                message.getBody(), message.getCreatedAt(), clientMessageId);
+        return messageRepository.findByAuthor_IdAndClientMessageId(author.getId(), clientMessageId)
+                .map(ticketResponseAssembler::toMessageResponse)
+                .orElseThrow(() -> new IllegalStateException("Ticket message was not found after insert or replay"));
+    }
+
+    private void prepareReply(SupportTicket ticket, UUID ticketId, UserProfile author,
+                              TicketActorKind authorKind, String body) {
         if (authorKind == null) {
             throw new AppException(TicketErrorCode.ACCESS_DENIED);
         }
+        if (ticket.getStatus() == TicketStatus.CLOSED) {
+            throw new AppException(TicketErrorCode.CLOSED);
+        }
+        if (ticket.getStatus() == TicketStatus.RESOLVED) {
+            if (authorKind != TicketActorKind.REPORTER) throw new AppException(TicketErrorCode.STATE_CONFLICT);
+            if (workflowService == null) throw new AppException(TicketErrorCode.STATE_CONFLICT);
+            workflowService.continueFromReply(ticketId, author, body);
+            return;
+        }
+        if (authorKind != TicketActorKind.REPORTER) requireCurrentHandler(ticket, author);
+    }
 
-        try {
-            TicketMessage message = messageRepository.saveAndFlush(TicketMessage.create(
-                    ticket, author, authorKind, request.body(), clock.instant(), clientMessageId
-            ));
-            return ticketResponseAssembler.toMessageResponse(message);
-        } catch (DataIntegrityViolationException ex) {
-            if (clientMessageId != null && isClientMessageDuplicate(ex)) {
-                return messageRepository.findByAuthor_IdAndClientMessageId(author.getId(), clientMessageId)
-                        .map(ticketResponseAssembler::toMessageResponse)
-                        .orElseThrow(() -> ex);
-            }
-            throw ex;
+    private void requireCurrentHandler(SupportTicket ticket, UserProfile author) {
+        if (ticket.getAssignedHandler() == null) {
+            throw new AppException(ticket.getStatus() == TicketStatus.OPEN
+                    ? TicketErrorCode.CLAIM_REQUIRED : TicketErrorCode.STATE_CONFLICT);
+        }
+        if (!ticket.getAssignedHandler().getId().equals(author.getId())) {
+            throw new AppException(TicketErrorCode.NOT_CURRENT_HANDLER);
         }
     }
 
     private boolean canAccessTicket(SupportTicket ticket, UserProfile profile, Set<String> roles) {
-        if (roles.contains("ROLE_ADMIN")) {
+        if (roles.contains(ROLE_ADMIN)) {
             return true;
         }
         if (ticket.getReporter() != null && ticket.getReporter().getId().equals(profile.getId())) {
             return true;
         }
-        if (ticket.getAssignedHandler() != null && ticket.getAssignedHandler().getId().equals(profile.getId())) {
-            return true;
-        }
         if (ticket.getStation() != null) {
-            if (roles.contains("ROLE_STATION_OWNER") && ticket.getStation().getOwner() != null
+            if (roles.contains(ROLE_OWNER) && ticket.getStation().getOwner() != null
                     && ticket.getStation().getOwner().getId().equals(profile.getId())) {
                 return true;
             }
-            if (roles.contains("ROLE_STATION_STAFF") && stationStaffAssignmentRepository
+            if (stationStaffAssignmentRepository
                     .existsByStation_IdAndStaff_IdAndStatus(ticket.getStation().getId(), profile.getId(), StaffAssignmentStatus.ACTIVE)) {
                 return true;
             }
@@ -274,37 +288,28 @@ public class SupportTicketServiceImpl implements SupportTicketService {
     }
 
     private TicketActorKind resolveAuthorKind(SupportTicket ticket, UserProfile author, Set<String> roles) {
-        if (roles.contains("ROLE_ADMIN")) {
-            return TicketActorKind.ADMIN;
-        }
         if (ticket.getReporter() != null && ticket.getReporter().getId().equals(author.getId())) {
             return TicketActorKind.REPORTER;
         }
+        if (roles.contains(ROLE_ADMIN) && ticket.getStation() == null) {
+            return TicketActorKind.ADMIN;
+        }
         if (ticket.getStation() != null) {
-            if (roles.contains("ROLE_STATION_OWNER") && ticket.getStation().getOwner() != null
+            if (roles.contains(ROLE_OWNER) && ticket.getStation().getOwner() != null
                     && ticket.getStation().getOwner().getId().equals(author.getId())) {
                 return TicketActorKind.OWNER;
             }
-            if (roles.contains("ROLE_STATION_STAFF") && stationStaffAssignmentRepository
+            if (stationStaffAssignmentRepository
                     .existsByStation_IdAndStaff_IdAndStatus(ticket.getStation().getId(), author.getId(), StaffAssignmentStatus.ACTIVE)) {
                 return TicketActorKind.STAFF;
             }
-        }
-        if (ticket.getAssignedHandler() != null && ticket.getAssignedHandler().getId().equals(author.getId())) {
-            if (roles.contains("ROLE_STATION_STAFF")) {
-                return TicketActorKind.STAFF;
-            }
-            if (roles.contains("ROLE_STATION_OWNER")) {
-                return TicketActorKind.OWNER;
-            }
-            return TicketActorKind.ADMIN;
         }
         return null;
     }
 
     private Set<String> getCurrentRoles() {
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
-        if (authentication == null || authentication.getAuthorities() == null) {
+        if (authentication == null) {
             return Collections.emptySet();
         }
         return authentication.getAuthorities().stream()
@@ -312,16 +317,4 @@ public class SupportTicketServiceImpl implements SupportTicketService {
                 .collect(Collectors.toSet());
     }
 
-    private boolean isClientMessageDuplicate(DataIntegrityViolationException ex) {
-        String msg = ex.getMessage();
-        Throwable cause = ex.getCause();
-        while (cause != null) {
-            if (cause.getMessage() != null && (cause.getMessage().contains("ux_ticket_messages_client_id")
-                    || cause.getMessage().contains("client_message_id"))) {
-                return true;
-            }
-            cause = cause.getCause();
-        }
-        return msg != null && (msg.contains("ux_ticket_messages_client_id") || msg.contains("client_message_id"));
-    }
 }

@@ -13,6 +13,8 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 
 import java.util.regex.Pattern;
+import java.time.Instant;
+import java.time.Duration;
 
 @Entity
 @Table(name = "support_tickets", uniqueConstraints = {
@@ -27,7 +29,10 @@ import java.util.regex.Pattern;
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class SupportTicket extends AuditableEntity {
-    private static final Pattern CODE_PATTERN = Pattern.compile("TKT-[0-9]{8}-[0-9]{4,}");
+    private static final Pattern CODE_PATTERN = Pattern.compile("TKT-\\d{8}-\\d{4,}");
+
+    public record TicketDetails(String subject, String description) {
+    }
 
     @Column(name = "ticket_code", nullable = false, length = 32, updatable = false)
     private String ticketCode;
@@ -70,6 +75,52 @@ public class SupportTicket extends AuditableEntity {
     @Column(nullable = false)
     private Long version = 0L;
 
+    @Column(name = "resolved_at")
+    private Instant resolvedAt;
+
+    @Column(name = "auto_close_at")
+    private Instant autoCloseAt;
+
+    @Column(name = "close_reason", length = 40)
+    private String closeReason;
+
+    @Column(name = "resolution_cycle", nullable = false)
+    private int resolutionCycle;
+
+    public void assign(UserProfile handler) {
+        if (status != TicketStatus.OPEN && status != TicketStatus.IN_PROGRESS) throw new IllegalStateException("Ticket cannot be assigned");
+        assignedHandler = handler;
+        status = TicketStatus.IN_PROGRESS;
+    }
+
+    public void release() {
+        if (status != TicketStatus.IN_PROGRESS) throw new IllegalStateException("Ticket is not in progress");
+        assignedHandler = null;
+        status = TicketStatus.OPEN;
+    }
+
+    public void resolve(Instant now) {
+        if (status != TicketStatus.IN_PROGRESS) throw new IllegalStateException("Ticket is not in progress");
+        status = TicketStatus.RESOLVED;
+        resolvedAt = now;
+        autoCloseAt = now.plus(Duration.ofDays(10));
+        resolutionCycle++;
+    }
+
+    public void continueWork(UserProfile handler) {
+        if (status != TicketStatus.RESOLVED) throw new IllegalStateException("Ticket is not resolved");
+        assignedHandler = handler;
+        status = handler == null ? TicketStatus.OPEN : TicketStatus.IN_PROGRESS;
+        autoCloseAt = null;
+    }
+
+    public void close(String reason) {
+        if (status != TicketStatus.RESOLVED) throw new IllegalStateException("Ticket is not resolved");
+        status = TicketStatus.CLOSED;
+        closeReason = reason;
+        autoCloseAt = null;
+    }
+
     public static SupportTicket open(
             String ticketCode,
             TicketCategory category,
@@ -77,15 +128,14 @@ public class SupportTicket extends AuditableEntity {
             UserProfile reporter,
             Station station,
             Booking booking,
-            String subject,
-            String description
+            TicketDetails details
     ) {
         String normalizedCode = requiredText(ticketCode, 32, "Ticket code");
         if (!CODE_PATTERN.matcher(normalizedCode).matches()) {
             throw new IllegalArgumentException("Ticket code must match TKT-yyyyMMdd-sequence");
         }
-        if (category == null || priority == null || reporter == null) {
-            throw new IllegalArgumentException("Ticket category, priority and reporter are required");
+        if (category == null || priority == null || reporter == null || details == null) {
+            throw new IllegalArgumentException("Ticket category, priority, reporter and details are required");
         }
 
         SupportTicket ticket = new SupportTicket();
@@ -96,8 +146,8 @@ public class SupportTicket extends AuditableEntity {
         ticket.reporter = reporter;
         ticket.station = station;
         ticket.booking = booking;
-        ticket.subject = requiredText(subject, 160, "Subject");
-        ticket.description = requiredText(description, 2000, "Description");
+        ticket.subject = requiredText(details.subject(), 160, "Subject");
+        ticket.description = requiredText(details.description(), 2000, "Description");
         return ticket;
     }
 

@@ -14,6 +14,12 @@ public final class TicketErrorMessage {
     public static final ErrorMessage.Template ACCESS_DENIED = template(
             "error.ticket.accessDenied", "You do not have access to this support ticket"
     );
+    public static final ErrorMessage.Template CLAIM_REQUIRED = template(
+            "error.ticket.claimRequired", "Claim this support ticket before sending a reply"
+    );
+    public static final ErrorMessage.Template NOT_CURRENT_HANDLER = template(
+            "error.ticket.notCurrentHandler", "This support ticket is assigned to another handler; only the current handler can reply"
+    );
     public static final ErrorMessage.Template INVALID_SCOPE = template(
             "error.ticket.invalidScope", "The booking or station context is invalid for this ticket"
     );
@@ -40,6 +46,8 @@ public final class TicketErrorMessage {
         return List.of(
                 NOT_FOUND,
                 ACCESS_DENIED,
+                CLAIM_REQUIRED,
+                NOT_CURRENT_HANDLER,
                 INVALID_SCOPE,
                 STATE_CONFLICT,
                 VERSION_CONFLICT,
