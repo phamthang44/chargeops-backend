@@ -26,10 +26,29 @@ public final class  SupportTicketSpecifications {
             TicketStatus status,
             UUID targetStationId
     ) {
+        return forActor(profile, roles, ownedStationIds, activeStaffStationIds, status, targetStationId, false);
+    }
+
+    /**
+     * @param reporterOnly khi {@code true} chỉ trả về ticket mà {@code profile} là người báo cáo.
+     *                     Dùng cho không gian Driver ("Phiếu tôi đã báo") để phân trang đúng số tổng.
+     */
+    public static Specification<SupportTicket> forActor(
+            UserProfile profile,
+            Set<String> roles,
+            Set<UUID> ownedStationIds,
+            Set<UUID> activeStaffStationIds,
+            TicketStatus status,
+            UUID targetStationId,
+            boolean reporterOnly
+    ) {
         return (root, query, cb) -> {
             List<Predicate> predicates = new ArrayList<>();
 
-            if (roles != null && roles.contains("ROLE_ADMIN")) {
+            if (reporterOnly) {
+                // Không gian Driver: chỉ ticket do chính người dùng báo cáo.
+                predicates.add(cb.equal(root.get("reporter").get("id"), profile.getId()));
+            } else if (roles != null && roles.contains("ROLE_ADMIN")) {
                 var escalated = query.subquery(UUID.class);
                 var escalation = escalated.from(TicketEscalation.class);
                 escalated.select(escalation.get("ticket").get("id"));

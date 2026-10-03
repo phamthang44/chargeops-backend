@@ -1,0 +1,48 @@
+meta {
+  name: Get Station Availability
+  type: http
+  seq: 3
+}
+
+get {
+  url: {{baseUrl}}/api/v1/stations/{{stationId}}/availability?startTime={{startTime}}&endTime={{endTime}}
+  body: none
+  auth: none
+}
+
+params:query {
+  startTime: {{startTime}}
+  endTime: {{endTime}}
+}
+
+script:pre-request {
+  // Fallback khi chạy folder lẻ mà chưa qua Keycloak Token
+  if (!bru.getEnvVar("startTime")) {
+    const gridMs = 30 * 60 * 1000;
+    const start = new Date(Math.ceil((Date.now() + 90 * 60 * 1000) / gridMs) * gridMs);
+    const end = new Date(start.getTime() + 60 * 60 * 1000);
+    bru.setEnvVar("startTime", start.toISOString());
+    bru.setEnvVar("endTime", end.toISOString());
+  }
+}
+
+script:post-response {
+  if (res.status === 200 && res.body.data && res.body.data.connectors && res.body.data.connectors.length > 0) {
+    bru.setEnvVar("connectorId", res.body.data.connectors[0].id);
+  }
+}
+
+tests {
+  test("Status code is 200", function() {
+    expect(res.getStatus()).to.equal(200);
+  });
+  test("Availability echoes the requested window", function() {
+    expect(res.getBody().data).to.be.an("object");
+  });
+  test("Connector list returned", function() {
+    expect(res.getBody().data.connectors).to.be.an("array");
+  });
+  test("connectorId captured for booking", function() {
+    expect(bru.getEnvVar("connectorId")).to.be.a("string");
+  });
+}

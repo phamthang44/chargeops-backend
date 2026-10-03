@@ -1,0 +1,38 @@
+meta {
+  name: Get Booking Detail - Tier2
+  type: http
+  seq: 7
+}
+
+tags {
+  tier2Pre
+}
+
+get {
+  url: {{baseUrl}}/api/v1/bookings/{{bookingId}}
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{access_token}}
+}
+
+script:post-response {
+  if (res.status === 200 && res.body.data) {
+    bru.setEnvVar("bookingVersion", String(res.body.data.version));
+  }
+}
+
+tests {
+  test("Status code is 200", function() {
+    expect(res.getStatus()).to.equal(200);
+  });
+  test("Booking is CONFIRMED and paid before check-in phase", function() {
+    const d = res.getBody().data;
+    expect(d.bookingId).to.equal(bru.getEnvVar("bookingId"));
+    expect(d.status).to.equal("CONFIRMED");
+    expect(d.payment.status).to.equal("PAID");
+    expect(d.checkInDeadline).to.be.a("string");
+  });
+}

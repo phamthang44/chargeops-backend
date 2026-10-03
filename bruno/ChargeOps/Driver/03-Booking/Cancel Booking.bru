@@ -1,0 +1,63 @@
+meta {
+  name: Cancel Booking
+  type: http
+  seq: 7
+}
+
+post {
+  url: {{baseUrl}}/api/v1/bookings/{{bookingId}}/cancel
+  body: json
+  auth: bearer
+}
+
+headers {
+  Idempotency-Key: {{cancelKey}}
+}
+
+auth:bearer {
+  token: {{access_token}}
+}
+
+script:pre-request {
+  function uuid() {
+    return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, function(c) {
+      const r = (Math.random() * 16) | 0;
+      const v = c === "x" ? r : (r & 0x3) | 0x8;
+      return v.toString(16);
+    });
+  }
+  bru.setEnvVar("cancelKey", uuid());
+}
+
+body:json {
+  {
+    "expectedVersion": {{bookingVersion}},
+    "expectedRefundAmount": {{bookingTotal}},
+    "acceptedPolicyVersion": "{{policyVersion}}"
+  }
+}
+
+script:post-response {
+  if (res.status === 200 && res.body.data) {
+    bru.setEnvVar("cancelledVersion", String(res.body.data.version));
+  }
+}
+
+tests {
+  test("Status code is 200", function() {
+    expect(res.getStatus()).to.equal(200);
+  });
+  test("Booking transitions to CANCELLED", function() {
+    const d = res.getBody().data;
+    expect(d.bookingId).to.equal(bru.getEnvVar("bookingId"));
+    expect(d.status).to.equal("CANCELLED");
+    expect(d.cancellationReason).to.be.a("string").and.not.empty;
+  });
+  test("Optimistic version incremented", function() {
+    expect(Number(res.getBody().data.version)).to.be.greaterThan(Number(bru.getEnvVar("bookingVersion")));
+  });
+  test("Full refund expected within grace window", function() {
+    expect(String(res.getBody().data.totalAmount)).to.equal(bru.getEnvVar("bookingTotal"));
+    expect(res.getBody().data.refunds).to.be.an("array");
+  });
+}

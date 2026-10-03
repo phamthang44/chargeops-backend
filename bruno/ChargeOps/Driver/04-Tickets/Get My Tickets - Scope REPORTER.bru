@@ -1,0 +1,45 @@
+meta {
+  name: Get My Tickets - Scope REPORTER
+  type: http
+  seq: 2
+}
+
+get {
+  url: {{baseUrl}}/api/v1/tickets?scope=REPORTER&page=1&size=20
+  body: none
+  auth: bearer
+}
+
+params:query {
+  scope: REPORTER
+  page: 1
+  size: 20
+}
+
+auth:bearer {
+  token: {{access_token}}
+}
+
+tests {
+  test("Status code is 200", function() {
+    expect(res.getStatus()).to.equal(200);
+  });
+  test("List returned with pagination", function() {
+    expect(res.getBody().data).to.be.an("array");
+    expect(res.getBody().meta.totalElements).to.be.a("number");
+  });
+  test("Own ticket present and scoped to reporter", function() {
+    const rows = res.getBody().data || [];
+    const found = rows.filter(function(t) {
+      return t.ticketId === bru.getEnvVar("ticketId");
+    });
+    expect(found).to.have.length(1);
+    expect(found[0].reporterId).to.equal(bru.getEnvVar("profileId"));
+    expect(found[0].status).to.equal("OPEN");
+  });
+  test("Every row belongs to current reporter", function() {
+    (res.getBody().data || []).forEach(function(t) {
+      expect(t.reporterId).to.equal(bru.getEnvVar("profileId"));
+    });
+  });
+}

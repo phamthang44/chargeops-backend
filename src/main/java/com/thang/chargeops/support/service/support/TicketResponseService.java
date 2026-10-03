@@ -97,7 +97,7 @@ public class TicketResponseService {
         Map<UUID, String> resolutionReasons = new HashMap<>();
         Map<UUID, java.time.Instant> closedTimes = new HashMap<>();
         for (TicketEvent event : eventRepository.findWorkflowFacts(ticketIds,
-                List.of("RESOLVED", "REPORTER_CONFIRMED", "AUTO_CLOSED_NO_RESPONSE"))) {
+                List.of("RESOLVED", "REPORTER_CONFIRMED", "AUTO_CLOSED_NO_RESPONSE", "CLOSE_SUPPORT_CASE"))) {
             if ("RESOLVED".equals(event.getEventType())) {
                 resolutionReasons.putIfAbsent(event.getTicketId(), event.getReason());
             } else {

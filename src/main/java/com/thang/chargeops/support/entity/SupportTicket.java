@@ -121,6 +121,20 @@ public class SupportTicket extends AuditableEntity {
         autoCloseAt = null;
     }
 
+    public void returnFromEscalation() {
+        if (status != TicketStatus.OPEN && status != TicketStatus.IN_PROGRESS)
+            throw new IllegalStateException("Ticket is not under operational review");
+        status = TicketStatus.IN_PROGRESS;
+    }
+
+    public void closeEscalatedSupportCase() {
+        if (status != TicketStatus.OPEN && status != TicketStatus.IN_PROGRESS)
+            throw new IllegalStateException("Ticket is not under operational review");
+        status = TicketStatus.CLOSED;
+        closeReason = "ADMIN_SUPPORT_CASE_CLOSED";
+        autoCloseAt = null;
+    }
+
     public static SupportTicket open(
             String ticketCode,
             TicketCategory category,

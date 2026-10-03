@@ -11,11 +11,26 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import com.thang.chargeops.payment.projection.OrderPaymentMatchProjection;
+import com.thang.chargeops.payment.projection.OwnerFinanceTotalsProjection;
 import java.util.Optional;
 import java.math.BigDecimal;
 import java.util.UUID;
 
 public interface PaymentRepository extends JpaRepository<Payment, UUID> {
+
+    @Query("""
+        SELECT COALESCE(SUM(p.amount), 0) AS grossAmount,
+               COALESCE(SUM(p.refundAmount), 0) AS refundedAmount,
+               COUNT(p) AS paymentCount,
+               COALESCE(SUM(CASE WHEN p.status = com.thang.chargeops.common.enums.PaymentStatus.PAID
+                                  THEN 1 ELSE 0 END), 0) AS paidCount
+        FROM Payment p
+        WHERE p.booking.connector.chargePoint.station.owner.id = :ownerId
+          AND p.environment = com.thang.chargeops.common.enums.PaymentEnvironment.SIMULATOR
+          AND p.status IN (com.thang.chargeops.common.enums.PaymentStatus.PAID,
+                           com.thang.chargeops.common.enums.PaymentStatus.REFUNDED)
+    """)
+    OwnerFinanceTotalsProjection summarizeOwnerSimulatorLedger(@Param("ownerId") UUID ownerId);
 
     @EntityGraph(attributePaths = {"booking", "booking.connector", "booking.connector.chargePoint",
             "booking.connector.chargePoint.station"})

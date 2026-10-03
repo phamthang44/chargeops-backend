@@ -5,6 +5,7 @@ import com.thang.chargeops.exception.AppException;
 import com.thang.chargeops.exception.errorcode.CommonErrorCode;
 import com.thang.chargeops.payment.dto.response.OwnerFinanceBookingResponse;
 import com.thang.chargeops.payment.entity.Payment;
+import com.thang.chargeops.payment.dto.response.OwnerFinanceSummaryResponse;
 import com.thang.chargeops.payment.entity.PaymentTransaction;
 import com.thang.chargeops.payment.repository.PaymentRepository;
 import com.thang.chargeops.payment.repository.PaymentTransactionRepository;
@@ -21,6 +22,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.math.BigDecimal;
 import java.util.Map;
 import java.util.UUID;
 import java.util.function.Function;
@@ -33,6 +35,18 @@ public class OwnerFinanceServiceImpl implements OwnerFinanceService {
     private final PaymentRepository paymentRepository;
     private final PaymentTransactionRepository transactionRepository;
     private final RefundRepository refundRepository;
+
+    @Override
+    @Transactional(readOnly = true)
+    public OwnerFinanceSummaryResponse summary() {
+        UUID ownerId = currentProfileProvider.requireProfileId();
+        var totals = paymentRepository.summarizeOwnerSimulatorLedger(ownerId);
+        long gross = totals.getGrossAmount().longValueExact();
+        long refunded = totals.getRefundedAmount().longValueExact();
+        return new OwnerFinanceSummaryResponse(gross, refunded, gross - refunded,
+                refundRepository.sumOwnerPendingSimulatorRefunds(ownerId).longValueExact(),
+                totals.getPaymentCount(), totals.getPaidCount());
+    }
 
     @Override
     @Transactional(readOnly = true)

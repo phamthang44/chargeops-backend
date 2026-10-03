@@ -1,9 +1,10 @@
-{
-  "version": "1",
-  "name": "ChargeOps",
-  "type": "collection",
-  "ignore": [
-    "node_modules",
-    ".git"
-  ]
+meta { name: quoted, type: http, seq: 1 }
+post { url: http://localhost:8080/realms/chargeops/protocol/openid-connect/token
+  body: form-urlencoded
+  auth: none }
+body:form-urlencoded {
+  grant_type: "password"
+  client_id: "chargeops-driver-app"
+  username: "driver01@test.com"
+  password: "Password@123"
 }

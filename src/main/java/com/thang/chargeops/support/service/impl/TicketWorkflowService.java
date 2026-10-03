@@ -18,6 +18,8 @@ import com.thang.chargeops.support.entity.SupportTicket;
 import com.thang.chargeops.support.model.TicketStatus;
 import com.thang.chargeops.support.repository.SupportTicketRepository;
 import com.thang.chargeops.support.repository.TicketEventRepository;
+import com.thang.chargeops.support.repository.TicketEscalationRepository;
+import com.thang.chargeops.support.repository.TicketFindingRepository;
 import com.thang.chargeops.support.entity.TicketEvent;
 import com.thang.chargeops.support.service.TicketAccessPolicy;
 import com.thang.chargeops.support.service.support.TicketResponseService;
@@ -46,6 +48,8 @@ public class TicketWorkflowService {
     private final NotificationService notifications;
     private final TicketEventRepository events;
     private final TicketAccessPolicy access;
+    private final TicketEscalationRepository escalations;
+    private final TicketFindingRepository findings;
 
     private SupportTicket locked(UUID id, Long expectedVersion) {
         SupportTicket t = tickets.findByIdForUpdate(id).orElseThrow(() -> new AppException(TicketErrorCode.NOT_FOUND));
@@ -96,6 +100,8 @@ public class TicketWorkflowService {
         }
         SupportTicket t = locked(id, expectedVersion);
         if (!eligible(t, actor.getId())) throw new AppException(TicketErrorCode.ACCESS_DENIED);
+        if (t.getStation() != null && escalations.existsByTicket_IdAndResolvedAtIsNull(id))
+            throw new AppException(TicketErrorCode.STATE_CONFLICT);
         if (t.getStatus() != TicketStatus.OPEN || t.getAssignedHandler() != null) throw new AppException(TicketErrorCode.STATE_CONFLICT);
         TicketStatus before = t.getStatus();
         t.assign(actor);
@@ -117,6 +123,8 @@ public class TicketWorkflowService {
         }
         SupportTicket t = locked(id, request.expectedVersion());
         requireAssigner(t, actor.getId());
+        if (t.getStation() != null && escalations.existsByTicket_IdAndResolvedAtIsNull(id))
+            throw new AppException(TicketErrorCode.STATE_CONFLICT);
         boolean platformCase = t.getStation() == null;
         UserProfile handler = assignmentHandler(t, request.handlerId(), platformCase);
         UUID oldHandler = t.getAssignedHandler() == null ? null : t.getAssignedHandler().getId();
@@ -170,6 +178,16 @@ public class TicketWorkflowService {
     private void resolveByHandler(SupportTicket t, UUID actorId, UUID oldHandler, String reason) {
         if (reason == null || reason.isBlank()) throw new IllegalArgumentException("Resolution reason is required");
         if (!actorId.equals(oldHandler) || !eligible(t, actorId)) throw new AppException(TicketErrorCode.ACCESS_DENIED);
+        if (t.getStation() != null) {
+            if (escalations.existsByTicket_IdAndResolvedAtIsNull(t.getId())) throw new AppException(TicketErrorCode.STATE_CONFLICT);
+            if (t.getBooking() != null) {
+                var latestFinding = findings.findFirstByTicket_IdOrderByRecordedAtDescIdDesc(t.getId());
+                if (latestFinding.isEmpty() || (t.getResolvedAt() != null
+                    && !latestFinding.get().getRecordedAt().isAfter(t.getResolvedAt()))) {
+                    throw new AppException(TicketErrorCode.STATE_CONFLICT);
+                }
+            }
+        }
         t.resolve(clock.instant());
         event(t, actorId, kind(t, actorId), "RESOLVED", TicketStatus.IN_PROGRESS, oldHandler, reason);
         notice(t, reason);
@@ -191,15 +209,6 @@ public class TicketWorkflowService {
         } else {
             throw new AppException(TicketErrorCode.ACCESS_DENIED);
         }
-    }
-
-    @Transactional
-    public void continueFromReply(UUID id, UserProfile reporter, String reason) {
-        SupportTicket t = locked(id, null);
-        if (t.getStatus() != TicketStatus.RESOLVED || !t.getReporter().getId().equals(reporter.getId()))
-            throw new AppException(TicketErrorCode.STATE_CONFLICT);
-        continueTicket(t, reporter.getId(), reason);
-        tickets.saveAndFlush(t);
     }
 
     private void continueTicket(SupportTicket t, UUID reporter, String reason) {

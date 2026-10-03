@@ -11,6 +11,7 @@ import com.thang.chargeops.support.dto.request.TicketStatusRequest;
 import com.thang.chargeops.support.dto.response.TicketMessageResponse;
 import com.thang.chargeops.support.dto.response.TicketResponse;
 import com.thang.chargeops.support.dto.response.TicketDetailResponse;
+import com.thang.chargeops.support.model.TicketListScope;
 import com.thang.chargeops.support.model.TicketStatus;
 import com.thang.chargeops.support.service.SupportTicketService;
 import com.thang.chargeops.support.service.TicketFindingService;
@@ -88,16 +89,33 @@ public class SupportTicketController {
             @RequestParam(defaultValue = "1") @Min(1) int page,
             @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size,
             @RequestParam(required = false) TicketStatus status,
-            @RequestParam(required = false) UUID stationId
+            @RequestParam(required = false) UUID stationId,
+            @RequestParam(required = false) TicketListScope scope
     ) {
-        Page<TicketResponse> ticketPage = ticketService.getTickets(status, stationId, page, size);
+        Page<TicketResponse> ticketPage = ticketService.getTickets(status, stationId, page, size, scope);
         return ResponseEntity.ok(ApiResult.successPage(ticketPage));
     }
 
     @GetMapping("/{ticketId}")
     @PreAuthorize("isAuthenticated()")
-    public ResponseEntity<ApiResult<TicketDetailResponse>> getTicket(@PathVariable UUID ticketId) {
-        return ResponseEntity.ok(ApiResult.success(ticketService.getTicketDetail(ticketId)));
+    public ResponseEntity<ApiResult<TicketDetailResponse>> getTicket(
+            @PathVariable UUID ticketId,
+            @RequestParam(required = false) TicketListScope scope
+    ) {
+        return ResponseEntity.ok(ApiResult.success(ticketService.getTicketDetail(ticketId, scope)));
+    }
+
+    @GetMapping("/{ticketId}/messages")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<ApiResult<List<TicketMessageResponse>>> getTicketMessages(
+            @PathVariable UUID ticketId,
+            @RequestParam(required = false) TicketListScope scope
+    ) {
+        TicketDetailResponse detail = ticketService.getTicketDetail(ticketId, scope);
+        List<TicketMessageResponse> messages = detail != null && detail.conversation() != null
+                ? detail.conversation().messages()
+                : List.of();
+        return ResponseEntity.ok(ApiResult.success(messages));
     }
 
     @PostMapping("/{ticketId}/messages")

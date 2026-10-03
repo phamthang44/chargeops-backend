@@ -55,14 +55,27 @@ public class TicketResponseMapper {
         if (message == null) return null;
         UserProfile author = message.getAuthor();
         return new TicketMessageResponse(message.getId(), displayName(author), message.getAuthorKind(),
-                message.getBody(), message.getCreatedAt());
+                message.getBody(), message.getCreatedAt(), author == null ? null : author.getId());
     }
 
     public TicketFindingResponse finding(TicketFinding finding) {
         if (finding == null) return null;
         UUID recordedById = finding.getRecordedBy() == null ? null : finding.getRecordedBy().getId();
+        String recordedByRole = null;
+        if (finding.getTicket() != null && recordedById != null) {
+            Station station = finding.getTicket().getStation();
+            if (station != null && station.getOwner() != null && recordedById.equals(station.getOwner().getId())) {
+                recordedByRole = "OWNER";
+            } else if (finding.getTicket().getReporter() != null && recordedById.equals(finding.getTicket().getReporter().getId())) {
+                recordedByRole = "DRIVER";
+            } else if (station == null) {
+                recordedByRole = "ADMIN";
+            } else {
+                recordedByRole = "STAFF";
+            }
+        }
         return new TicketFindingResponse(finding.getId(), finding.getConclusion(), finding.getAffectedAt(),
-                finding.getReason(), finding.getRecordedAt(), recordedById);
+                finding.getReason(), finding.getRecordedAt(), recordedById, recordedByRole);
     }
 
     private String stationName(Station station, Booking booking) {

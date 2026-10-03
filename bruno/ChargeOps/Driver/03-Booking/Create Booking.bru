@@ -1,0 +1,81 @@
+meta {
+  name: Create Booking
+  type: http
+  seq: 3
+}
+
+post {
+  url: {{baseUrl}}/api/v1/bookings
+  body: json
+  auth: bearer
+}
+
+headers {
+  Idempotency-Key: {{idempotencyKey}}
+}
+
+auth:bearer {
+  token: {{access_token}}
+}
+
+script:pre-request {
+  if (!bru.getEnvVar("idempotencyKey")) {
+    function uuid() {
+      return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, function(c) {
+        const r = (Math.random() * 16) | 0;
+        const v = c === "x" ? r : (r & 0x3) | 0x8;
+        return v.toString(16);
+      });
+    }
+    bru.setEnvVar("idempotencyKey", uuid());
+  }
+}
+
+body:json {
+  {
+    "connectorId": "{{connectorId}}",
+    "startAt": "{{startTime}}",
+    "durationMin": 60,
+    "acceptedTotalAmount": {{previewTotal}},
+    "acceptedPricingVersion": "{{pricingVersion}}",
+    "acceptedPolicyVersion": "{{policyVersion}}",
+    "paymentMethod": "SIMULATOR"
+  }
+}
+
+script:post-response {
+  if (res.status === 201 && res.body.data) {
+    bru.setEnvVar("bookingId", res.body.data.bookingId);
+    bru.setEnvVar("bookingCode", res.body.data.bookingCode);
+    bru.setEnvVar("bookingVersion", String(res.body.data.version));
+    bru.setEnvVar("bookingTotal", String(res.body.data.totalAmount));
+    if (res.body.data.payment && res.body.data.payment.paymentId) {
+      bru.setEnvVar("paymentId", res.body.data.payment.paymentId);
+    }
+  }
+}
+
+tests {
+  test("Status code is 201", function() {
+    expect(res.getStatus()).to.equal(201);
+  });
+  test("Booking created in PENDING state", function() {
+    const d = res.getBody().data;
+    expect(d.bookingId).to.be.a("string");
+    expect(d.bookingCode).to.be.a("string");
+    expect(d.status).to.equal("PENDING");
+  });
+  test("Consent echo matches preview", function() {
+    const d = res.getBody().data;
+    expect(String(d.totalAmount)).to.equal(bru.getEnvVar("previewTotal"));
+    expect(d.durationMin).to.equal(60);
+    expect(new Date(d.startAt).toISOString()).to.equal(bru.getEnvVar("startTime"));
+  });
+  test("Payment hold attached", function() {
+    const d = res.getBody().data;
+    expect(d.payment).to.be.an("object");
+    expect(d.payment.paymentId).to.be.a("string");
+    expect(d.payment.status).to.equal("PENDING");
+    expect(d.paymentHoldExpiresAt).to.be.a("string");
+  });
+}

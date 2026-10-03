@@ -9,6 +9,7 @@ Owner có thể claim/assign cho Owner hoặc Staff đúng trạm qua `/owner/ti
 ## Response và những điểm frontend phải cập nhật
 
 - Các endpoint GET chi tiết `/tickets/{id}`, `/owner/tickets/{id}`, `/admin/tickets/{id}` trả `TicketDetailResponse` dạng nhóm: `overview`, `station`, `booking`, `participants`, `conversation`, `resolution`, `isEscalated`, `escalation`, `escalationAvailability`.
+- `GET /tickets/{id}` nhận query `scope` (enum `TicketListScope`, PascalCase như list): thiếu/`ACTOR` = quyền đọc mặc định (reporter | owner | staff | admin); `REPORTER` = chỉ người báo cáo được đọc, khác trả `403 TKT_ACCESS_DENIED`. Đây là contextual authorization cho không gian Driver mobile (`?scope=REPORTER`) — quyền Owner/Staff không "rò" sang Driver workspace qua deep link. Giá trị sai trả `400`. `/owner/tickets/{id}` và `/admin/tickets/{id}` không dùng param này.
 - Các endpoint danh sách và mutation hiện trả `TicketResponse` dạng phẳng. Frontend cần phân biệt loại response theo endpoint. Sau mutation, tải lại GET chi tiết để lấy trạng thái mới thay vì trộn response phẳng vào cache detail.
 - Không dùng `isInProgress` hoặc tên fallback để kết luận đã có handler. Chỉ `participants.assignedHandlerId != null` là có handler trong detail; danh sách dùng `assignedHandlerId`.
 - `escalationAvailability.canRequest` là quyết định của server cho nút chuyển Admin. `WAITING_FOR_STATION` đi kèm `availableAt` cho đồng hồ 24 giờ. `escalation != null` chỉ có nghĩa yêu cầu đã được gửi, chưa khẳng định Admin đang phân xử.

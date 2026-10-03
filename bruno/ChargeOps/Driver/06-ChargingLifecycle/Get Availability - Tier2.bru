@@ -1,0 +1,35 @@
+meta {
+  name: Get Availability - Tier2
+  type: http
+  seq: 3
+}
+
+tags {
+  tier2Pre
+}
+
+get {
+  url: {{baseUrl}}/api/v1/stations/{{stationId}}/availability?startTime={{startTime}}&endTime={{endTime}}
+  body: none
+  auth: none
+}
+
+params:query {
+  startTime: {{startTime}}
+  endTime: {{endTime}}
+}
+
+script:post-response {
+  if (res.status === 200 && res.body.data && res.body.data.connectors && res.body.data.connectors.length > 0) {
+    bru.setEnvVar("connectorId", res.body.data.connectors[0].id);
+  }
+}
+
+tests {
+  test("Status code is 200", function() {
+    expect(res.getStatus()).to.equal(200);
+  });
+  test("connectorId captured", function() {
+    expect(bru.getEnvVar("connectorId")).to.be.a("string");
+  });
+}

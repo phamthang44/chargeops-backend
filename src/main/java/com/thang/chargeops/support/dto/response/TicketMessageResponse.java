@@ -10,6 +10,7 @@ public record TicketMessageResponse(
         String authorDisplayName,
         TicketActorKind authorKind,
         String body,
-        Instant createdAt
+        Instant createdAt,
+        UUID authorId
 ) {
 }

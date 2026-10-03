@@ -44,8 +44,9 @@ class OwnerTicketControllerTest {
     @WithMockUser(roles = "OWNER")
     void ownerCanPollMessagesForOwnedTicket() throws Exception {
         UUID ticketId = UUID.randomUUID();
+        UUID reporterId = UUID.randomUUID();
         var message = new TicketMessageResponse(UUID.randomUUID(), "Driver", TicketActorKind.REPORTER,
-                "Trạm chưa phản hồi", Instant.parse("2026-10-02T12:00:00Z"));
+                "Trạm chưa phản hồi", Instant.parse("2026-10-02T12:00:00Z"), reporterId);
         var ticket = new TicketResponse(ticketId, "TKT-001", TicketCategory.CHARGING_ISSUE,
                 TicketPriority.MEDIUM, "Sự cố trạm", TicketStatus.IN_PROGRESS, 1L,
                 null, UUID.randomUUID(), UUID.randomUUID(), null, Instant.parse("2026-10-02T11:00:00Z"),

@@ -11,6 +11,7 @@ import com.thang.chargeops.profile.support.CurrentProfileProvider;
 import com.thang.chargeops.refund.entity.Refund;
 import com.thang.chargeops.refund.executor.RefundExecutorRegistry;
 import com.thang.chargeops.refund.projection.RefundExecutionRouteProjection;
+import com.thang.chargeops.refund.projection.OwnerRefundTotalsProjection;
 import com.thang.chargeops.refund.repository.RefundAttemptRepository;
 import com.thang.chargeops.refund.repository.RefundRepository;
 import com.thang.chargeops.refund.service.impl.OwnerRefundServiceImpl;
@@ -26,7 +27,9 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.Optional;
 import java.util.UUID;
+import java.math.BigDecimal;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.Mockito.*;
 
@@ -45,6 +48,29 @@ class OwnerRefundServiceImplTest {
     @Mock RefundDetailAssembler assembler;
     @Mock java.time.Clock applicationClock;
     @InjectMocks OwnerRefundServiceImpl service;
+
+    @Test
+    void summaryReadsNamedAggregateColumns() {
+        UUID ownerId = UUID.randomUUID();
+        OwnerRefundTotalsProjection totals = mock(OwnerRefundTotalsProjection.class);
+        when(currentProfileProvider.requireProfileId()).thenReturn(ownerId);
+        when(refundRepository.summarizeOwnerSimulatorRefunds(ownerId)).thenReturn(totals);
+        when(totals.getPendingCount()).thenReturn(2L);
+        when(totals.getSucceededCount()).thenReturn(3L);
+        when(totals.getNeedsAdminCount()).thenReturn(1L);
+        when(totals.getTotalAmount()).thenReturn(BigDecimal.valueOf(5000));
+        when(totals.getPendingAmount()).thenReturn(BigDecimal.valueOf(2000));
+        when(attemptRepository.countOwnerFailedSimulatorAttempts(ownerId)).thenReturn(4L);
+
+        var summary = service.summary();
+
+        assertEquals(2, summary.totalPendingCount());
+        assertEquals(3, summary.totalSucceededCount());
+        assertEquals(4, summary.totalFailedAttemptsCount());
+        assertEquals(1, summary.requiresOwnerActionCount());
+        assertEquals(5000, summary.totalRefundAmountVnd());
+        assertEquals(2000, summary.pendingRefundAmountVnd());
+    }
 
     @Test
     void guessedRefundIdFromAnotherOwnerDoesNotRevealDetail() {

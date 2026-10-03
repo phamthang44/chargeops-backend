@@ -11,6 +11,7 @@ import com.thang.chargeops.support.dto.response.TicketResponse;
 import com.thang.chargeops.support.dto.response.TicketDetailResponse;
 import com.thang.chargeops.support.entity.SupportTicket;
 import com.thang.chargeops.support.entity.TicketEscalation;
+import com.thang.chargeops.support.repository.TicketEscalationRepository;
 import com.thang.chargeops.support.model.TicketStatus;
 import com.thang.chargeops.support.repository.SupportTicketRepository;
 import com.thang.chargeops.support.service.impl.TicketWorkflowService;
@@ -25,7 +26,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.UUID;
-import java.util.List;
 
 @Service
 @RequiredArgsConstructor
@@ -38,6 +38,7 @@ public class AdminTicketService {
     private final TicketResponseService responses;
     private final TicketWorkflowService workflow;
     private final SupportTicketService ticketService;
+    private final TicketEscalationRepository escalations;
 
     private void requireAdmin() {
         currentProfile.requireProfile();
@@ -60,6 +61,7 @@ public class AdminTicketService {
                 var escalated = query.subquery(UUID.class);
                 var escalation = escalated.from(TicketEscalation.class);
                 escalated.select(escalation.get("ticket").get("id"));
+                escalated.where(cb.isNull(escalation.get("resolvedAt")));
                 scope = cb.and(scope, root.get("id").in(escalated));
             }
             return cb.and(scope,
@@ -126,6 +128,8 @@ public class AdminTicketService {
                 .orElseThrow(() -> new AppException(TicketErrorCode.NOT_FOUND));
         if (!access.canRead(ticket, currentProfile.requireProfile()))
             throw new AppException(TicketErrorCode.ACCESS_DENIED);
+        if (ticket.getStation() != null && !escalations.existsByTicket_IdAndResolvedAtIsNull(ticketId))
+            throw new AppException(TicketErrorCode.STATE_CONFLICT);
         return ticketService.replyAsAdmin(ticketId, clientMessageId, request);
     }
 }

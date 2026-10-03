@@ -21,6 +21,7 @@ import com.thang.chargeops.support.entity.SupportTicket;
 import com.thang.chargeops.support.entity.TicketMessage;
 import com.thang.chargeops.support.model.TicketActorKind;
 import com.thang.chargeops.support.model.TicketCategory;
+import com.thang.chargeops.support.model.TicketListScope;
 import com.thang.chargeops.support.model.TicketStatus;
 import com.thang.chargeops.support.repository.SupportTicketRepository;
 import com.thang.chargeops.support.repository.TicketMessageRepository;
@@ -71,13 +72,6 @@ public class SupportTicketServiceImpl implements SupportTicketService {
     private final StationStaffAssignmentRepository stationStaffAssignmentRepository;
     private final TicketResponseService ticketResponseAssembler;
     private final TicketAccessPolicy accessPolicy;
-    private TicketWorkflowService workflowService;
-
-    @Autowired(required = false)
-    void setWorkflowService(TicketWorkflowService workflowService) {
-        this.workflowService = workflowService;
-    }
-
     public SupportTicketServiceImpl(
             CurrentProfileProvider currentProfileProvider,
             BookingRepository bookingRepository,
@@ -142,17 +136,22 @@ public class SupportTicketServiceImpl implements SupportTicketService {
 
     @Override
     @Transactional(readOnly = true)
-    public Page<TicketResponse> getTickets(TicketStatus status, UUID stationId, int page, int size) {
+    public Page<TicketResponse> getTickets(TicketStatus status, UUID stationId, int page, int size,
+                                           TicketListScope scope) {
         UserProfile profile = currentProfileProvider.requireProfile();
         Set<String> roles = getCurrentRoles();
+        boolean reporterOnly = scope == TicketListScope.REPORTER;
 
         Set<UUID> ownedStationIds = ownedStationIds(profile, roles);
         Set<UUID> activeStaffStationIds = activeStaffStationIds(profile);
-        requireStationScope(stationId, roles, ownedStationIds, activeStaffStationIds);
+        // Reporter scope đã bị chặn ở mức reporter_id nên không cần kiểm tra trạm.
+        if (!reporterOnly) {
+            requireStationScope(stationId, roles, ownedStationIds, activeStaffStationIds);
+        }
 
         Pageable pageable = PageRequest.of(page - 1, size, Sort.by(Sort.Order.desc("createdAt"), Sort.Order.desc("id")));
         Specification<SupportTicket> spec = SupportTicketSpecifications.forActor(
-                profile, roles, ownedStationIds, activeStaffStationIds, status, stationId
+                profile, roles, ownedStationIds, activeStaffStationIds, status, stationId, reporterOnly
         );
         Page<SupportTicket> ticketPage = ticketRepository.findAll(spec, pageable);
         List<TicketResponse> responses = ticketResponseAssembler.toResponses(ticketPage.getContent());
@@ -190,11 +189,15 @@ public class SupportTicketServiceImpl implements SupportTicketService {
 
     @Override
     @Transactional(readOnly = true)
-    public TicketDetailResponse getTicketDetail(UUID ticketId) {
-        return ticketResponseAssembler.toDetail(requireReadableTicket(ticketId));
+    public TicketDetailResponse getTicketDetail(UUID ticketId, TicketListScope scope) {
+        return ticketResponseAssembler.toDetail(requireReadableTicket(ticketId, scope));
     }
 
     private SupportTicket requireReadableTicket(UUID ticketId) {
+        return requireReadableTicket(ticketId, null);
+    }
+
+    private SupportTicket requireReadableTicket(UUID ticketId, TicketListScope scope) {
         UserProfile profile = currentProfileProvider.requireProfile();
         Set<String> roles = getCurrentRoles();
 
@@ -202,6 +205,13 @@ public class SupportTicketServiceImpl implements SupportTicketService {
                 .orElseThrow(() -> new AppException(TicketErrorCode.NOT_FOUND));
 
         if (!canAccessTicket(ticket, profile, roles)) {
+            throw new AppException(TicketErrorCode.ACCESS_DENIED);
+        }
+
+        // Contextual authorization: không gian Driver chỉ đọc được ticket mình báo cáo.
+        // Quyền Owner/Staff/Admin không được "rò" sang Driver workspace qua deep link.
+        if (scope == TicketListScope.REPORTER
+                && (ticket.getReporter() == null || !ticket.getReporter().getId().equals(profile.getId()))) {
             throw new AppException(TicketErrorCode.ACCESS_DENIED);
         }
 
@@ -261,10 +271,7 @@ public class SupportTicketServiceImpl implements SupportTicketService {
             throw new AppException(TicketErrorCode.CLOSED);
         }
         if (ticket.getStatus() == TicketStatus.RESOLVED) {
-            if (authorKind != TicketActorKind.REPORTER) throw new AppException(TicketErrorCode.STATE_CONFLICT);
-            if (workflowService == null) throw new AppException(TicketErrorCode.STATE_CONFLICT);
-            workflowService.continueFromReply(ticketId, author, body);
-            return;
+            throw new AppException(TicketErrorCode.STATE_CONFLICT);
         }
         if (adminConsole && ticket.getStation() != null) return;
         if (authorKind != TicketActorKind.REPORTER) requireCurrentHandler(ticket, author);

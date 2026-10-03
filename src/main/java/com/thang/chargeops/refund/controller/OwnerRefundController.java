@@ -4,6 +4,7 @@ import com.thang.chargeops.common.constant.SystemConstant;
 import com.thang.chargeops.common.response.ApiResult;
 import com.thang.chargeops.refund.dto.request.OwnerRefundRetryRequest;
 import com.thang.chargeops.refund.dto.response.OwnerRefundResponse;
+import com.thang.chargeops.refund.dto.response.OwnerRefundsSummaryResponse;
 import com.thang.chargeops.refund.model.RefundStatus;
 import com.thang.chargeops.refund.service.OwnerRefundService;
 import jakarta.validation.Valid;
@@ -28,6 +29,12 @@ import java.util.UUID;
 @Validated
 public class OwnerRefundController {
     private final OwnerRefundService service;
+
+    @GetMapping("/summary")
+    public ResponseEntity<ApiResult<OwnerRefundsSummaryResponse>> summary() {
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore())
+                .body(ApiResult.success(service.summary()));
+    }
 
     @GetMapping
     public ResponseEntity<ApiResult<List<OwnerRefundResponse>>> list(

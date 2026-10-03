@@ -11,6 +11,17 @@ public record TicketFindingResponse(
         Instant affectedAt,
         String reason,
         Instant recordedAt,
-        UUID recordedBy
+        UUID recordedBy,
+        String recordedByRole
 ) {
+    public TicketFindingResponse(
+            UUID findingId,
+            TicketFindingConclusion conclusion,
+            Instant affectedAt,
+            String reason,
+            Instant recordedAt,
+            UUID recordedBy
+    ) {
+        this(findingId, conclusion, affectedAt, reason, recordedAt, recordedBy, null);
+    }
 }

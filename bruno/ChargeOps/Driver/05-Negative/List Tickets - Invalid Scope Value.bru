@@ -1,0 +1,27 @@
+meta {
+  name: List Tickets - Invalid Scope Value
+  type: http
+  seq: 3
+}
+
+get {
+  url: {{baseUrl}}/api/v1/tickets?scope=BOGUS&page=1&size=20
+  body: none
+  auth: bearer
+}
+
+params:query {
+  scope: BOGUS
+  page: 1
+  size: 20
+}
+
+auth:bearer {
+  token: {{access_token}}
+}
+
+tests {
+  test("Status code is 400 (enum conversion rejects scope)", function() {
+    expect(res.getStatus()).to.equal(400);
+  });
+}

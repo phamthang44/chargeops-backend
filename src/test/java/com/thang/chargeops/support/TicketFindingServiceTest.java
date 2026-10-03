@@ -11,11 +11,11 @@ import com.thang.chargeops.station.entity.Station;
 import com.thang.chargeops.support.dto.request.FindingRequest;
 import com.thang.chargeops.support.entity.SupportTicket;
 import com.thang.chargeops.support.entity.TicketFinding;
-import com.thang.chargeops.support.entity.TicketEvent;
 import com.thang.chargeops.support.model.TicketFindingConclusion;
+import com.thang.chargeops.support.model.TicketStatus;
 import com.thang.chargeops.support.repository.SupportTicketRepository;
+import com.thang.chargeops.support.repository.TicketEscalationRepository;
 import com.thang.chargeops.support.repository.TicketFindingRepository;
-import com.thang.chargeops.support.repository.TicketEventRepository;
 import com.thang.chargeops.support.service.TicketAccessPolicy;
 import com.thang.chargeops.support.service.TicketFindingService;
 import com.thang.chargeops.support.service.support.TicketResponseService;
@@ -41,7 +41,7 @@ class TicketFindingServiceTest {
     @Mock TicketAccessPolicy access;
     @Mock SupportTicketRepository tickets;
     @Mock TicketFindingRepository findings;
-    @Mock TicketEventRepository events;
+    @Mock TicketEscalationRepository escalations;
     @Mock TicketResponseService responses;
     @Mock Clock clock;
     @InjectMocks TicketFindingService service;
@@ -69,6 +69,7 @@ class TicketFindingServiceTest {
         when(ticket.getStation()).thenReturn(station);
         when(ticket.getBooking()).thenReturn(booking);
         when(ticket.getVersion()).thenReturn(4L);
+        when(escalations.existsByTicket_IdAndResolvedAtIsNull(id)).thenReturn(true);
         when(station.getId()).thenReturn(stationId);
         when(booking.getConnector()).thenReturn(connector);
         when(connector.getChargePoint()).thenReturn(point);
@@ -84,6 +85,26 @@ class TicketFindingServiceTest {
         assertThat(captor.getValue().getRecordedBy()).isSameAs(actor);
         verify(ticket).setUpdatedAt(now);
         verify(tickets).saveAndFlush(ticket);
+    }
+
+    @Test
+    void adminCannotRecordFindingAfterEscalationHasEnded() {
+        UUID id = UUID.randomUUID();
+        var admin = UserProfile.builder().status(UserStatus.ACTIVE).build();
+        admin.setId(UUID.randomUUID());
+        var ticket = mock(SupportTicket.class);
+        when(currentProfile.requireProfile()).thenReturn(admin);
+        when(tickets.findByIdForUpdate(id)).thenReturn(Optional.of(ticket));
+        when(access.hasRole("ADMIN")).thenReturn(true);
+        when(ticket.getStation()).thenReturn(mock(Station.class));
+        when(ticket.getBooking()).thenReturn(mock(Booking.class));
+        when(ticket.getVersion()).thenReturn(4L);
+
+        assertThatThrownBy(() -> service.record(id, new FindingRequest(4L,
+                TicketFindingConclusion.STATION_FAILURE,
+                Instant.parse("2026-10-02T09:00:00Z"), "Late review")))
+                .isInstanceOf(AppException.class);
+        verifyNoInteractions(findings);
     }
 
     @Test
@@ -118,31 +139,37 @@ class TicketFindingServiceTest {
     }
 
     @Test
-    void disputedNotStationFailureRequiresAdminReview() {
+    void reopenedTicketAllowsAnotherFindingUntilEscalation() {
         UUID id = UUID.randomUUID();
+        UUID stationId = UUID.randomUUID();
+        Instant now = Instant.parse("2026-10-02T10:00:00Z");
         var actor = UserProfile.builder().status(UserStatus.ACTIVE).build();
         actor.setId(UUID.randomUUID());
         var ticket = mock(SupportTicket.class);
         var previous = mock(TicketFinding.class);
-        var dispute = mock(TicketEvent.class);
+        var station = mock(Station.class);
+        var booking = mock(Booking.class);
+        var connector = mock(Connector.class);
+        var point = mock(ChargePoint.class);
         when(currentProfile.requireProfile()).thenReturn(actor);
         when(tickets.findByIdForUpdate(id)).thenReturn(Optional.of(ticket));
         when(access.isStaff(ticket, actor.getId())).thenReturn(true);
-        when(ticket.getStation()).thenReturn(mock(Station.class));
-        when(ticket.getBooking()).thenReturn(mock(Booking.class));
+        when(ticket.getStatus()).thenReturn(TicketStatus.IN_PROGRESS);
+        when(ticket.getStation()).thenReturn(station);
+        when(ticket.getBooking()).thenReturn(booking);
         when(ticket.getVersion()).thenReturn(2L);
+        when(station.getId()).thenReturn(stationId);
+        when(booking.getConnector()).thenReturn(connector);
+        when(connector.getChargePoint()).thenReturn(point);
+        when(point.getStation()).thenReturn(station);
         when(findings.findFirstByTicket_IdOrderByRecordedAtDescIdDesc(id)).thenReturn(Optional.of(previous));
-        when(events.findFirstByTicketIdAndEventTypeOrderByCreatedAtDescIdDesc(id, "REPORTER_CONTINUED"))
-                .thenReturn(Optional.of(dispute));
-        when(previous.getConclusion()).thenReturn(TicketFindingConclusion.NOT_STATION_FAILURE);
         when(previous.getRecordedAt()).thenReturn(Instant.parse("2026-10-02T09:00:00Z"));
-        when(dispute.getCreatedAt()).thenReturn(Instant.parse("2026-10-02T09:30:00Z"));
+        when(clock.instant()).thenReturn(now);
 
-        assertThatThrownBy(() -> service.record(id, new FindingRequest(2L,
-                TicketFindingConclusion.NOT_STATION_FAILURE,
-                Instant.parse("2026-10-02T08:00:00Z"), "Still not a fault")))
-                .isInstanceOf(AppException.class);
-        verify(findings, never()).saveAndFlush(any(TicketFinding.class));
+        service.record(id, new FindingRequest(2L, TicketFindingConclusion.STATION_FAILURE,
+                Instant.parse("2026-10-02T08:00:00Z"), "Reinspection found a charger fault"));
+
+        verify(findings).saveAndFlush(any(TicketFinding.class));
     }
 
     @Test
@@ -253,6 +280,7 @@ class TicketFindingServiceTest {
         when(ticket.getStation()).thenReturn(station1);
         when(ticket.getBooking()).thenReturn(booking);
         when(ticket.getVersion()).thenReturn(1L);
+        when(escalations.existsByTicket_IdAndResolvedAtIsNull(id)).thenReturn(true);
         when(station1.getId()).thenReturn(stationId1);
         when(station2.getId()).thenReturn(stationId2);
         when(booking.getConnector()).thenReturn(connector);
@@ -285,6 +313,7 @@ class TicketFindingServiceTest {
         when(ticket.getStation()).thenReturn(station);
         when(ticket.getBooking()).thenReturn(booking);
         when(ticket.getVersion()).thenReturn(1L);
+        when(escalations.existsByTicket_IdAndResolvedAtIsNull(id)).thenReturn(true);
         when(station.getId()).thenReturn(stationId);
         when(booking.getConnector()).thenReturn(connector);
         when(connector.getChargePoint()).thenReturn(point);
@@ -340,6 +369,7 @@ class TicketFindingServiceTest {
         when(ticket.getStation()).thenReturn(station);
         when(ticket.getBooking()).thenReturn(booking);
         when(ticket.getVersion()).thenReturn(5L);
+        when(escalations.existsByTicket_IdAndResolvedAtIsNull(id)).thenReturn(true);
         when(station.getId()).thenReturn(stationId);
         when(booking.getConnector()).thenReturn(connector);
         when(connector.getChargePoint()).thenReturn(point);
@@ -356,5 +386,72 @@ class TicketFindingServiceTest {
         assertThat(captor.getValue().getConclusion()).isEqualTo(TicketFindingConclusion.STATION_FAILURE);
         assertThat(captor.getValue().getRecordedBy()).isSameAs(admin);
         verify(tickets).saveAndFlush(ticket);
+    }
+
+    @Test
+    void closedTicketCannotHaveFinding() {
+        UUID id = UUID.randomUUID();
+        var admin = UserProfile.builder().status(UserStatus.ACTIVE).build();
+        admin.setId(UUID.randomUUID());
+        var ticket = mock(SupportTicket.class);
+        when(currentProfile.requireProfile()).thenReturn(admin);
+        when(tickets.findByIdForUpdate(id)).thenReturn(Optional.of(ticket));
+        when(access.hasRole("ADMIN")).thenReturn(true);
+        when(access.canRead(ticket, admin)).thenReturn(true);
+        when(ticket.getStatus()).thenReturn(TicketStatus.CLOSED);
+
+        var request = new FindingRequest(1L, TicketFindingConclusion.STATION_FAILURE,
+                Instant.parse("2026-10-02T09:00:00Z"), "Fault on closed ticket");
+
+        assertThatThrownBy(() -> service.record(id, request))
+                .isInstanceOf(AppException.class);
+        verifyNoInteractions(findings);
+    }
+
+    @Test
+    void resolvedTicketCannotHaveFindingByOwner() {
+        UUID id = UUID.randomUUID();
+        var owner = UserProfile.builder().status(UserStatus.ACTIVE).build();
+        owner.setId(UUID.randomUUID());
+        var ticket = mock(SupportTicket.class);
+        when(currentProfile.requireProfile()).thenReturn(owner);
+        when(tickets.findByIdForUpdate(id)).thenReturn(Optional.of(ticket));
+        when(access.hasRole("ADMIN")).thenReturn(false);
+        when(access.isOwner(ticket, owner.getId())).thenReturn(true);
+        when(ticket.getStation()).thenReturn(mock(Station.class));
+        when(ticket.getBooking()).thenReturn(mock(Booking.class));
+        when(ticket.getVersion()).thenReturn(1L);
+        when(ticket.getStatus()).thenReturn(TicketStatus.RESOLVED);
+
+        var request = new FindingRequest(1L, TicketFindingConclusion.STATION_FAILURE,
+                Instant.parse("2026-10-02T09:00:00Z"), "Post-resolution finding by owner");
+
+        assertThatThrownBy(() -> service.record(id, request))
+                .isInstanceOf(AppException.class);
+        verifyNoInteractions(findings);
+    }
+
+    @Test
+    void escalatedTicketCannotHaveFindingByOwner() {
+        UUID id = UUID.randomUUID();
+        var owner = UserProfile.builder().status(UserStatus.ACTIVE).build();
+        owner.setId(UUID.randomUUID());
+        var ticket = mock(SupportTicket.class);
+        when(currentProfile.requireProfile()).thenReturn(owner);
+        when(tickets.findByIdForUpdate(id)).thenReturn(Optional.of(ticket));
+        when(access.hasRole("ADMIN")).thenReturn(false);
+        when(access.isOwner(ticket, owner.getId())).thenReturn(true);
+        when(ticket.getStation()).thenReturn(mock(Station.class));
+        when(ticket.getBooking()).thenReturn(mock(Booking.class));
+        when(ticket.getVersion()).thenReturn(1L);
+        when(ticket.getStatus()).thenReturn(TicketStatus.IN_PROGRESS);
+        when(escalations.existsByTicket_IdAndResolvedAtIsNull(id)).thenReturn(true);
+
+        var request = new FindingRequest(1L, TicketFindingConclusion.STATION_FAILURE,
+                Instant.parse("2026-10-02T09:00:00Z"), "Owner attempting finding during dispute");
+
+        assertThatThrownBy(() -> service.record(id, request))
+                .isInstanceOf(AppException.class);
+        verifyNoInteractions(findings);
     }
 }

@@ -4,5 +4,6 @@ package com.thang.chargeops.common.enums;
 public enum EquipmentStatusActorType {
     ADMIN,
     OWNER,
+    STAFF,
     SYSTEM
 }

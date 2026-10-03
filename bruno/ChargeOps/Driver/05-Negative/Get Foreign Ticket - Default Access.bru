@@ -1,0 +1,24 @@
+meta {
+  name: Get Foreign Ticket - Default Access
+  type: http
+  seq: 6
+}
+
+get {
+  url: {{baseUrl}}/api/v1/tickets/{{ticketId}}
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{access_token2}}
+}
+
+tests {
+  test("Status code is 403 (no default-access relationship)", function() {
+    expect(res.getStatus()).to.equal(403);
+  });
+  test("Error code is TKT_ACCESS_DENIED", function() {
+    expect(res.getBody().error.code).to.equal("TKT_ACCESS_DENIED");
+  });
+}

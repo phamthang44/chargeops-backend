@@ -1,6 +1,8 @@
 package com.thang.chargeops.support;
 
+import com.thang.chargeops.booking.entity.Booking;
 import com.thang.chargeops.common.enums.UserStatus;
+import com.thang.chargeops.common.enums.Role;
 import com.thang.chargeops.exception.AppException;
 import com.thang.chargeops.profile.entity.UserProfile;
 import com.thang.chargeops.profile.repository.UserProfileRepository;
@@ -18,7 +20,10 @@ import com.thang.chargeops.support.model.TicketPriority;
 import com.thang.chargeops.support.model.TicketStatus;
 import com.thang.chargeops.support.repository.SupportTicketRepository;
 import com.thang.chargeops.support.repository.TicketEventRepository;
+import com.thang.chargeops.support.repository.TicketEscalationRepository;
+import com.thang.chargeops.support.repository.TicketFindingRepository;
 import com.thang.chargeops.support.entity.TicketEvent;
+import com.thang.chargeops.support.entity.TicketFinding;
 import com.thang.chargeops.notification.service.NotificationService;
 import com.thang.chargeops.support.service.TicketAccessPolicy;
 import com.thang.chargeops.support.service.impl.TicketWorkflowService;
@@ -38,6 +43,7 @@ import java.time.Clock;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.*;
@@ -54,6 +60,8 @@ class TicketWorkflowServiceTest {
     @Mock TicketResponseService assembler;
     @Mock Clock clock;
     @Mock TicketEventRepository events;
+    @Mock TicketEscalationRepository escalations;
+    @Mock TicketFindingRepository findings;
     @Mock NotificationService notifications;
     @Mock TicketAccessPolicy access;
     @InjectMocks TicketWorkflowService workflow;
@@ -111,6 +119,116 @@ class TicketWorkflowServiceTest {
         workflow.changeStatus(ticketId, new TicketStatusRequest(0L, TicketStatus.CLOSED, null));
         assertThat(ticket.getCloseReason()).isEqualTo("REPORTER_CONFIRMED");
         assertThat(ticket.getAutoCloseAt()).isNull();
+    }
+
+    @Test
+    void reporterExplicitlyContinuesResolvedTicket() {
+        ticket.assign(admin);
+        ticket.resolve(now);
+        when(currentProfile.requireProfile()).thenReturn(reporter);
+        when(tickets.findByIdForUpdate(ticketId)).thenReturn(Optional.of(ticket));
+        when(identityRoles.getRoles(admin.getKeycloakId())).thenReturn(Set.of(Role.ADMIN));
+
+        workflow.changeStatus(ticketId,
+            new TicketStatusRequest(0L, TicketStatus.IN_PROGRESS, "Charger still disconnects"));
+
+        assertThat(ticket.getStatus()).isEqualTo(TicketStatus.IN_PROGRESS);
+        assertThat(ticket.getAutoCloseAt()).isNull();
+        verify(events).saveAndFlush(any(TicketEvent.class));
+    }
+
+    @Test
+    void stationBookingRequiresFindingBeforeResolution() {
+        UserProfile owner = UserProfile.builder().status(UserStatus.ACTIVE).build();
+        owner.setId(UUID.randomUUID());
+        SupportTicket stationTicket = SupportTicket.open("TKT-20261001-0010", TicketCategory.CHARGING_ISSUE,
+            TicketPriority.HIGH, reporter, mock(Station.class), mock(Booking.class),
+            new SupportTicket.TicketDetails("Station issue", "Charger failed"));
+        stationTicket.setId(ticketId);
+        stationTicket.assign(owner);
+        when(currentProfile.requireProfile()).thenReturn(owner);
+        when(tickets.findByIdForUpdate(ticketId)).thenReturn(Optional.of(stationTicket));
+        when(access.canHandle(stationTicket, owner.getId())).thenReturn(true);
+
+        assertThatThrownBy(() -> workflow.changeStatus(ticketId,
+            new TicketStatusRequest(0L, TicketStatus.RESOLVED, "Repaired charger")))
+            .isInstanceOf(AppException.class);
+        assertThat(stationTicket.getStatus()).isEqualTo(TicketStatus.IN_PROGRESS);
+        verify(events, never()).saveAndFlush(any(TicketEvent.class));
+        verifyNoInteractions(notifications);
+    }
+
+    @Test
+    void escalatedStationTicketCannotBeResolvedByHandler() {
+        UserProfile owner = UserProfile.builder().status(UserStatus.ACTIVE).build();
+        owner.setId(UUID.randomUUID());
+        SupportTicket stationTicket = SupportTicket.open("TKT-20261001-0011", TicketCategory.CHARGING_ISSUE,
+            TicketPriority.HIGH, reporter, mock(Station.class), mock(Booking.class),
+            new SupportTicket.TicketDetails("Station issue", "Disputed charger failure"));
+        stationTicket.setId(ticketId);
+        stationTicket.assign(owner);
+        when(currentProfile.requireProfile()).thenReturn(owner);
+        when(tickets.findByIdForUpdate(ticketId)).thenReturn(Optional.of(stationTicket));
+        when(access.canHandle(stationTicket, owner.getId())).thenReturn(true);
+        when(escalations.existsByTicket_IdAndResolvedAtIsNull(ticketId)).thenReturn(true);
+
+        assertThatThrownBy(() -> workflow.changeStatus(ticketId,
+            new TicketStatusRequest(0L, TicketStatus.RESOLVED, "Repaired charger")))
+            .isInstanceOf(AppException.class);
+        assertThat(stationTicket.getStatus()).isEqualTo(TicketStatus.IN_PROGRESS);
+        verifyNoInteractions(findings, notifications);
+    }
+
+    @Test
+    void stationBookingWithFindingCanBeResolved() {
+        UserProfile owner = UserProfile.builder().status(UserStatus.ACTIVE).build();
+        owner.setId(UUID.randomUUID());
+        Station station = mock(Station.class);
+        when(station.getOwner()).thenReturn(owner);
+        SupportTicket stationTicket = SupportTicket.open("TKT-20261001-0012", TicketCategory.CHARGING_ISSUE,
+            TicketPriority.HIGH, reporter, station, mock(Booking.class),
+            new SupportTicket.TicketDetails("Station issue", "Charger failed"));
+        stationTicket.setId(ticketId);
+        stationTicket.assign(owner);
+        when(currentProfile.requireProfile()).thenReturn(owner);
+        when(tickets.findByIdForUpdate(ticketId)).thenReturn(Optional.of(stationTicket));
+        when(access.canHandle(stationTicket, owner.getId())).thenReturn(true);
+        when(findings.findFirstByTicket_IdOrderByRecordedAtDescIdDesc(ticketId))
+            .thenReturn(Optional.of(mock(TicketFinding.class)));
+        when(clock.instant()).thenReturn(now);
+
+        workflow.changeStatus(ticketId, new TicketStatusRequest(0L, TicketStatus.RESOLVED, "Repaired charger"));
+
+        assertThat(stationTicket.getStatus()).isEqualTo(TicketStatus.RESOLVED);
+        verify(notifications).createTicketNotice(eq(reporter.getId()), anyString(), anyString(),
+            anyString(), anyString(), eq(now));
+    }
+
+    @Test
+    void reopenedStationBookingNeedsFindingFromCurrentCycle() {
+        UserProfile owner = UserProfile.builder().status(UserStatus.ACTIVE).build();
+        owner.setId(UUID.randomUUID());
+        Station station = mock(Station.class);
+        SupportTicket stationTicket = SupportTicket.open("TKT-20261001-0013", TicketCategory.CHARGING_ISSUE,
+            TicketPriority.HIGH, reporter, station, mock(Booking.class),
+            new SupportTicket.TicketDetails("Station issue", "Charger failed again"));
+        stationTicket.setId(ticketId);
+        stationTicket.assign(owner);
+        stationTicket.resolve(now.minusSeconds(60));
+        stationTicket.continueWork(owner);
+        TicketFinding oldFinding = mock(TicketFinding.class);
+        when(oldFinding.getRecordedAt()).thenReturn(now.minusSeconds(120));
+        when(currentProfile.requireProfile()).thenReturn(owner);
+        when(tickets.findByIdForUpdate(ticketId)).thenReturn(Optional.of(stationTicket));
+        when(access.canHandle(stationTicket, owner.getId())).thenReturn(true);
+        when(findings.findFirstByTicket_IdOrderByRecordedAtDescIdDesc(ticketId))
+            .thenReturn(Optional.of(oldFinding));
+
+        assertThatThrownBy(() -> workflow.changeStatus(ticketId,
+            new TicketStatusRequest(0L, TicketStatus.RESOLVED, "Checked again")))
+            .isInstanceOf(AppException.class);
+        assertThat(stationTicket.getStatus()).isEqualTo(TicketStatus.IN_PROGRESS);
+        verifyNoInteractions(notifications);
     }
 
     @Test

@@ -59,6 +59,13 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @Import(GlobalHandlerError.class)
 class BookingControllerTest {
 
+    @Test
+    void unsupportedSummaryPathReturnsNotFoundInsteadOfInternalError() throws Exception {
+        mockMvc.perform(get("/api/v1/bookings/summary"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.error.code").value("SYS_404"));
+    }
+
     @Autowired
     private MockMvc mockMvc;
 

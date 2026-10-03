@@ -36,7 +36,7 @@ public record TicketDetailResponse(
                 new Conversation(ticket.messages(), ticket.lastMessagePreview(), ticket.messageCount()),
                 new Resolution(ticket.findings(), ticket.refundIds(), ticket.resolvedAt(), ticket.autoCloseAt(),
                         ticket.closeReason(), ticket.resolutionCycle(), ticket.closedAt(), ticket.resolutionReason()),
-                escalation != null,
+                escalation != null && escalation.resolvedAt() == null,
                 TicketEscalationDetailResponse.from(escalation, ownerId, ticket.reporterId()), availability);
     }
 

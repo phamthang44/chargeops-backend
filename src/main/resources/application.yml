@@ -12,6 +12,9 @@ spring:
     # Docker bơm SPRING_PROFILES_ACTIVE vào; chạy từ IDE thì mặc định dev.
     active: ${SPRING_PROFILES_ACTIVE:dev}
 
+  config:
+    import: optional:file.env[.properties]
+
   jackson:
     time-zone: UTC
     default-property-inclusion: non_null

@@ -1,0 +1,21 @@
+meta {
+  name: Anonymous List Tickets
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{baseUrl}}/api/v1/tickets?page=1&size=20
+  body: none
+  auth: none
+}
+
+tests {
+  test("Status code is 401 (no token)", function() {
+    expect(res.getStatus()).to.equal(401);
+  });
+  test("Error code is AUTH_001", function() {
+    expect(res.getBody().error.code).to.equal("AUTH_001");
+    expect(res.getBody().error.traceId).to.be.a("string");
+  });
+}

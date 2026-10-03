@@ -18,6 +18,7 @@ import com.thang.chargeops.support.entity.SupportTicket;
 import com.thang.chargeops.support.entity.TicketMessage;
 import com.thang.chargeops.support.model.TicketActorKind;
 import com.thang.chargeops.support.model.TicketCategory;
+import com.thang.chargeops.support.model.TicketListScope;
 import com.thang.chargeops.support.model.TicketPriority;
 import com.thang.chargeops.support.model.TicketStatus;
 import com.thang.chargeops.support.repository.SupportTicketRepository;
@@ -174,7 +175,7 @@ class SupportTicketServiceTest {
         when(ticketResponseAssembler.toResponse(any(SupportTicket.class))).thenAnswer(invocation -> {
             SupportTicket ticket = invocation.getArgument(0);
             var first = new TicketMessageResponse(UUID.randomUUID(), reporter.getDisplayName(),
-                    TicketActorKind.REPORTER, ticket.getDescription(), NOW);
+                    TicketActorKind.REPORTER, ticket.getDescription(), NOW, reporter.getId());
             var booking = ticket.getBooking();
             var station = ticket.getStation();
             return new TicketResponse(ticket.getId(), ticket.getTicketCode(), ticket.getCategory(),
@@ -232,6 +233,44 @@ class SupportTicketServiceTest {
     }
 
     @Test
+    void reporterScopeReturnsDetailForOwnTicket() {
+        UUID ticketId = UUID.randomUUID();
+        SupportTicket ticket = mock(SupportTicket.class);
+        when(ticket.getReporter()).thenReturn(reporter);
+        when(ticketRepository.findById(ticketId)).thenReturn(Optional.of(ticket));
+
+        service.getTicketDetail(ticketId, TicketListScope.REPORTER);
+
+        verify(ticketResponseAssembler).toDetail(ticket);
+    }
+
+    @Test
+    void reporterScopeDeniesStationOwnerWhoDidNotReport() {
+        UUID ticketId = UUID.randomUUID();
+        Station station = mock(Station.class);
+        UserProfile owner = UserProfile.builder().email("owner@example.test").build();
+        owner.setId(UUID.randomUUID());
+        SecurityContextHolder.getContext().setAuthentication(
+                UsernamePasswordAuthenticationToken.authenticated("owner", "", List.of(
+                        new SimpleGrantedAuthority("ROLE_OWNER"))));
+        when(currentProfileProvider.requireProfile()).thenReturn(owner);
+        when(station.getOwner()).thenReturn(owner);
+        SupportTicket ticket = mock(SupportTicket.class);
+        when(ticket.getReporter()).thenReturn(reporter);
+        when(ticket.getStation()).thenReturn(station);
+        when(ticketRepository.findById(ticketId)).thenReturn(Optional.of(ticket));
+
+        service.getTicketDetail(ticketId, null);
+        verify(ticketResponseAssembler).toDetail(ticket);
+
+        assertThatThrownBy(() -> service.getTicketDetail(ticketId, TicketListScope.REPORTER))
+                .isInstanceOf(AppException.class)
+                .satisfies(ex -> assertThat(((AppException) ex).getErrorCodeStr())
+                        .isEqualTo("TKT_ACCESS_DENIED"));
+        verify(ticketResponseAssembler, times(1)).toDetail(ticket);
+    }
+
+    @Test
     void replyTicketAppendsMessageAndReturnsResponse() {
         UUID ticketId = UUID.randomUUID();
         UUID clientMsgId = UUID.randomUUID();
@@ -245,7 +284,7 @@ class SupportTicketServiceTest {
                 .thenReturn(Optional.of(savedMessage));
 
         TicketMessageResponse expectedResponse = new TicketMessageResponse(
-                UUID.randomUUID(), "Driver", TicketActorKind.REPORTER, "Updated details", NOW
+                UUID.randomUUID(), "Driver", TicketActorKind.REPORTER, "Updated details", NOW, REPORTER_ID
         );
         when(ticketResponseAssembler.toMessageResponse(savedMessage)).thenReturn(expectedResponse);
 
@@ -286,7 +325,7 @@ class SupportTicketServiceTest {
                 .thenReturn(Optional.of(existingMessage));
 
         TicketMessageResponse expectedResponse = new TicketMessageResponse(
-                UUID.randomUUID(), "Driver", TicketActorKind.REPORTER, "Original message", NOW
+                UUID.randomUUID(), "Driver", TicketActorKind.REPORTER, "Original message", NOW, REPORTER_ID
         );
         when(ticketResponseAssembler.toMessageResponse(existingMessage)).thenReturn(expectedResponse);
 
@@ -339,7 +378,8 @@ class SupportTicketServiceTest {
                 any(org.springframework.data.domain.Pageable.class))).thenReturn(Page.empty());
         when(ticketResponseAssembler.toResponses(List.of())).thenReturn(List.of());
 
-        assertThat(service.getTickets(null, otherStationId, 1, 20).getContent()).isEmpty();
+        assertThat(service.getTickets(null, otherStationId, 1, 20, TicketListScope.ACTOR)
+                .getContent()).isEmpty();
         verify(ticketRepository).findAll(any(org.springframework.data.jpa.domain.Specification.class),
                 any(org.springframework.data.domain.Pageable.class));
     }
@@ -360,7 +400,8 @@ class SupportTicketServiceTest {
                 any(org.springframework.data.domain.Pageable.class))).thenReturn(Page.empty());
         when(ticketResponseAssembler.toResponses(List.of())).thenReturn(List.of());
 
-        assertThat(service.getTickets(null, STATION_ID, 1, 20).getContent()).isEmpty();
+        assertThat(service.getTickets(null, STATION_ID, 1, 20, TicketListScope.ACTOR)
+                .getContent()).isEmpty();
     }
 
     @Test
@@ -372,6 +413,20 @@ class SupportTicketServiceTest {
         when(ticketRepository.findByIdForUpdate(ticketId)).thenReturn(Optional.of(ticket));
 
         assertThatThrownBy(() -> service.replyTicket(ticketId, UUID.randomUUID(), new MessageRequest("Late reply")))
+                .isInstanceOf(AppException.class);
+        verifyNoInteractions(messageRepository);
+    }
+
+    @Test
+    void replyToResolvedTicketRequiresExplicitContinueAction() {
+        UUID ticketId = UUID.randomUUID();
+        SupportTicket ticket = mock(SupportTicket.class);
+        when(ticket.getStatus()).thenReturn(TicketStatus.RESOLVED);
+        when(ticket.getReporter()).thenReturn(reporter);
+        when(ticketRepository.findByIdForUpdate(ticketId)).thenReturn(Optional.of(ticket));
+
+        assertThatThrownBy(() -> service.replyTicket(ticketId, UUID.randomUUID(),
+                new MessageRequest("The problem is still present")))
                 .isInstanceOf(AppException.class);
         verifyNoInteractions(messageRepository);
     }

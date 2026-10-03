@@ -1,0 +1,44 @@
+meta {
+  name: Create Checkout
+  type: http
+  seq: 4
+}
+
+post {
+  url: {{baseUrl}}/api/v1/bookings/{{bookingId}}/checkout
+  body: none
+  auth: bearer
+}
+
+headers {
+  Idempotency-Key: {{checkoutKey}}
+}
+
+auth:bearer {
+  token: {{access_token}}
+}
+
+script:pre-request {
+  // Key riêng cho checkout (mỗi command một key)
+  function uuid() {
+    return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, function(c) {
+      const r = (Math.random() * 16) | 0;
+      const v = c === "x" ? r : (r & 0x3) | 0x8;
+      return v.toString(16);
+    });
+  }
+  bru.setEnvVar("checkoutKey", uuid());
+}
+
+tests {
+  test("Status code is 200", function() {
+    expect(res.getStatus()).to.equal(200);
+  });
+  test("Checkout returns simulator instruction", function() {
+    const d = res.getBody().data;
+    expect(d.status).to.be.a("string");
+    expect(d.method).to.equal("SIMULATOR");
+    expect(d.expiresAt).to.be.a("string");
+    expect(d.checkoutReference).to.be.a("string");
+  });
+}

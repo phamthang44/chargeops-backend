@@ -1,0 +1,43 @@
+meta {
+  name: Reply To Ticket
+  type: http
+  seq: 4
+}
+
+post {
+  url: {{baseUrl}}/api/v1/tickets/{{ticketId}}/messages
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{access_token}}
+}
+
+body:json {
+  {
+    "body": "Da thu doi cong mat va ket noi lai, van khong hieu qua. Mong tram kiem tra som."
+  }
+}
+
+script:post-response {
+  if (res.status === 201 && res.body.data) {
+    bru.setEnvVar("ticketMessageId", res.body.data.messageId);
+  }
+}
+
+tests {
+  test("Status code is 201", function() {
+    expect(res.getStatus()).to.equal(201);
+  });
+  test("Reply authored by current driver", function() {
+    const d = res.getBody().data;
+    expect(d.messageId).to.be.a("string");
+    expect(d.authorId).to.equal(bru.getEnvVar("profileId"));
+    expect(d.authorKind).to.equal("REPORTER");
+    expect(d.authorDisplayName).to.be.a("string").and.not.empty;
+  });
+  test("Reply body echoed", function() {
+    expect(res.getBody().data.body).to.include("khong hieu qua");
+  });
+}

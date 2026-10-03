@@ -175,7 +175,7 @@ class SupportTicketControllerTest {
     @Test
     @WithMockUser(roles = "DRIVER")
     void authenticatedGetTicketsReturnsOk() throws Exception {
-        when(ticketService.getTickets(any(), any(), eq(1), eq(20)))
+        when(ticketService.getTickets(any(), any(), eq(1), eq(20), any()))
                 .thenReturn(new PageImpl<>(List.of()));
 
         mockMvc.perform(get("/api/v1/tickets")
@@ -183,7 +183,33 @@ class SupportTicketControllerTest {
                         .param("size", "20"))
                 .andExpect(status().isOk());
 
-        verify(ticketService).getTickets(any(), any(), eq(1), eq(20));
+        verify(ticketService).getTickets(any(), any(), eq(1), eq(20), any());
+    }
+
+    @Test
+    @WithMockUser(roles = "DRIVER")
+    void getTicketsWithReporterScopeIsPassedToService() throws Exception {
+        when(ticketService.getTickets(any(), any(), eq(1), eq(20), any()))
+                .thenReturn(new PageImpl<>(List.of()));
+
+        mockMvc.perform(get("/api/v1/tickets")
+                        .param("page", "1")
+                        .param("size", "20")
+                        .param("scope", "REPORTER"))
+                .andExpect(status().isOk());
+
+        verify(ticketService).getTickets(any(), any(), eq(1), eq(20),
+                eq(com.thang.chargeops.support.model.TicketListScope.REPORTER));
+    }
+
+    @Test
+    @WithMockUser(roles = "DRIVER")
+    void getTicketsWithInvalidScopeIsBadRequest() throws Exception {
+        mockMvc.perform(get("/api/v1/tickets")
+                        .param("scope", "bogus"))
+                .andExpect(status().isBadRequest());
+
+        verifyNoInteractions(ticketService);
     }
 
     @Test
@@ -204,7 +230,7 @@ class SupportTicketControllerTest {
                 null, null, null, null, null, false, null,
                 new TicketEscalationAvailabilityResponse(false, null,
                         TicketEscalationAvailabilityResponse.Reason.WAITING_FOR_STATION));
-        when(ticketService.getTicketDetail(ticketId)).thenReturn(detail);
+        when(ticketService.getTicketDetail(eq(ticketId), any())).thenReturn(detail);
 
         mockMvc.perform(get("/api/v1/tickets/" + ticketId))
                 .andExpect(status().isOk())
@@ -212,7 +238,33 @@ class SupportTicketControllerTest {
                 .andExpect(jsonPath("$.data.isEscalated").value(false))
                 .andExpect(jsonPath("$.data.escalation").value(nullValue()));
 
-        verify(ticketService).getTicketDetail(ticketId);
+        verify(ticketService).getTicketDetail(eq(ticketId), any());
+    }
+
+    @Test
+    @WithMockUser(roles = "DRIVER")
+    void getTicketDetailWithReporterScopeIsPassedToService() throws Exception {
+        UUID ticketId = UUID.randomUUID();
+        when(ticketService.getTicketDetail(eq(ticketId), any())).thenReturn(null);
+
+        mockMvc.perform(get("/api/v1/tickets/" + ticketId)
+                        .param("scope", "REPORTER"))
+                .andExpect(status().isOk());
+
+        verify(ticketService).getTicketDetail(eq(ticketId),
+                eq(com.thang.chargeops.support.model.TicketListScope.REPORTER));
+    }
+
+    @Test
+    @WithMockUser(roles = "DRIVER")
+    void getTicketDetailWithInvalidScopeIsBadRequest() throws Exception {
+        UUID ticketId = UUID.randomUUID();
+
+        mockMvc.perform(get("/api/v1/tickets/" + ticketId)
+                        .param("scope", "bogus"))
+                .andExpect(status().isBadRequest());
+
+        verifyNoInteractions(ticketService);
     }
 
     @Test

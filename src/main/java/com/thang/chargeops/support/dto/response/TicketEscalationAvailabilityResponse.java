@@ -11,6 +11,7 @@ public record TicketEscalationAvailabilityResponse(
         ALREADY_ESCALATED,
         PLATFORM_TICKET,
         TICKET_CLOSED,
+        TICKET_AWAITING_REPORTER,
         NOT_REQUESTER,
         OWNER_CAN_REQUEST,
         STATION_DENIED,

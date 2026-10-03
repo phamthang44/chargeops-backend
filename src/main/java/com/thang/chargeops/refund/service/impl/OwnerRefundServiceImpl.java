@@ -16,6 +16,7 @@ import com.thang.chargeops.profile.support.CurrentProfileProvider;
 import com.thang.chargeops.refund.dto.request.ExecuteRefundRequest;
 import com.thang.chargeops.refund.dto.request.RefundExecutionOutcome;
 import com.thang.chargeops.refund.dto.response.OwnerRefundResponse;
+import com.thang.chargeops.refund.dto.response.OwnerRefundsSummaryResponse;
 import com.thang.chargeops.refund.dto.response.RefundDetailResponse;
 import com.thang.chargeops.refund.entity.Refund;
 import com.thang.chargeops.refund.entity.RefundAttempt;
@@ -41,6 +42,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Clock;
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
 import java.util.Objects;
@@ -63,6 +65,19 @@ public class OwnerRefundServiceImpl implements OwnerRefundService {
     private final RefundExecutionResultHandler resultHandler;
     private final RefundDetailAssembler assembler;
     private final Clock applicationClock;
+
+    @Override
+    @Transactional(readOnly = true)
+    public OwnerRefundsSummaryResponse summary() {
+        UUID ownerId = currentProfileProvider.requireProfileId();
+        var totals = refundRepository.summarizeOwnerSimulatorRefunds(ownerId);
+        return new OwnerRefundsSummaryResponse(
+                totals.getPendingCount(), totals.getSucceededCount(),
+                attemptRepository.countOwnerFailedSimulatorAttempts(ownerId),
+                totals.getNeedsAdminCount(),
+                totals.getTotalAmount().longValueExact(),
+                totals.getPendingAmount().longValueExact());
+    }
 
     @Override
     @Transactional(readOnly = true)

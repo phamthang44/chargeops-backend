@@ -1,0 +1,60 @@
+meta {
+  name: Keycloak Token
+  type: http
+  seq: 1
+}
+
+post {
+  url: {{keycloakUrl}}/realms/chargeops/protocol/openid-connect/token
+  body: form-urlencoded
+  auth: none
+}
+
+body:form-urlencoded {
+  grant_type: password
+  client_id: chargeops-driver-app
+  username: {{username}}
+  password: {{password}}
+}
+
+script:post-response {
+  if (res.status === 200 && res.body.access_token) {
+    bru.setEnvVar("access_token", res.body.access_token);
+  }
+
+  // Cửa sổ booking động, tính một lần cho cả collection:
+  // - lead >= 60 phút (booking.minimum_advance_minutes)
+  // - canh lưới 30 phút (booking.operating_grid_minutes; ICT offset chia hết 30 nên UTC grid = ICT grid)
+  // - duration 60 phút (bội của 30, trong [30, 180])
+  const gridMs = 30 * 60 * 1000;
+  const start = new Date(Math.ceil((Date.now() + 90 * 60 * 1000) / gridMs) * gridMs);
+  const end = new Date(start.getTime() + 60 * 60 * 1000);
+  bru.setEnvVar("startTime", start.toISOString());
+  bru.setEnvVar("endTime", end.toISOString());
+
+  // Idempotency-Key mới cho mỗi lần chạy (dùng lại key cũ + payload khác sẽ bị replay/conflict)
+  function uuid() {
+    return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, function(c) {
+      const r = (Math.random() * 16) | 0;
+      const v = c === "x" ? r : (r & 0x3) | 0x8;
+      return v.toString(16);
+    });
+  }
+  bru.setEnvVar("idempotencyKey", uuid());
+}
+
+tests {
+  test("Status code is 200", function() {
+    expect(res.getStatus()).to.equal(200);
+  });
+  test("Access token returned", function() {
+    expect(res.getBody().access_token).to.be.a("string").and.not.empty;
+  });
+  test("Token has expiry", function() {
+    expect(res.getBody().expires_in).to.be.a("number");
+  });
+  test("Booking time window computed", function() {
+    expect(bru.getEnvVar("startTime")).to.be.a("string");
+    expect(bru.getEnvVar("endTime")).to.be.a("string");
+  });
+}

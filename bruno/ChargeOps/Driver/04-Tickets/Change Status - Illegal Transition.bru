@@ -1,0 +1,32 @@
+meta {
+  name: Change Status - Illegal Transition
+  type: http
+  seq: 9
+}
+
+patch {
+  url: {{baseUrl}}/api/v1/tickets/{{ticketId}}/status
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{access_token}}
+}
+
+body:json {
+  {
+    "expectedVersion": {{ticketVersion}},
+    "status": "CLOSED",
+    "reason": "Driver thu dong ket thuc ticket tu OPEN."
+  }
+}
+
+tests {
+  test("Status code is 409 (OPEN -> CLOSED is not a legal transition)", function() {
+    expect(res.getStatus()).to.equal(409);
+  });
+  test("Error code is TKT_STATE_CONFLICT", function() {
+    expect(res.getBody().error.code).to.equal("TKT_STATE_CONFLICT");
+  });
+}

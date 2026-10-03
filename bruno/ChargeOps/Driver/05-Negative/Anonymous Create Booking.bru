@@ -1,0 +1,32 @@
+meta {
+  name: Anonymous Create Booking
+  type: http
+  seq: 2
+}
+
+post {
+  url: {{baseUrl}}/api/v1/bookings
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "connectorId": "00000000-0000-0000-0000-000000000001",
+    "startAt": "2030-01-01T10:00:00Z",
+    "durationMin": 60,
+    "acceptedTotalAmount": 10000,
+    "acceptedPricingVersion": "0000000000000000000000000000000000000000000000000000000000000000",
+    "acceptedPolicyVersion": "0000000000000000000000000000000000000000000000000000000000000000",
+    "paymentMethod": "SIMULATOR"
+  }
+}
+
+tests {
+  test("Status code is 401 (mutations require auth)", function() {
+    expect(res.getStatus()).to.equal(401);
+  });
+  test("Error code is AUTH_001", function() {
+    expect(res.getBody().error.code).to.equal("AUTH_001");
+  });
+}

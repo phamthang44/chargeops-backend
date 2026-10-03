@@ -1,0 +1,57 @@
+meta {
+  name: Complete Charging - Tier2
+  type: http
+  seq: 12
+}
+
+tags {
+  tier2Post
+}
+
+post {
+  url: {{baseUrl}}/api/v1/bookings/{{bookingId}}/complete
+  body: json
+  auth: bearer
+}
+
+headers {
+  Idempotency-Key: {{completeKey}}
+}
+
+auth:bearer {
+  token: {{access_token}}
+}
+
+script:pre-request {
+  function uuid() {
+    return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, function(c) {
+      const r = (Math.random() * 16) | 0;
+      const v = c === "x" ? r : (r & 0x3) | 0x8;
+      return v.toString(16);
+    });
+  }
+  bru.setEnvVar("completeKey", uuid());
+}
+
+body:json {
+  {
+    "expectedVersion": {{bookingVersion}}
+  }
+}
+
+script:post-response {
+  if (res.status === 200 && res.body.data) {
+    bru.setEnvVar("bookingVersion", String(res.body.data.version));
+  }
+}
+
+tests {
+  test("Status code is 200", function() {
+    expect(res.getStatus()).to.equal(200);
+  });
+  test("Booking transitions to COMPLETED", function() {
+    const d = res.getBody().data;
+    expect(d.status).to.equal("COMPLETED");
+    expect(d.completedAt).to.be.a("string");
+  });
+}

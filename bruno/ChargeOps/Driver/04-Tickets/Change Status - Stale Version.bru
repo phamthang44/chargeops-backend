@@ -1,0 +1,32 @@
+meta {
+  name: Change Status - Stale Version
+  type: http
+  seq: 10
+}
+
+patch {
+  url: {{baseUrl}}/api/v1/tickets/{{ticketId}}/status
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{access_token}}
+}
+
+body:json {
+  {
+    "expectedVersion": 999999,
+    "status": "IN_PROGRESS",
+    "reason": "Version cu khong khop."
+  }
+}
+
+tests {
+  test("Status code is 409 (optimistic lock rejects stale version)", function() {
+    expect(res.getStatus()).to.equal(409);
+  });
+  test("Error code is TKT_VERSION_CONFLICT", function() {
+    expect(res.getBody().error.code).to.equal("TKT_VERSION_CONFLICT");
+  });
+}

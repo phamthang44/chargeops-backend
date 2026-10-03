@@ -1,0 +1,63 @@
+meta {
+  name: Preview Booking Price
+  type: http
+  seq: 2
+}
+
+post {
+  url: {{baseUrl}}/api/v1/bookings/price-preview
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{access_token}}
+}
+
+script:pre-request {
+  if (!bru.getEnvVar("startTime")) {
+    const gridMs = 30 * 60 * 1000;
+    const start = new Date(Math.ceil((Date.now() + 90 * 60 * 1000) / gridMs) * gridMs);
+    bru.setEnvVar("startTime", start.toISOString());
+    bru.setEnvVar("endTime", new Date(start.getTime() + 60 * 60 * 1000).toISOString());
+  }
+}
+
+body:json {
+  {
+    "connectorId": "{{connectorId}}",
+    "startAt": "{{startTime}}",
+    "durationMin": 60
+  }
+}
+
+script:post-response {
+  if (res.status === 200 && res.body.data) {
+    bru.setEnvVar("pricingVersion", res.body.data.pricingVersion || "");
+    bru.setEnvVar("previewTotal", String(res.body.data.totalAmount));
+    if (res.body.data.policy && res.body.data.policy.policyVersion) {
+      bru.setEnvVar("policyVersion", res.body.data.policy.policyVersion);
+    }
+  }
+}
+
+tests {
+  test("Status code is 200", function() {
+    expect(res.getStatus()).to.equal(200);
+  });
+  test("Preview returns price breakdown", function() {
+    const d = res.getBody().data;
+    expect(d.totalAmount).to.be.a("number").and.is.at.least(0);
+    expect(d.currency).to.be.a("string");
+    expect(d.priceLines).to.be.an("array");
+    expect(d.durationMin).to.equal(60);
+  });
+  test("pricingVersion is 64-hex consent token", function() {
+    expect(res.getBody().data.pricingVersion).to.match(/^[0-9a-f]{64}$/);
+  });
+  test("Echoes connector and start window", function() {
+    const d = res.getBody().data;
+    expect(d.connectorId).to.equal(bru.getEnvVar("connectorId"));
+    expect(new Date(d.startAt).toISOString()).to.equal(bru.getEnvVar("startTime"));
+  });
+}
