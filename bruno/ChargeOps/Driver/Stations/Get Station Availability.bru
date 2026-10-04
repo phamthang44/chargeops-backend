@@ -1,0 +1,28 @@
+meta {
+  name: Get Station Availability
+  type: http
+  seq: 3
+}
+
+get {
+  url: {{baseUrl}}/api/v1/stations/{{stationId}}/availability?startTime=2026-03-30T10:00:00Z&endTime=2026-03-30T11:00:00Z
+  body: none
+  auth: none
+}
+
+params:query {
+  startTime: 2026-03-30T10:00:00Z
+  endTime: 2026-03-30T11:00:00Z
+}
+
+script:post-response {
+  if (res.status === 200 && res.body.data && res.body.data.connectors && res.body.data.connectors.length > 0) {
+    bru.setEnvVar("connectorId", res.body.data.connectors[0].id);
+  }
+}
+
+tests {
+  test("Status code is 200 or 404", function() {
+    expect([200, 404]).to.include(res.getStatus());
+  });
+}

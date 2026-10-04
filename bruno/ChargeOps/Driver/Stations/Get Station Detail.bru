@@ -1,0 +1,22 @@
+meta {
+  name: Get Station Detail
+  type: http
+  seq: 2
+}
+
+get {
+  url: {{baseUrl}}/api/v1/stations/{{stationId}}
+  body: none
+  auth: none
+}
+
+tests {
+  test("Status code is 200 or 404", function() {
+    expect([200, 404]).to.include(res.getStatus());
+  });
+  if (res.getStatus() === 200) {
+    test("Station detail has ID", function() {
+      expect(res.getBody().data.id).to.equal(bru.getEnvVar("stationId"));
+    });
+  }
+}

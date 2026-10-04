@@ -1,0 +1,24 @@
+meta {
+  name: Get Booking Policy
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{baseUrl}}/api/v1/booking-policy
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{access_token}}
+}
+
+tests {
+  test("Status code is 200", function() {
+    expect(res.getStatus()).to.equal(200);
+  });
+  test("Booking policy structure is valid", function() {
+    expect(res.getBody().data).to.be.an('object');
+  });
+}
