@@ -47,6 +47,7 @@ class OwnerBookingServiceTest {
     @Mock private PaymentRepository paymentRepository;
     @Mock private BookingFinancialReadAssembler financialReadAssembler;
     @Mock private Clock applicationClock;
+    @Mock private ServiceFailureDecisionReader decisionReader;
     @Mock private Specification<Booking> specification;
     @Mock private Booking booking;
 
@@ -57,7 +58,7 @@ class OwnerBookingServiceTest {
         service = new OwnerBookingServiceImpl(
                 readRepository, predicateFactory, scopeValidator,
                 currentProfileProvider, effectiveStatePolicy, mapper,
-                paymentRepository, financialReadAssembler, applicationClock
+                paymentRepository, financialReadAssembler, applicationClock, decisionReader
         );
         lenient().when(currentProfileProvider.requireProfileId()).thenReturn(OWNER_ID);
         lenient().when(applicationClock.instant()).thenReturn(NOW);

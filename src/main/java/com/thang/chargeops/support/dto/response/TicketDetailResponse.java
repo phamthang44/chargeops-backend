@@ -35,7 +35,7 @@ public record TicketDetailResponse(
                         ticket.assignedHandlerId(), ticket.assignedHandlerName(), ticket.assignedHandlerKind()),
                 new Conversation(ticket.messages(), ticket.lastMessagePreview(), ticket.messageCount()),
                 new Resolution(ticket.findings(), ticket.refundIds(), ticket.resolvedAt(), ticket.autoCloseAt(),
-                        ticket.closeReason(), ticket.resolutionCycle(), ticket.closedAt(), ticket.resolutionReason()),
+                        ticket.closeReason(), ticket.resolutionCycle(), ticket.closedAt(), ticket.resolutionReason(), null),
                 escalation != null && escalation.resolvedAt() == null,
                 TicketEscalationDetailResponse.from(escalation, ownerId, ticket.reporterId()), availability);
     }
@@ -55,5 +55,13 @@ public record TicketDetailResponse(
 
     public record Resolution(List<TicketFindingResponse> findings, List<UUID> refundIds,
                              Instant resolvedAt, Instant autoCloseAt, String closeReason,
-                             int resolutionCycle, Instant closedAt, String resolutionReason) {}
+                             int resolutionCycle, Instant closedAt, String resolutionReason,
+                             com.thang.chargeops.booking.service.ServiceFailureDecisionReader.FinancialResolution financialResolution) {}
+
+    public TicketDetailResponse withFinancialResolution(com.thang.chargeops.booking.service.ServiceFailureDecisionReader.FinancialResolution finance) {
+        return new TicketDetailResponse(overview, station, booking, participants, conversation,
+                new Resolution(resolution.findings(), resolution.refundIds(), resolution.resolvedAt(), resolution.autoCloseAt(),
+                        resolution.closeReason(), resolution.resolutionCycle(), resolution.closedAt(), resolution.resolutionReason(), finance),
+                isEscalated, escalation, escalationAvailability);
+    }
 }

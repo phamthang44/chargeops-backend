@@ -62,6 +62,9 @@ public interface RefundRepository extends JpaRepository<Refund, UUID>, JpaSpecif
     /** One full-package obligation per Payment, even if bad data has multiple APPLIED receipts. */
     boolean existsByPaymentId(UUID paymentId);
 
+    @Query("SELECT r.id FROM Refund r WHERE r.payment.id = :id")
+    List<UUID> findIdsByPaymentId(@Param("id") UUID paymentId);
+
     /** Acquire only after Actor/Profile -> Connector -> Booking -> Payment -> PaymentTransaction. */
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("SELECT r FROM Refund r WHERE r.id = :id")

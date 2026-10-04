@@ -73,6 +73,15 @@ public class BookingNoShowServiceImpl implements BookingNoShowService {
             return false;
         }
 
+        return reconcileLocked(booking, paymentOptional.get(), decisionAt);
+    }
+
+    /** Caller already owns Connector -> Booking -> Payment locks; joins its transaction. */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public boolean reconcileLocked(Booking booking, Payment payment, Instant decisionAt) {
+        if (booking.getStatus() != BookingStatus.CONFIRMED || booking.getCheckInDeadline() == null
+                || decisionAt.isBefore(booking.getCheckInDeadline()) || booking.getCheckedInAt() != null
+                || booking.getChargingStartedAt() != null || payment.getStatus() != PaymentStatus.PAID) return false;
         bookingStatusHistoryRecorder.recordSystemTransition(
                 booking,
                 BookingStatusReason.NO_SHOW,
@@ -81,7 +90,7 @@ public class BookingNoShowServiceImpl implements BookingNoShowService {
         );
         bookingRepository.flush();
         eventPublisher.publishEvent(new BookingLifecycleEvent(
-                bookingId,
+                booking.getId(),
                 BookingLifecycleEventType.NO_SHOW,
                 decisionAt
         ));

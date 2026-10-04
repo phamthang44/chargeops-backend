@@ -35,6 +35,21 @@ public interface SupportTicketRepository extends JpaRepository<SupportTicket, UU
         """)
     Optional<TicketScope> findScope(@Param("id") UUID id);
 
+    interface RefundPolicyRoute {
+        UUID getBookingId();
+        UUID getConnectorId();
+        UUID getStationId();
+    }
+
+    @Query("""
+        select b.id as bookingId, c.id as connectorId, s.id as stationId
+        from TicketEscalation e join e.ticket t join t.booking b
+        join b.connector c join c.chargePoint cp join cp.station s
+        where t.id = :ticketId and e.id = :escalationId and t.station.id = s.id
+        """)
+    Optional<RefundPolicyRoute> findRefundPolicyRoute(@Param("ticketId") UUID ticketId,
+                                                    @Param("escalationId") UUID escalationId);
+
     @Query("""
         select t.id from SupportTicket t
         where t.station.id = :stationId and t.assignedHandler.id = :handlerId

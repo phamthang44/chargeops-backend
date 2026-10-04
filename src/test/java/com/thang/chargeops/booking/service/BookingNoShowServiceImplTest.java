@@ -97,6 +97,7 @@ class BookingNoShowServiceImplTest {
     void checkInWinnerMakesNoShowRetryANoOp() {
         when(connectorRepository.findByIdWithLock(CONNECTOR_ID)).thenReturn(Optional.of(connector));
         when(bookingRepository.findByIdWithLock(BOOKING_ID)).thenReturn(Optional.of(booking));
+        lenient().when(booking.getId()).thenReturn(BOOKING_ID);
         when(booking.getStatus()).thenReturn(BookingStatus.CHECKED_IN);
 
         assertThat(service.markNoShowIfDue(BOOKING_ID, CONNECTOR_ID, DEADLINE)).isFalse();
@@ -135,6 +136,7 @@ class BookingNoShowServiceImplTest {
     ) {
         when(connectorRepository.findByIdWithLock(CONNECTOR_ID)).thenReturn(Optional.of(connector));
         when(bookingRepository.findByIdWithLock(BOOKING_ID)).thenReturn(Optional.of(booking));
+        lenient().when(booking.getId()).thenReturn(BOOKING_ID);
         when(booking.getStatus()).thenReturn(status);
         when(booking.getCheckInDeadline()).thenReturn(deadline);
         lenient().when(paymentRepository.findByBookingIdWithLock(BOOKING_ID))

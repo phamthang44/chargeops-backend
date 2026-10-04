@@ -69,7 +69,10 @@ class SupportTicketResponseAssemblerTest {
         when(events.findWorkflowFacts(eq(List.of(ticketId)), any())).thenReturn(List.of(closed, resolved));
 
         var response = new TicketResponseService(messages, findings, refunds, tickets, events,
-                new TicketResponseMapper(), mock(TicketEscalationService.class)).toResponse(ticket);
+                new TicketResponseMapper(), mock(TicketEscalationService.class),
+                mock(com.thang.chargeops.booking.service.ServiceFailureDecisionReader.class),
+                mock(com.thang.chargeops.profile.support.CurrentProfileProvider.class),
+                mock(com.thang.chargeops.support.service.TicketAccessPolicy.class)).toResponse(ticket);
         assertThat(response.description()).isEqualTo("Charged twice");
         assertThat(response.reporterName()).isEqualTo("Driver");
         assertThat(response.assignedHandlerName()).isEqualTo("Driver");

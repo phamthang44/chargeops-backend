@@ -72,14 +72,16 @@ public class OwnerBookingMapper {
                 .checkedInAt(booking.getCheckedInAt()).chargingStartedAt(booking.getChargingStartedAt())
                 .completedAt(booking.getCompletedAt()).createdAt(booking.getCreatedAt())
                 .payment(bookingMapper.toPaymentDetail(payment, snapshot)).checkout(snapshot.checkout())
-                .refunds(snapshot.refunds()).actions(actions(state.effectiveStatus())).build();
+                .refunds(snapshot.refunds()).actions(actions(booking, evaluatedAt)).build();
     }
 
-    private OwnerActionsResponse actions(BookingStatus status) {
+    private OwnerActionsResponse actions(Booking booking, Instant evaluatedAt) {
+        BookingStatus status = booking.getStatus();
         boolean active = status == BookingStatus.CONFIRMED || status == BookingStatus.CHECKED_IN
                 || status == BookingStatus.CHARGING;
         boolean incident = active || status == BookingStatus.COMPLETED;
-        return new OwnerActionsResponse(active, true, incident);
+        boolean cancel = new com.thang.chargeops.booking.policy.ServiceFailureEligibilityPolicy().cancel(booking, evaluatedAt) == null;
+        return new OwnerActionsResponse(cancel, true, incident);
     }
 
     private String driverName(Booking booking) {

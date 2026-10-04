@@ -21,6 +21,9 @@ import java.util.*;
 @Repository
 public interface BookingRepository extends JpaRepository<Booking, UUID>, JpaSpecificationExecutor<Booking> {
 
+    @Query("SELECT b.id AS bookingId, b.connector.id AS connectorId, b.connector.chargePoint.station.owner.id AS ownerId FROM Booking b WHERE b.id = :id")
+    Optional<com.thang.chargeops.booking.projection.OwnerServiceFailureRoute> findServiceFailureRoute(@Param("id") UUID id);
+
     @Override
     @EntityGraph(attributePaths = {
             "connector",

@@ -36,6 +36,7 @@ class OwnerBookingControllerSecurityTest {
 
     @Autowired private MockMvc mockMvc;
     @MockitoBean private OwnerBookingService ownerBookingService;
+    @MockitoBean private com.thang.chargeops.booking.service.BookingServiceFailureService serviceFailureService;
     @MockitoBean private RestAuthenticationEntryPoint authenticationEntryPoint;
     @MockitoBean private RestAccessDeniedHandler accessDeniedHandler;
 

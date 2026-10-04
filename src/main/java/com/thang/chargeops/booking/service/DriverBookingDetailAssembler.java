@@ -23,11 +23,14 @@ import java.util.Objects;
 public class DriverBookingDetailAssembler {
     private final BookingFinancialReadAssembler financialReadAssembler;
     private final BookingMapper bookingMapper;
+    private final ServiceFailureDecisionReader decisionReader;
 
     @Autowired
-    public DriverBookingDetailAssembler(BookingFinancialReadAssembler financialReadAssembler, BookingMapper bookingMapper) {
+    public DriverBookingDetailAssembler(BookingFinancialReadAssembler financialReadAssembler, BookingMapper bookingMapper,
+                                       ServiceFailureDecisionReader decisionReader) {
         this.financialReadAssembler = financialReadAssembler;
         this.bookingMapper = bookingMapper;
+        this.decisionReader = decisionReader;
     }
 
     /** Compatibility constructor retained for focused unit tests and downstream modules. */
@@ -37,7 +40,7 @@ public class DriverBookingDetailAssembler {
             RefundRepository refundRepository,
             BookingMapper bookingMapper
     ) {
-        this(new BookingFinancialReadAssembler(policy, paymentTransactionRepository, refundRepository), bookingMapper);
+        this(new BookingFinancialReadAssembler(policy, paymentTransactionRepository, refundRepository), bookingMapper, null);
     }
 
     public BookingDetailResponse assemble(
@@ -50,7 +53,9 @@ public class DriverBookingDetailAssembler {
         Objects.requireNonNull(evaluatedAt, "evaluatedAt must not be null");
 
         BookingReadSnapshot snapshot = buildBookingReadSnapshot(booking, payment, evaluatedAt);
-        return bookingMapper.toBookingDetailResponse(booking, payment, snapshot);
+        var detail = bookingMapper.toBookingDetailResponse(booking, payment, snapshot);
+        return decisionReader == null ? detail : detail.toBuilder()
+                .serviceFailureDecisions(decisionReader.summaries(booking.getId())).build();
     }
 
     public BookingReadSnapshot buildBookingReadSnapshot(

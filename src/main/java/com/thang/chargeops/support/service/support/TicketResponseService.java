@@ -32,6 +32,9 @@ public class TicketResponseService {
     private final TicketEventRepository eventRepository;
     private final TicketResponseMapper mapper;
     private final TicketEscalationService escalationService;
+    private final com.thang.chargeops.booking.service.ServiceFailureDecisionReader decisionReader;
+    private final com.thang.chargeops.profile.support.CurrentProfileProvider currentProfile;
+    private final com.thang.chargeops.support.service.TicketAccessPolicy access;
 
     public TicketResponse toResponse(SupportTicket ticket) {
         if (ticket == null) {
@@ -45,7 +48,14 @@ public class TicketResponseService {
         TicketResponse snapshot = toResponse(ticket);
         TicketEscalationService.State state = escalationService.describe(ticket);
         UUID ownerId = ticket.getStation() == null ? null : ticket.getStation().getOwner().getId();
-        return TicketDetailResponse.from(snapshot, state.escalation(), state.availability(), ownerId);
+        var detail = TicketDetailResponse.from(snapshot, state.escalation(), state.availability(), ownerId);
+        if (ticket.getBooking() == null) return detail;
+        var actor = currentProfile.requireProfile();
+        boolean owner = access.isOwner(ticket, actor.getId());
+        boolean reporter = access.hasRole("DRIVER") && ticket.getReporter().getId().equals(actor.getId());
+        boolean admin = access.hasRole("ADMIN") && access.canRead(ticket, actor);
+        return owner || reporter || admin ? detail.withFinancialResolution(
+                decisionReader.forTicket(ticket.getBooking().getId(), ticket.getId(), owner)) : detail;
     }
 
     public List<TicketResponse> toResponses(List<SupportTicket> tickets) {

@@ -18,7 +18,7 @@ import java.util.UUID;
  * are intentionally absent. A future public timeline must use a separately
  * reviewed, sanitized DTO.</p>
  */
-@Builder
+@Builder(toBuilder = true)
 public record BookingDetailResponse(
         UUID bookingId,
         String bookingCode,
@@ -49,11 +49,13 @@ public record BookingDetailResponse(
         PaymentDetail payment,
         CheckoutDetail checkout,
         List<RefundSummary> refunds,
-        BookingActionsResponse actions
+        BookingActionsResponse actions,
+        List<ServiceFailureDecisionResponse> serviceFailureDecisions
 ) {
     public BookingDetailResponse {
         priceLines = priceLines == null ? List.of() : List.copyOf(priceLines);
         refunds = refunds == null ? List.of() : List.copyOf(refunds);
+        serviceFailureDecisions = serviceFailureDecisions == null ? List.of() : List.copyOf(serviceFailureDecisions);
     }
 
     public record PaymentDetail(

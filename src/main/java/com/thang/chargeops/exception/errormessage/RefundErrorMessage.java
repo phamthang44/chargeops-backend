@@ -38,6 +38,11 @@ public final class RefundErrorMessage {
             "Refund execution data is invalid for the selected mode"
     );
 
+    public static final ErrorMessage.Template POLICY_ALREADY_GRANTED = template(
+            "error.refund.policy.alreadyGranted",
+            "An existing refund entitlement cannot be denied"
+    );
+
     static List<ErrorMessage.Template> templates() {
         return List.of(
                 EXECUTION_CONFLICT,
@@ -45,7 +50,8 @@ public final class RefundErrorMessage {
                 VERSION_CONFLICT,
                 REQUEST_CONFLICT,
                 MODE_UNAVAILABLE,
-                INVALID_EXECUTION_REQUEST
+                INVALID_EXECUTION_REQUEST,
+                POLICY_ALREADY_GRANTED
         );
     }
 }

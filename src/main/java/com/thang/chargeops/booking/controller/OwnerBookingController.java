@@ -4,6 +4,10 @@ import com.thang.chargeops.booking.dto.filter.OwnerActiveBookingFilter;
 import com.thang.chargeops.booking.dto.filter.OwnerBookingFilter;
 import com.thang.chargeops.booking.dto.response.*;
 import com.thang.chargeops.booking.service.OwnerBookingService;
+import com.thang.chargeops.booking.service.BookingServiceFailureService;
+import com.thang.chargeops.booking.dto.request.OwnerCancelBookingRequest;
+import com.thang.chargeops.booking.dto.request.OwnerAcceptStationFailureRequest;
+import jakarta.validation.Valid;
 import com.thang.chargeops.common.constant.SystemConstant;
 import com.thang.chargeops.common.enums.BookingStatus;
 import com.thang.chargeops.common.response.ApiResult;
@@ -29,6 +33,27 @@ import java.util.UUID;
 @PreAuthorize("hasRole('OWNER')")
 public class OwnerBookingController {
     private final OwnerBookingService ownerBookingService;
+    private final BookingServiceFailureService serviceFailureService;
+
+    @PostMapping("/{bookingId}/cancel")
+    public ResponseEntity<ApiResult<ServiceFailureCommandResponse>> cancelForStationFailure(
+            @PathVariable UUID bookingId,
+            @RequestHeader("Idempotency-Key") UUID key,
+            @Valid @RequestBody OwnerCancelBookingRequest request) {
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(ApiResult.success(serviceFailureService.cancel(bookingId, key, request)));
+    }
+
+    @PostMapping("/{bookingId}/station-failure-refund")
+    public ResponseEntity<ApiResult<ServiceFailureCommandResponse>> acceptStationFailure(
+            @PathVariable UUID bookingId, @RequestHeader("Idempotency-Key") UUID key,
+            @Valid @RequestBody OwnerAcceptStationFailureRequest request) {
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(ApiResult.success(serviceFailureService.accept(bookingId, key, request)));
+    }
+
+    @GetMapping("/{bookingId}/station-failure-context")
+    public ResponseEntity<ApiResult<ServiceFailureContextResponse>> getStationFailureContext(@PathVariable UUID bookingId) {
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(ApiResult.success(serviceFailureService.context(bookingId)));
+    }
 
     @GetMapping
     public ResponseEntity<ApiResult<List<OwnerBookingListItemResponse>>> getOwnerBookings(

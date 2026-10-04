@@ -42,6 +42,7 @@ public class OwnerBookingServiceImpl implements OwnerBookingService {
     private final PaymentRepository paymentRepository;
     private final BookingFinancialReadAssembler financialReadAssembler;
     private final Clock applicationClock;
+    private final com.thang.chargeops.booking.service.ServiceFailureDecisionReader decisionReader;
 
     @Override
     public Page<OwnerBookingListItemResponse> getOwnerBookings(OwnerBookingFilter filter, int page, int size) {
@@ -105,7 +106,8 @@ public class OwnerBookingServiceImpl implements OwnerBookingService {
                 .orElseThrow(() -> new AppException(CommonErrorCode.DATA_INTEGRITY_ERROR,
                         "Booking exists but payment was not found: " + bookingId));
         var snapshot = financialReadAssembler.assemble(booking, payment, evaluatedAt);
-        return mapper.toDetail(booking, payment, snapshot, evaluatedAt);
+        return mapper.toDetail(booking, payment, snapshot, evaluatedAt).toBuilder()
+                .serviceFailureDecisions(decisionReader.summaries(bookingId)).build();
     }
 
     private void validatePaging(int page, int size) {
