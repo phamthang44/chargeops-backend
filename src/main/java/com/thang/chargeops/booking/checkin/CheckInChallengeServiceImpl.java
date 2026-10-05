@@ -23,8 +23,16 @@ public class CheckInChallengeServiceImpl implements CheckInChallengeService {
 
     @Override
     public String create(String connectorId) {
+        if (connectorId == null || connectorId.isBlank()) {
+            throw new AppException(StationErrorCode.CONNECTOR_NOT_FOUND, connectorId);
+        }
 
-        UUID convertedConnectorId = UUID.fromString(connectorId);
+        UUID convertedConnectorId;
+        try {
+            convertedConnectorId = UUID.fromString(connectorId);
+        } catch (IllegalArgumentException ex) {
+            throw new AppException(StationErrorCode.CONNECTOR_NOT_FOUND, connectorId);
+        }
 
         Connector connector = requireConnector(convertedConnectorId);
         checkInChallengePolicy.requireCanIssue(connector, Instant.now());
@@ -44,6 +52,19 @@ public class CheckInChallengeServiceImpl implements CheckInChallengeService {
     }
 
     @Override
+    public ResolvedCheckInChallenge resolveWithExpiry(String token) {
+        if (token == null || token.isBlank()) {
+            throw new InvalidCheckInChallengeException();
+        }
+        UUID connectorId = checkInChallengeRepository.findConnectorId(token)
+                .orElseThrow(InvalidCheckInChallengeException::new);
+        Long remainingTtl = checkInChallengeRepository.getRemainingTtlSeconds(token)
+                .orElseThrow(InvalidCheckInChallengeException::new);
+        Instant expiresAt = Instant.now().plusSeconds(remainingTtl);
+        return new ResolvedCheckInChallenge(connectorId, expiresAt);
+    }
+
+    @Override
     public void consume(String token) {
         if (token == null || token.isBlank()) {
             throw new InvalidCheckInChallengeException();
@@ -57,9 +78,8 @@ public class CheckInChallengeServiceImpl implements CheckInChallengeService {
         if (token == null || token.isBlank() || expectedConnectorId == null) {
             throw new InvalidCheckInChallengeException();
         }
-        UUID actualConnectorId = checkInChallengeRepository.getAndDelete(token)
-                .orElseThrow(InvalidCheckInChallengeException::new);
-        if (!expectedConnectorId.equals(actualConnectorId)) {
+        boolean matchedAndDeleted = checkInChallengeRepository.compareAndDelete(token, expectedConnectorId);
+        if (!matchedAndDeleted) {
             throw new InvalidCheckInChallengeException();
         }
     }

@@ -212,6 +212,9 @@ public class Booking extends AuditableEntity {
             throw new IllegalStateException("Cannot start charging for booking with status: " + this.status);
         }
         Objects.requireNonNull(chargingStartedAt, "chargingStartedAt must not be null");
+        if (!chargingStartedAt.isBefore(this.endAt)) {
+            throw new IllegalStateException("Cannot start charging at or after booking end time: " + this.endAt);
+        }
         this.status = BookingStatus.CHARGING;
         this.chargingStartedAt = chargingStartedAt;
     }

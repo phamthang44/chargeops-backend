@@ -8,5 +8,6 @@ public enum BookingCommandOperation {
     OWNER_CANCEL_BOOKING,
     CONFIRM_CHECK_IN,
     START_CHARGING,
-    COMPLETE_BOOKING
+    COMPLETE_BOOKING,
+    SIMULATE_PAYMENT
 }

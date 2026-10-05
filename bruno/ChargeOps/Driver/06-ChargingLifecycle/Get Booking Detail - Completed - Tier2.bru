@@ -1,0 +1,40 @@
+meta {
+  name: Get Booking Detail - Completed - Tier2
+  type: http
+  seq: 13
+}
+
+tags {
+  tier2Post
+}
+
+get {
+  url: {{baseUrl}}/api/v1/bookings/{{bookingId}}
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{access_token}}
+}
+
+tests {
+  test("Status code is 200", function() {
+    expect(res.getStatus()).to.equal(200);
+  });
+  test("Completed booking detail is consistent", function() {
+    const d = res.getBody().data;
+    expect(d.bookingId).to.equal(bru.getEnvVar("bookingId"));
+    expect(d.status).to.equal("COMPLETED");
+    expect(d.persistedStatus).to.equal("COMPLETED");
+    expect(d.payment.status).to.equal("PAID");
+    expect(d.stateReconciliationPending).to.equal(false);
+  });
+  test("Lifecycle timestamps form a coherent chain", function() {
+    const d = res.getBody().data;
+    expect(d.checkedInAt).to.be.a("string");
+    expect(d.chargingStartedAt).to.be.a("string");
+    expect(new Date(d.chargingStartedAt).getTime()).to.be.at.least(new Date(d.checkedInAt).getTime());
+    expect(new Date(d.completedAt).getTime()).to.be.at.least(new Date(d.chargingStartedAt).getTime());
+  });
+}

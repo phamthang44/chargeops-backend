@@ -1,0 +1,56 @@
+meta {
+  name: Simulate Payment - Tier2
+  type: http
+  seq: 6
+}
+
+tags {
+  tier2Pre
+}
+
+post {
+  url: {{baseUrl}}/api/v1/bookings/{{bookingId}}/simulate-payment
+  body: json
+  auth: bearer
+}
+
+headers {
+  Idempotency-Key: {{paymentSimKey}}
+}
+
+auth:bearer {
+  token: {{access_token}}
+}
+
+script:pre-request {
+  function uuid() {
+    return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, function(c) {
+      const r = (Math.random() * 16) | 0;
+      const v = c === "x" ? r : (r & 0x3) | 0x8;
+      return v.toString(16);
+    });
+  }
+  bru.setEnvVar("paymentSimKey", uuid());
+  bru.setEnvVar("transactionRef", "SIM-" + Date.now() + "-" + Math.floor(Math.random() * 100000));
+  bru.setEnvVar("providerPaidAt", new Date().toISOString());
+}
+
+body:json {
+  {
+    "transactionRef": "{{transactionRef}}",
+    "outcome": "SUCCESS",
+    "amount": {{bookingTotal}},
+    "currency": "VND",
+    "providerPaidAt": "{{providerPaidAt}}"
+  }
+}
+
+tests {
+  test("Status code is 200", function() {
+    expect(res.getStatus()).to.equal(200);
+  });
+  test("Booking transitions to CONFIRMED", function() {
+    expect(res.getBody().data.outcome).to.equal("SUCCESS");
+    expect(res.getBody().data.booking.status).to.equal("CONFIRMED");
+  });
+}

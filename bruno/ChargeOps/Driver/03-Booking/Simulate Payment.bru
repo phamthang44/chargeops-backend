@@ -1,0 +1,61 @@
+meta {
+  name: Simulate Payment
+  type: http
+  seq: 5
+}
+
+post {
+  url: {{baseUrl}}/api/v1/bookings/{{bookingId}}/simulate-payment
+  body: json
+  auth: bearer
+}
+
+headers {
+  Idempotency-Key: {{paymentSimKey}}
+}
+
+auth:bearer {
+  token: {{access_token}}
+}
+
+script:pre-request {
+  function uuid() {
+    return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, function(c) {
+      const r = (Math.random() * 16) | 0;
+      const v = c === "x" ? r : (r & 0x3) | 0x8;
+      return v.toString(16);
+    });
+  }
+  bru.setEnvVar("paymentSimKey", uuid());
+  bru.setEnvVar("transactionRef", "SIM-" + Date.now() + "-" + Math.floor(Math.random() * 100000));
+  bru.setEnvVar("providerPaidAt", new Date().toISOString());
+}
+
+body:json {
+  {
+    "transactionRef": "{{transactionRef}}",
+    "outcome": "SUCCESS",
+    "amount": {{bookingTotal}},
+    "currency": "VND",
+    "providerPaidAt": "{{providerPaidAt}}"
+  }
+}
+
+tests {
+  test("Status code is 200", function() {
+    expect(res.getStatus()).to.equal(200);
+  });
+  test("Simulation outcome is SUCCESS", function() {
+    expect(res.getBody().data.outcome).to.equal("SUCCESS");
+  });
+  test("Booking transitions to CONFIRMED", function() {
+    expect(res.getBody().data.booking.status).to.equal("CONFIRMED");
+  });
+  test("Receipt applied to the booking payment", function() {
+    const r = res.getBody().data.receipt;
+    expect(r.paymentId).to.equal(bru.getEnvVar("paymentId"));
+    expect(r.bookingId).to.equal(bru.getEnvVar("bookingId"));
+    expect(r.classification).to.equal("APPLIED");
+    expect(String(r.amount)).to.equal(bru.getEnvVar("bookingTotal"));
+  });
+}

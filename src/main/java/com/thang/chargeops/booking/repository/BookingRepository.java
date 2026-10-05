@@ -3,6 +3,8 @@ package com.thang.chargeops.booking.repository;
 import com.thang.chargeops.booking.entity.Booking;
 import com.thang.chargeops.common.enums.BookingStatus;
 import com.thang.chargeops.booking.projection.BookingCompletedSessionProjection;
+import com.thang.chargeops.booking.projection.BookingLifecycleCandidateProjection;
+import com.thang.chargeops.booking.projection.BookingExpirationCandidateProjection;
 import com.thang.chargeops.booking.projection.BookingTimeRangeProjection;
 import com.thang.chargeops.profile.entity.UserProfile;
 import jakarta.persistence.LockModeType;
@@ -128,6 +130,49 @@ public interface BookingRepository extends JpaRepository<Booking, UUID>, JpaSpec
     );
 
     @Query("""
+        SELECT b.id AS bookingId,
+               b.connector.id AS connectorId
+        FROM Booking b
+        WHERE b.status = com.thang.chargeops.common.enums.BookingStatus.PENDING
+          AND b.expiresAt <= :now
+        ORDER BY b.expiresAt ASC, b.id ASC
+    """)
+    List<BookingExpirationCandidateProjection> findOverduePendingCandidates(
+            @Param("now") Instant now,
+            Pageable pageable
+    );
+
+    @Query("""
+        SELECT b.id AS bookingId,
+               b.connector.id AS connectorId
+        FROM Booking b
+        WHERE b.status = com.thang.chargeops.common.enums.BookingStatus.CONFIRMED
+          AND b.checkInDeadline IS NOT NULL
+          AND b.checkInDeadline <= :now
+        ORDER BY b.checkInDeadline ASC, b.id ASC
+    """)
+    List<BookingLifecycleCandidateProjection> findDueNoShowCandidates(
+            @Param("now") Instant now,
+            Pageable pageable
+    );
+
+    @Query("""
+        SELECT b.id AS bookingId,
+               b.connector.id AS connectorId
+        FROM Booking b
+        WHERE b.status IN (
+                com.thang.chargeops.common.enums.BookingStatus.CHECKED_IN,
+                com.thang.chargeops.common.enums.BookingStatus.CHARGING
+              )
+          AND b.endAt <= :now
+        ORDER BY b.endAt ASC, b.id ASC
+    """)
+    List<BookingLifecycleCandidateProjection> findDueSessionCompletionCandidates(
+            @Param("now") Instant now,
+            Pageable pageable
+    );
+
+    @Query("""
         SELECT count(b) > 0
         FROM Booking b
         WHERE b.driver.id = :driverId
@@ -194,4 +239,31 @@ public interface BookingRepository extends JpaRepository<Booking, UUID>, JpaSpec
             @Param("driverId") UUID driverId
     );
 
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT b FROM Booking b WHERE b.id = :id")
+    Optional<Booking> findByIdWithLock(@Param("id") UUID id);
+
+    @Query("""
+        SELECT b.id AS bookingId,
+               b.driver.id AS driverId,
+               b.connector.id AS connectorId
+        FROM Booking b
+        WHERE b.id = :bookingId
+    """)
+    Optional<com.thang.chargeops.booking.projection.BookingCancellationRouteProjection> findCancellationRouteById(
+            @Param("bookingId") UUID bookingId
+    );
+
+    @Query("""
+        SELECT b.id AS bookingId,
+               b.driver.id AS driverId,
+               b.connector.id AS connectorId
+        FROM Booking b
+        WHERE b.id = :bookingId
+    """)
+    Optional<com.thang.chargeops.booking.projection.BookingCheckInRouteProjection> findCheckInRouteById(
+            @Param("bookingId") UUID bookingId
+    );
+
 }
+

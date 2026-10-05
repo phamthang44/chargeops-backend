@@ -2,6 +2,7 @@ package com.thang.chargeops.station.staff.service.impl;
 
 import com.thang.chargeops.common.enums.Role;
 import com.thang.chargeops.common.enums.UserStatus;
+import com.thang.chargeops.common.constant.LogConstant;
 import com.thang.chargeops.exception.AppException;
 import com.thang.chargeops.exception.errorcode.StationErrorCode;
 import com.thang.chargeops.exception.errorcode.StationStaffErrorCode;
@@ -20,7 +21,10 @@ import com.thang.chargeops.station.staff.entity.StationStaffAssignment;
 import com.thang.chargeops.station.staff.policy.StationStaffPolicy;
 import com.thang.chargeops.station.staff.repository.StationStaffAssignmentRepository;
 import com.thang.chargeops.station.staff.service.StationStaffService;
+import com.thang.chargeops.support.service.impl.TicketWorkflowService;
+import org.springframework.beans.factory.annotation.Autowired;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.hibernate.exception.ConstraintViolationException;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
@@ -36,6 +40,7 @@ import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class StationStaffServiceImpl implements StationStaffService {
 
     private static final String ACTIVE_ASSIGNMENT_UNIQUE_CONSTRAINT =
@@ -47,6 +52,12 @@ public class StationStaffServiceImpl implements StationStaffService {
     private final CurrentProfileProvider currentProfileProvider;
     private final StationStaffPolicy policy;
     private final IdentityRoleService identityRoleService;
+    private TicketWorkflowService ticketWorkflowService;
+
+    @Autowired(required = false)
+    void setTicketWorkflowService(TicketWorkflowService ticketWorkflowService) {
+        this.ticketWorkflowService = ticketWorkflowService;
+    }
 
     @Override
     @Transactional(readOnly = true)
@@ -125,9 +136,43 @@ public class StationStaffServiceImpl implements StationStaffService {
     }
 
     @Override
+    public Page<StationStaffResponse> listAllOwnerStaff(
+            UUID stationId,
+            int pageNo,
+            int pageSize,
+            StaffAssignmentStatus assignmentStatus) {
+        int pageIndex = Math.max(pageNo - 1, 0);
+        Pageable pageable = PageRequest.of(pageIndex, pageSize);
+
+        UUID currentOwnerId = currentProfileProvider.requireProfileId();
+
+        if (stationId != null) {
+            Station station = stationRepository.findById(stationId)
+                    .orElseThrow(() -> new AppException(StationErrorCode.STATION_NOT_FOUND, stationId));
+            policy.requireOwnerCanManageStaff(station, currentOwnerId);
+        }
+
+        StaffAssignmentStatus targetStatus = assignmentStatus == null
+                ? StaffAssignmentStatus.ACTIVE
+                : assignmentStatus;
+
+        Page<StationStaffAssignment> staffAssignments =
+                stationStaffAssignmentRepository.findAllByOwner(
+                        currentOwnerId,
+                        stationId,
+                        targetStatus,
+                        pageable
+                );
+
+        return staffAssignments.map(this::convertToResponse);
+    }
+
+    @Override
     @Transactional
     public StationStaffResponse assignStaff(UUID stationId, String email, String note) {
         UUID currentOwnerId = currentProfileProvider.requireProfileId();
+        log.info(LogConstant.SERVICE_LOG_FORMAT, LogConstant.ACTION_START, "assignStaff", currentOwnerId,
+                "stationId=" + stationId);
         Station station = requireStation(stationId);
         String normalizedEmail = email.trim().toLowerCase(Locale.ROOT);
         UserProfile candidate = userProfileService.getUserProfileByEmail(normalizedEmail);
@@ -170,6 +215,10 @@ public class StationStaffServiceImpl implements StationStaffService {
             throw exception;
         }
 
+        log.info(LogConstant.SERVICE_LOG_FORMAT, LogConstant.ACTION_SUCCESS, "assignStaff", currentOwnerId,
+                "stationId=" + stationId + ", assignmentId=" + savedAssignment.getId()
+                        + ", staffProfileId=" + candidate.getId());
+
         return convertToResponse(savedAssignment);
     }
 
@@ -177,6 +226,8 @@ public class StationStaffServiceImpl implements StationStaffService {
     @Transactional
     public StationStaffResponse revokeStaff(UUID stationId, UUID assignmentId) {
         UUID currentOwnerId = currentProfileProvider.requireProfileId();
+        log.info(LogConstant.SERVICE_LOG_FORMAT, LogConstant.ACTION_START, "revokeStaff", currentOwnerId,
+                "stationId=" + stationId + ", assignmentId=" + assignmentId);
         StationStaffAssignment assignment =
                 stationStaffAssignmentRepository.findByIdAndStation_Id(
                                 assignmentId,
@@ -193,6 +244,14 @@ public class StationStaffServiceImpl implements StationStaffService {
         assignment.setRevokedAt(Instant.now());
         StationStaffAssignment savedAssignment =
                 stationStaffAssignmentRepository.saveAndFlush(assignment);
+
+        if (ticketWorkflowService != null) {
+            ticketWorkflowService.releaseRevokedStaff(stationId, savedAssignment.getStaff().getId(), currentOwnerId);
+        }
+
+        log.info(LogConstant.SERVICE_LOG_FORMAT, LogConstant.ACTION_SUCCESS, "revokeStaff", currentOwnerId,
+                "stationId=" + stationId + ", assignmentId=" + savedAssignment.getId()
+                        + ", staffProfileId=" + savedAssignment.getStaff().getId());
 
         return convertToResponse(savedAssignment);
     }

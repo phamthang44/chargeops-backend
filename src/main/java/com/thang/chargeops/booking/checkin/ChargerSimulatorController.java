@@ -4,6 +4,7 @@ import com.thang.chargeops.common.constant.SystemConstant;
 import com.thang.chargeops.common.response.ApiResult;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Profile;
+import org.springframework.http.CacheControl;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -21,7 +22,7 @@ public class ChargerSimulatorController {
     private final CheckInChallengeService checkInChallengeService;
 
     @PostMapping("/{connectorId}/check-in-challenge")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'DRIVER')")
     public ResponseEntity<ApiResult<CheckInChallengeResponse>> checkInChallenge(
             @PathVariable String connectorId
     ) {
@@ -30,6 +31,8 @@ public class ChargerSimulatorController {
                 challengeToken,
                 CheckInChallengeService.CHALLENGE_TTL_SECONDS
         );
-        return ResponseEntity.ok(ApiResult.success(response));
+        return ResponseEntity.ok()
+                .cacheControl(CacheControl.noStore())
+                .body(ApiResult.success(response));
     }
 }

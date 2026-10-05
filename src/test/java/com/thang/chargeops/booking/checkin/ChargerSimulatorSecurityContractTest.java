@@ -21,13 +21,13 @@ class ChargerSimulatorSecurityContractTest {
     }
 
     @Test
-    void simulatorChallengeRequiresAdminRole() throws NoSuchMethodException {
+    void simulatorChallengeRequiresAdminOrDriverRole() throws NoSuchMethodException {
         Method method = ChargerSimulatorController.class
                 .getDeclaredMethod("checkInChallenge", String.class);
         PreAuthorize preAuthorize = method.getAnnotation(PreAuthorize.class);
 
         assertThat(preAuthorize).isNotNull();
-        assertThat(preAuthorize.value()).isEqualTo("hasRole('ADMIN')");
+        assertThat(preAuthorize.value()).isEqualTo("hasAnyRole('ADMIN', 'DRIVER')");
     }
 
     @Test

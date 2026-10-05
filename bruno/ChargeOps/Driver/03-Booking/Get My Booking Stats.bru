@@ -1,0 +1,28 @@
+meta {
+  name: Get My Booking Stats
+  type: http
+  seq: 10
+}
+
+get {
+  url: {{baseUrl}}/api/v1/bookings/stats
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{access_token}}
+}
+
+tests {
+  test("Status code is 200", function() {
+    expect(res.getStatus()).to.equal(200);
+  });
+  test("Booking stats structure is valid", function() {
+    const d = res.getBody().data;
+    expect(d).to.be.an("object");
+    Object.keys(d).forEach(function(k) {
+      expect(d[k]).to.be.a("number");
+    });
+  });
+}

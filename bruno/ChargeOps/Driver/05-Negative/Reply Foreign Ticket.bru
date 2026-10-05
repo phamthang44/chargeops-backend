@@ -1,0 +1,30 @@
+meta {
+  name: Reply Foreign Ticket
+  type: http
+  seq: 7
+}
+
+post {
+  url: {{baseUrl}}/api/v1/tickets/{{ticketId}}/messages
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{access_token2}}
+}
+
+body:json {
+  {
+    "body": "Driver khac khong co quyen phan hoi ticket nay."
+  }
+}
+
+tests {
+  test("Status code is 403 (non-reporter cannot reply)", function() {
+    expect(res.getStatus()).to.equal(403);
+  });
+  test("Error code is TKT_ACCESS_DENIED", function() {
+    expect(res.getBody().error.code).to.equal("TKT_ACCESS_DENIED");
+  });
+}

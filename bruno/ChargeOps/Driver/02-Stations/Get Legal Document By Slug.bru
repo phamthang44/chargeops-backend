@@ -1,0 +1,20 @@
+meta {
+  name: Get Legal Document By Slug
+  type: http
+  seq: 7
+}
+
+get {
+  url: {{baseUrl}}/api/v1/legal-documents/{{slug}}
+  body: none
+  auth: none
+}
+
+tests {
+  test("Status code is 200", function() {
+    expect(res.getStatus()).to.equal(200);
+  });
+  test("Document slug matches", function() {
+    expect(res.getBody().data.slug).to.equal(bru.getEnvVar("slug"));
+  });
+}

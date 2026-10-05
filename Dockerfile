@@ -14,8 +14,11 @@ RUN mvn clean package -DskipTests
 FROM eclipse-temurin:21-jre-alpine
 WORKDIR /app
 
-# Create a non-root system user for security
-RUN addgroup -S spring && adduser -S spring -G spring
+# Create a non-root system user for security and prepare writable logs directory
+RUN addgroup -S spring && adduser -S spring -G spring \
+    && mkdir -p /app/logs \
+    && chown -R spring:spring /app
+
 USER spring:spring
 
 COPY --from=builder --chown=spring:spring /app/target/*.jar app.jar

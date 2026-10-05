@@ -37,7 +37,8 @@ class OrderVaMigrationTest {
                 var latest = Flyway.configure().dataSource(pg.getJdbcUrl(), pg.getUsername(), pg.getPassword()).load();
                 latest.migrate(); latest.validate();
                 assertThat(latest.migrate().migrationsExecuted).isZero();
-                assertThat(count(c, "SELECT count(*) FROM payments p JOIN old_payments o USING(id) WHERE (to_jsonb(p) - ARRAY['payment_code','provider_order_ref','va_number','provider_expires_at','qr_code','qr_code_url']) = to_jsonb(o)")).isEqualTo(1);
+                assertThat(count(c, "SELECT count(*) FROM payments p JOIN old_payments o USING(id) WHERE (to_jsonb(p) - ARRAY['payment_code','provider_order_ref','va_number','provider_expires_at','qr_code','qr_code_url','environment']) = to_jsonb(o)")).isEqualTo(1);
+                assertThat(count(c, "SELECT count(*) FROM payments WHERE provider='SEPAY' AND environment='TEST'")).isEqualTo(1);
                 assertThat(count(c, """
                     SELECT count(*) FROM payment_transactions t JOIN old_receipts o USING(id)
                     WHERE (to_jsonb(t) - ARRAY['application_reason','va_number','version','application_classification'])

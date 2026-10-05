@@ -1,9 +1,6 @@
 package com.thang.chargeops.station.policy.impl;
 
-import com.thang.chargeops.common.enums.OperationalChargePointStatus;
-import com.thang.chargeops.common.enums.ProvisioningStatus;
-import com.thang.chargeops.common.enums.RuntimeStatus;
-import com.thang.chargeops.common.enums.StationStatus;
+import com.thang.chargeops.common.enums.*;
 import com.thang.chargeops.exception.AppException;
 import com.thang.chargeops.exception.errorcode.StationErrorCode;
 import com.thang.chargeops.station.entity.ChargePoint;
@@ -25,6 +22,7 @@ public class CheckInChallengePolicyImpl implements CheckInChallengePolicy {
         // License is intentionally not checked here. Entitlement belongs to
         // new-booking creation, not to a short-lived challenge for an existing booking.
         boolean eligible = station.getStatus() == StationStatus.ACTIVE
+                && station.getOperationalStatus() == StationOperationalStatus.OPERATING //bkg-042
                 && chargePoint.getProvisioningStatus() == ProvisioningStatus.ACTIVE
                 && chargePoint.getOperationalChargePointStatus()
                 == OperationalChargePointStatus.AVAILABLE

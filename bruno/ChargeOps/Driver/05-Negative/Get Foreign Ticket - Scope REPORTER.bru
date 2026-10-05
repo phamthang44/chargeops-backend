@@ -1,0 +1,28 @@
+meta {
+  name: Get Foreign Ticket - Scope REPORTER
+  type: http
+  seq: 5
+}
+
+get {
+  url: {{baseUrl}}/api/v1/tickets/{{ticketId}}?scope=REPORTER
+  body: none
+  auth: bearer
+}
+
+params:query {
+  scope: REPORTER
+}
+
+auth:bearer {
+  token: {{access_token2}}
+}
+
+tests {
+  test("Status code is 403 (driver2 is not the reporter)", function() {
+    expect(res.getStatus()).to.equal(403);
+  });
+  test("Error code is TKT_ACCESS_DENIED", function() {
+    expect(res.getBody().error.code).to.equal("TKT_ACCESS_DENIED");
+  });
+}

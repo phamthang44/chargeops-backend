@@ -4,9 +4,13 @@ import com.thang.chargeops.booking.command.BookingCommand;
 import com.thang.chargeops.booking.command.BookingCommandInFlightLock;
 import com.thang.chargeops.booking.command.BookingCommandOperation;
 import com.thang.chargeops.booking.command.BookingCommandRegistry;
+import com.thang.chargeops.booking.checkin.CheckInChallengeService;
+import com.thang.chargeops.booking.checkin.ResolvedCheckInChallenge;
 import com.thang.chargeops.booking.config.BookingPolicyConfig;
 import com.thang.chargeops.booking.dto.filter.DriverBookingHistoryFilter;
 import com.thang.chargeops.booking.dto.request.CreateBookingRequest;
+import com.thang.chargeops.booking.dto.request.ConfirmCheckInRequest;
+import com.thang.chargeops.booking.dto.request.ResolveCheckInRequest;
 import com.thang.chargeops.booking.dto.response.BookingDetailResponse;
 import com.thang.chargeops.booking.dto.response.BookingPolicyResponse;
 import com.thang.chargeops.booking.dto.response.BookingStatsResponse;
@@ -14,10 +18,13 @@ import com.thang.chargeops.booking.dto.response.CheckoutResponse;
 import com.thang.chargeops.booking.dto.response.CreateBookingResponse;
 import com.thang.chargeops.booking.dto.response.DriverBookingListItemResponse;
 import com.thang.chargeops.booking.dto.response.PricePreviewResponse;
+import com.thang.chargeops.booking.dto.response.ResolveCheckInResponse;
 import com.thang.chargeops.booking.projection.BookingCompletedSessionProjection;
+import com.thang.chargeops.booking.projection.BookingCheckInRouteProjection;
 import com.thang.chargeops.booking.entity.Booking;
 import com.thang.chargeops.booking.history.BookingStatusActorType;
 import com.thang.chargeops.booking.history.BookingStatusHistoryRecorder;
+import com.thang.chargeops.booking.history.BookingStatusReason;
 import com.thang.chargeops.booking.mapper.BookingMapper;
 import com.thang.chargeops.booking.policy.DriverBookingReadPolicy;
 import com.thang.chargeops.booking.repository.BookingRepository;
@@ -25,11 +32,15 @@ import com.thang.chargeops.booking.service.impl.BookingServiceImpl;
 import com.thang.chargeops.booking.service.model.BookingReadSnapshot;
 import com.thang.chargeops.booking.service.model.DriverBookingHistoryResult;
 import com.thang.chargeops.booking.service.model.HoldPreparationContext;
-import com.thang.chargeops.common.enums.PaymentMethod;
+import com.thang.chargeops.common.enums.BookingStatus;
 import com.thang.chargeops.common.enums.PaymentApplicationClassification;
+import com.thang.chargeops.common.enums.PaymentMethod;
+import com.thang.chargeops.common.enums.PaymentStatus;
+import com.thang.chargeops.common.enums.RuntimeStatus;
 import com.thang.chargeops.payment.entity.Payment;
 import com.thang.chargeops.payment.entity.PaymentTransaction;
 import com.thang.chargeops.payment.gateway.PaymentGatewayRegistry;
+import com.thang.chargeops.payment.gateway.PaymentGatewayProfile;
 import com.thang.chargeops.payment.model.OrderCheckout;
 import com.thang.chargeops.payment.repository.PaymentRepository;
 import com.thang.chargeops.payment.repository.PaymentTransactionRepository;
@@ -42,10 +53,14 @@ import com.thang.chargeops.profile.support.CurrentProfileProvider;
 import com.thang.chargeops.station.entity.ChargePoint;
 import com.thang.chargeops.station.entity.Connector;
 import com.thang.chargeops.station.entity.Station;
+import com.thang.chargeops.station.policy.CheckInPolicy;
+import com.thang.chargeops.station.repository.ConnectorRepository;
+import com.thang.chargeops.station.service.EquipmentStatusHistoryService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
+import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.domain.PageImpl;
@@ -89,13 +104,19 @@ class BookingServiceImplTest {
     @Mock private BookingPolicyConfig bookingPolicyConfig;
     @Mock private PaymentRepository paymentRepository;
     @Mock private PaymentTransactionRepository paymentTransactionRepository;
+    @Mock private com.thang.chargeops.refund.repository.RefundRepository refundRepository;
     @Mock private DriverBookingReadPolicy driverBookingReadPolicy;
     @Mock private BookingStatusHistoryRecorder bookingStatusHistoryRecorder;
     @Mock private PaymentGatewayRegistry paymentGatewayRegistry;
     @Mock private BookingCheckoutPersistence bookingCheckoutPersistence;
     @Mock private BookingCommandInFlightLock bookingCommandInFlightLock;
+    @Mock private CheckInChallengeService checkInChallengeService;
+    @Mock private ConnectorRepository connectorRepository;
+    @Mock private CheckInPolicy checkInPolicy;
+    @Mock private EquipmentStatusHistoryService equipmentStatusHistoryService;
     @Mock private Clock applicationClock;
 
+    private DriverBookingDetailAssembler driverBookingDetailAssembler;
     private BookingServiceImpl service;
     private UserProfile driver;
     private Connector connector;
@@ -106,23 +127,13 @@ class BookingServiceImplTest {
 
     @BeforeEach
     void setUp() {
-        service = new BookingServiceImpl(
-                bookingRepository,
-                bookingPricingService,
-                bookingHoldCoordinator,
-                currentProfileProvider,
-                bookingCommandRegistry,
-                bookingMapper,
-                bookingPolicyConfig,
-                paymentRepository,
-                paymentTransactionRepository,
+        driverBookingDetailAssembler = new DriverBookingDetailAssembler(
                 driverBookingReadPolicy,
-                bookingStatusHistoryRecorder,
-                paymentGatewayRegistry,
-                bookingCheckoutPersistence,
-                bookingCommandInFlightLock,
-                applicationClock
+                paymentTransactionRepository,
+                refundRepository,
+                bookingMapper
         );
+        service = buildService(driverBookingDetailAssembler);
 
         driver = mock(UserProfile.class);
         connector = mock(Connector.class);
@@ -136,8 +147,8 @@ class BookingServiceImplTest {
                     java.util.function.Supplier<?> action = invocation.getArgument(3);
                     return action != null ? action.get() : null;
                 });
-        lenient().when(paymentGatewayRegistry.supports(PaymentMethod.SIMULATOR))
-                .thenReturn(true);
+        lenient().when(paymentGatewayRegistry.profile(PaymentMethod.SIMULATOR))
+                .thenReturn(new PaymentGatewayProfile("SIMULATOR", "SIMULATOR", "VND"));
 
         currentPrice = new PricePreviewResponse(
                 PRICING_VERSION,
@@ -151,6 +162,30 @@ class BookingServiceImplTest {
                 null,
                 policy,
                 List.of()
+        );
+    }
+
+    private BookingServiceImpl buildService(DriverBookingDetailAssembler detailAssembler) {
+        return new BookingServiceImpl(
+                bookingRepository,
+                bookingPricingService,
+                bookingHoldCoordinator,
+                currentProfileProvider,
+                bookingCommandRegistry,
+                bookingMapper,
+                bookingPolicyConfig,
+                paymentRepository,
+                detailAssembler,
+                driverBookingReadPolicy,
+                bookingStatusHistoryRecorder,
+                paymentGatewayRegistry,
+                bookingCheckoutPersistence,
+                bookingCommandInFlightLock,
+                checkInChallengeService,
+                connectorRepository,
+                checkInPolicy,
+                equipmentStatusHistoryService,
+                applicationClock
         );
     }
 
@@ -457,6 +492,9 @@ class BookingServiceImplTest {
         when(payment.getCurrency()).thenReturn("VND");
         when(payment.getRefundAmount())
                 .thenReturn(BigDecimal.valueOf(20_000));
+        when(booking.getStatus()).thenReturn(BookingStatus.PENDING);
+        when(booking.getExpiresAt()).thenReturn(checkoutExpiresAt);
+        when(payment.getStatus()).thenReturn(PaymentStatus.PENDING);
         when(payment.getMethod()).thenReturn(PaymentMethod.BANK_TRANSFER);
         when(payment.getProviderOrderRef()).thenReturn("ORDER-1");
         when(payment.getProviderExpiresAt()).thenReturn(checkoutExpiresAt);
@@ -560,29 +598,29 @@ class BookingServiceImplTest {
         when(applicationClock.instant()).thenReturn(DECISION_AT);
 
         BookingCompletedSessionProjection session1 = mock(BookingCompletedSessionProjection.class);
-        when(session1.getTotalAmount()).thenReturn(BigDecimal.valueOf(120_000));
         when(session1.getStartAt()).thenReturn(START_AT);
         when(session1.getEndAt()).thenReturn(START_AT.plusSeconds(3600)); // 60 mins
 
         BookingCompletedSessionProjection session2 = mock(BookingCompletedSessionProjection.class);
-        when(session2.getTotalAmount()).thenReturn(BigDecimal.valueOf(60_000));
         when(session2.getStartAt()).thenReturn(START_AT.plusSeconds(7200));
         when(session2.getEndAt()).thenReturn(START_AT.plusSeconds(9000)); // 30 mins
 
         when(bookingRepository.findCompletedSessionsByDriverId(DRIVER_ID))
                 .thenReturn(List.of(session1, session2));
+        when(paymentRepository.sumNetPaidAmountByDriverId(DRIVER_ID))
+                .thenReturn(BigDecimal.valueOf(240_000));
         when(bookingRepository.countByDriverId(DRIVER_ID)).thenReturn(5L);
         when(bookingRepository.count(any(Specification.class))).thenReturn(2L);
 
         BookingStatsResponse stats = service.getMyBookingStats();
 
-        assertThat(stats.totalSpending()).isEqualByComparingTo(BigDecimal.valueOf(180_000));
+        assertThat(stats.totalSpending()).isEqualByComparingTo(BigDecimal.valueOf(240_000));
         assertThat(stats.totalChargingSessions()).isEqualTo(2L);
         assertThat(stats.totalBookings()).isEqualTo(5L);
         assertThat(stats.totalCompletedBookings()).isEqualTo(2L);
         assertThat(stats.totalCancelledBookings()).isEqualTo(2L);
         assertThat(stats.totalHours()).isEqualTo(1.5);
-        assertThat(stats.spent()).isEqualByComparingTo(BigDecimal.valueOf(180_000));
+        assertThat(stats.spent()).isEqualByComparingTo(BigDecimal.valueOf(240_000));
         assertThat(stats.sessions()).isEqualTo(2L);
         assertThat(stats.hours()).isEqualTo(1.5);
     }
@@ -594,6 +632,8 @@ class BookingServiceImplTest {
 
         when(bookingRepository.findCompletedSessionsByDriverId(DRIVER_ID))
                 .thenReturn(List.of());
+        when(paymentRepository.sumNetPaidAmountByDriverId(DRIVER_ID))
+                .thenReturn(BigDecimal.ZERO);
         when(bookingRepository.countByDriverId(DRIVER_ID)).thenReturn(0L);
         when(bookingRepository.count(any(Specification.class))).thenReturn(0L);
 
@@ -608,6 +648,316 @@ class BookingServiceImplTest {
         assertThat(stats.spent()).isEqualByComparingTo(BigDecimal.ZERO);
         assertThat(stats.sessions()).isZero();
         assertThat(stats.hours()).isZero();
+    }
+
+    @Test
+    void resolveCheckInReturnsPreviewWithoutConsumingChallenge() {
+        Instant evaluatedAt = Instant.parse("2026-09-16T03:05:00Z");
+        Instant expiresAt = evaluatedAt.plusSeconds(45);
+        Instant checkInDeadline = END_AT.minusSeconds(15 * 60L);
+        String challengeToken = "challenge-token-1234567890";
+        Booking booking = mock(Booking.class);
+        ResolveCheckInRequest request = new ResolveCheckInRequest(BOOKING_ID, challengeToken);
+
+        when(currentProfileProvider.requireProfile()).thenReturn(driver);
+        when(bookingRepository.findByIdAndDriverId(BOOKING_ID, DRIVER_ID))
+                .thenReturn(Optional.of(booking));
+        when(checkInChallengeService.resolveWithExpiry(challengeToken))
+                .thenReturn(new ResolvedCheckInChallenge(CONNECTOR_ID, expiresAt));
+        when(connectorRepository.findById(CONNECTOR_ID)).thenReturn(Optional.of(connector));
+        when(applicationClock.instant()).thenReturn(evaluatedAt);
+        when(booking.getId()).thenReturn(BOOKING_ID);
+        when(booking.getStartAt()).thenReturn(START_AT);
+        when(booking.getEndAt()).thenReturn(END_AT);
+        when(booking.getCheckInDeadline()).thenReturn(checkInDeadline);
+        when(booking.getVersion()).thenReturn(3L);
+        when(connector.getId()).thenReturn(CONNECTOR_ID);
+        when(connector.getConnectorCode()).thenReturn("CP-01-A");
+
+        ResolveCheckInResponse response = service.resolveCheckIn(request);
+
+        assertThat(response.getBookingId()).isEqualTo(BOOKING_ID);
+        assertThat(response.getConnectorId()).isEqualTo(CONNECTOR_ID);
+        assertThat(response.getConnectorCode()).isEqualTo("CP-01-A");
+        assertThat(response.getChallengeExpiresAt()).isEqualTo(expiresAt);
+        assertThat(response.getStartAt()).isEqualTo(START_AT);
+        assertThat(response.getEndAt()).isEqualTo(END_AT);
+        assertThat(response.getCheckInDeadline()).isEqualTo(checkInDeadline);
+        assertThat(response.getExpectedVersion()).isEqualTo(3L);
+        verify(checkInPolicy).requireCanCheckIn(driver, booking, connector, evaluatedAt);
+        verify(checkInChallengeService, never()).consume(anyString());
+        verify(checkInChallengeService, never()).validateAndConsume(anyString(), any());
+    }
+
+    @Test
+    void repeatedResolveDoesNotConsumeChallenge() {
+        String challengeToken = "challenge-token-1234567890";
+        Booking booking = mock(Booking.class);
+        ResolveCheckInRequest request = new ResolveCheckInRequest(BOOKING_ID, challengeToken);
+        Instant expiresAt = DECISION_AT.plusSeconds(45);
+
+        when(currentProfileProvider.requireProfile()).thenReturn(driver);
+        when(bookingRepository.findByIdAndDriverId(BOOKING_ID, DRIVER_ID))
+                .thenReturn(Optional.of(booking));
+        when(checkInChallengeService.resolveWithExpiry(challengeToken))
+                .thenReturn(new ResolvedCheckInChallenge(CONNECTOR_ID, expiresAt));
+        when(connectorRepository.findById(CONNECTOR_ID)).thenReturn(Optional.of(connector));
+        when(applicationClock.instant()).thenReturn(DECISION_AT);
+        when(booking.getId()).thenReturn(BOOKING_ID);
+        when(connector.getId()).thenReturn(CONNECTOR_ID);
+
+        service.resolveCheckIn(request);
+        service.resolveCheckIn(request);
+
+        verify(checkInChallengeService, times(2)).resolveWithExpiry(challengeToken);
+        verify(checkInPolicy, times(2))
+                .requireCanCheckIn(driver, booking, connector, DECISION_AT);
+        verify(checkInChallengeService, never()).consume(anyString());
+        verify(checkInChallengeService, never()).validateAndConsume(anyString(), any());
+    }
+
+    @Test
+    void resolveCheckInChecksOwnershipBeforeResolvingChallenge() {
+        ResolveCheckInRequest request = new ResolveCheckInRequest(
+                BOOKING_ID,
+                "challenge-token-1234567890"
+        );
+
+        when(currentProfileProvider.requireProfile()).thenReturn(driver);
+        when(bookingRepository.findByIdAndDriverId(BOOKING_ID, DRIVER_ID))
+                .thenReturn(Optional.empty());
+        when(bookingRepository.existsById(BOOKING_ID)).thenReturn(true);
+
+        assertThatThrownBy(() -> service.resolveCheckIn(request))
+                .isInstanceOfSatisfying(
+                        AppException.class,
+                        exception -> assertThat(exception.getErrorCode())
+                                .isEqualTo(BookingErrorCode.BOOKING_NOT_ACCESS)
+                );
+
+        verifyNoInteractions(checkInChallengeService, connectorRepository, checkInPolicy);
+    }
+
+    @Test
+    void resolveCheckInPropagatesPolicyFailureWithoutConsumingChallenge() {
+        String challengeToken = "challenge-token-1234567890";
+        Booking booking = mock(Booking.class);
+        ResolveCheckInRequest request = new ResolveCheckInRequest(BOOKING_ID, challengeToken);
+
+        when(currentProfileProvider.requireProfile()).thenReturn(driver);
+        when(bookingRepository.findByIdAndDriverId(BOOKING_ID, DRIVER_ID))
+                .thenReturn(Optional.of(booking));
+        when(checkInChallengeService.resolveWithExpiry(challengeToken))
+                .thenReturn(new ResolvedCheckInChallenge(
+                        CONNECTOR_ID,
+                        DECISION_AT.plusSeconds(45)
+                ));
+        when(connectorRepository.findById(CONNECTOR_ID)).thenReturn(Optional.of(connector));
+        when(applicationClock.instant()).thenReturn(DECISION_AT);
+        doThrow(new AppException(BookingErrorCode.CONNECTOR_MISMATCH))
+                .when(checkInPolicy)
+                .requireCanCheckIn(driver, booking, connector, DECISION_AT);
+
+        assertThatThrownBy(() -> service.resolveCheckIn(request))
+                .isInstanceOfSatisfying(
+                        AppException.class,
+                        exception -> assertThat(exception.getErrorCode())
+                                .isEqualTo(BookingErrorCode.CONNECTOR_MISMATCH)
+                );
+
+        verify(checkInChallengeService, never()).consume(anyString());
+        verify(checkInChallengeService, never()).validateAndConsume(anyString(), any());
+    }
+
+    @Test
+    void confirmCheckInCommitsBookingConnectorAndHistoriesAfterConsumingChallenge() {
+        String challengeToken = "challenge-token-1234567890";
+        ConfirmCheckInRequest request = new ConfirmCheckInRequest(3L, challengeToken);
+        Booking booking = mock(Booking.class);
+        Payment payment = mock(Payment.class);
+        BookingCommand command = mock(BookingCommand.class);
+        BookingCheckInRouteProjection route = mock(BookingCheckInRouteProjection.class);
+        DriverBookingDetailAssembler detailAssembler = mock(DriverBookingDetailAssembler.class);
+        BookingDetailResponse expected = mock(BookingDetailResponse.class);
+        service = buildService(detailAssembler);
+
+        when(currentProfileProvider.requireProfile()).thenReturn(driver);
+        when(bookingHoldCoordinator.lockDriver(DRIVER_ID)).thenReturn(driver);
+        when(route.getDriverId()).thenReturn(DRIVER_ID);
+        when(route.getConnectorId()).thenReturn(CONNECTOR_ID);
+        when(bookingRepository.findCheckInRouteById(BOOKING_ID)).thenReturn(Optional.of(route));
+        when(connectorRepository.findByIdWithLock(CONNECTOR_ID)).thenReturn(Optional.of(connector));
+        when(bookingRepository.findByIdAndDriverIdWithLock(BOOKING_ID, DRIVER_ID))
+                .thenReturn(Optional.of(booking));
+        when(paymentRepository.findByBookingIdWithLock(BOOKING_ID)).thenReturn(Optional.of(payment));
+        when(applicationClock.instant()).thenReturn(DECISION_AT);
+        when(booking.getVersion()).thenReturn(3L);
+        when(connector.getId()).thenReturn(CONNECTOR_ID);
+        when(bookingCommandRegistry.recordSuccess(
+                eq(driver),
+                eq(BookingCommandOperation.CONFIRM_CHECK_IN),
+                eq(REQUEST_KEY),
+                anyString(),
+                eq(booking),
+                eq(DECISION_AT)
+        )).thenReturn(command);
+        doAnswer(invocation -> {
+            java.util.function.Consumer<Booking> transition = invocation.getArgument(4);
+            transition.accept(booking);
+            return null;
+        }).when(bookingStatusHistoryRecorder).recordUserTransition(
+                eq(command),
+                eq(BookingStatusActorType.DRIVER),
+                eq(BookingStatusReason.CHECK_IN_CONFIRMED),
+                eq(DECISION_AT),
+                any()
+        );
+        when(detailAssembler.assemble(booking, payment, DECISION_AT)).thenReturn(expected);
+
+        BookingDetailResponse result = service.confirmCheckIn(BOOKING_ID, REQUEST_KEY, request);
+
+        assertThat(result).isSameAs(expected);
+        InOrder lockOrder = inOrder(
+                bookingHoldCoordinator,
+                bookingRepository,
+                connectorRepository,
+                paymentRepository
+        );
+        lockOrder.verify(bookingHoldCoordinator).lockDriver(DRIVER_ID);
+        lockOrder.verify(bookingRepository).findCheckInRouteById(BOOKING_ID);
+        lockOrder.verify(connectorRepository).findByIdWithLock(CONNECTOR_ID);
+        lockOrder.verify(bookingRepository).findByIdAndDriverIdWithLock(BOOKING_ID, DRIVER_ID);
+        lockOrder.verify(paymentRepository).findByBookingIdWithLock(BOOKING_ID);
+
+        InOrder mutationOrder = inOrder(checkInChallengeService, bookingCommandRegistry);
+        mutationOrder.verify(checkInChallengeService).validateAndConsume(challengeToken, CONNECTOR_ID);
+        mutationOrder.verify(bookingCommandRegistry).recordSuccess(
+                eq(driver),
+                eq(BookingCommandOperation.CONFIRM_CHECK_IN),
+                eq(REQUEST_KEY),
+                anyString(),
+                eq(booking),
+                eq(DECISION_AT)
+        );
+        verify(checkInPolicy).requireCanCheckIn(driver, booking, connector, DECISION_AT);
+        verify(booking).checkIn(DECISION_AT);
+        verify(equipmentStatusHistoryService).transitionConnectorRuntimeAsSystem(
+                connector,
+                RuntimeStatus.IN_USE,
+                DECISION_AT,
+                "BOOKING_CHECK_IN:" + BOOKING_ID
+        );
+        verify(bookingRepository).flush();
+    }
+
+    @Test
+    void confirmCheckInVersionConflictDoesNotConsumeChallengeOrMutateState() {
+        Booking booking = mock(Booking.class);
+        Payment payment = mock(Payment.class);
+        BookingCheckInRouteProjection route = mock(BookingCheckInRouteProjection.class);
+        ConfirmCheckInRequest request = new ConfirmCheckInRequest(
+                2L,
+                "challenge-token-1234567890"
+        );
+
+        when(currentProfileProvider.requireProfile()).thenReturn(driver);
+        when(bookingHoldCoordinator.lockDriver(DRIVER_ID)).thenReturn(driver);
+        when(route.getDriverId()).thenReturn(DRIVER_ID);
+        when(route.getConnectorId()).thenReturn(CONNECTOR_ID);
+        when(bookingRepository.findCheckInRouteById(BOOKING_ID)).thenReturn(Optional.of(route));
+        when(connectorRepository.findByIdWithLock(CONNECTOR_ID)).thenReturn(Optional.of(connector));
+        when(bookingRepository.findByIdAndDriverIdWithLock(BOOKING_ID, DRIVER_ID))
+                .thenReturn(Optional.of(booking));
+        when(paymentRepository.findByBookingIdWithLock(BOOKING_ID)).thenReturn(Optional.of(payment));
+        when(applicationClock.instant()).thenReturn(DECISION_AT);
+        when(booking.getVersion()).thenReturn(3L);
+
+        assertThatThrownBy(() -> service.confirmCheckIn(BOOKING_ID, REQUEST_KEY, request))
+                .isInstanceOfSatisfying(
+                        AppException.class,
+                        exception -> assertThat(exception.getErrorCode())
+                                .isEqualTo(BookingErrorCode.STATE_CONFLICT)
+                );
+
+        verifyNoInteractions(checkInPolicy, equipmentStatusHistoryService);
+        verify(checkInChallengeService, never()).validateAndConsume(anyString(), any());
+        verify(bookingCommandRegistry, never()).recordSuccess(any(), any(), any(), anyString(), any(), any());
+        verify(booking, never()).checkIn(any());
+        verify(connector, never()).updateRuntimeStatus(any());
+    }
+
+    @Test
+    void confirmCheckInRedisFailureCannotCreateCheckedInState() {
+        String challengeToken = "challenge-token-1234567890";
+        Booking booking = mock(Booking.class);
+        Payment payment = mock(Payment.class);
+        BookingCheckInRouteProjection route = mock(BookingCheckInRouteProjection.class);
+
+        when(currentProfileProvider.requireProfile()).thenReturn(driver);
+        when(bookingHoldCoordinator.lockDriver(DRIVER_ID)).thenReturn(driver);
+        when(route.getDriverId()).thenReturn(DRIVER_ID);
+        when(route.getConnectorId()).thenReturn(CONNECTOR_ID);
+        when(bookingRepository.findCheckInRouteById(BOOKING_ID)).thenReturn(Optional.of(route));
+        when(connectorRepository.findByIdWithLock(CONNECTOR_ID)).thenReturn(Optional.of(connector));
+        when(bookingRepository.findByIdAndDriverIdWithLock(BOOKING_ID, DRIVER_ID))
+                .thenReturn(Optional.of(booking));
+        when(paymentRepository.findByBookingIdWithLock(BOOKING_ID)).thenReturn(Optional.of(payment));
+        when(applicationClock.instant()).thenReturn(DECISION_AT);
+        when(booking.getVersion()).thenReturn(3L);
+        when(connector.getId()).thenReturn(CONNECTOR_ID);
+        doThrow(new AppException(BookingErrorCode.QR_INVALID))
+                .when(checkInChallengeService)
+                .validateAndConsume(challengeToken, CONNECTOR_ID);
+
+        assertThatThrownBy(() -> service.confirmCheckIn(
+                BOOKING_ID,
+                REQUEST_KEY,
+                new ConfirmCheckInRequest(3L, challengeToken)
+        )).isInstanceOfSatisfying(
+                AppException.class,
+                exception -> assertThat(exception.getErrorCode())
+                        .isEqualTo(BookingErrorCode.QR_INVALID)
+        );
+
+        verify(checkInPolicy).requireCanCheckIn(driver, booking, connector, DECISION_AT);
+        verify(bookingCommandRegistry, never()).recordSuccess(any(), any(), any(), anyString(), any(), any());
+        verifyNoInteractions(bookingStatusHistoryRecorder, equipmentStatusHistoryService);
+        verify(booking, never()).checkIn(any());
+        verify(connector, never()).updateRuntimeStatus(any());
+        verify(bookingRepository, never()).flush();
+    }
+
+    @Test
+    void confirmCheckInCommittedReplayDoesNotLockOrConsumeChallengeAgain() {
+        String challengeToken = "challenge-token-1234567890";
+        Booking booking = mock(Booking.class);
+        Payment payment = mock(Payment.class);
+        DriverBookingDetailAssembler detailAssembler = mock(DriverBookingDetailAssembler.class);
+        BookingDetailResponse expected = mock(BookingDetailResponse.class);
+        service = buildService(detailAssembler);
+
+        when(currentProfileProvider.requireProfile()).thenReturn(driver);
+        when(bookingCommandRegistry.findReplay(
+                eq(DRIVER_ID),
+                eq(BookingCommandOperation.CONFIRM_CHECK_IN),
+                eq(REQUEST_KEY),
+                anyString()
+        )).thenReturn(Optional.of(BOOKING_ID));
+        when(bookingRepository.findById(BOOKING_ID)).thenReturn(Optional.of(booking));
+        when(paymentRepository.findByBookingId(BOOKING_ID)).thenReturn(Optional.of(payment));
+        when(applicationClock.instant()).thenReturn(DECISION_AT);
+        when(detailAssembler.assemble(booking, payment, DECISION_AT)).thenReturn(expected);
+
+        BookingDetailResponse result = service.confirmCheckIn(
+                BOOKING_ID,
+                REQUEST_KEY,
+                new ConfirmCheckInRequest(3L, challengeToken)
+        );
+
+        assertThat(result).isSameAs(expected);
+        verifyNoInteractions(bookingHoldCoordinator, checkInChallengeService, checkInPolicy);
+        verify(bookingRepository, never()).findCheckInRouteById(any());
+        verify(bookingCommandRegistry, never()).recordSuccess(any(), any(), any(), anyString(), any(), any());
     }
 
     @Test

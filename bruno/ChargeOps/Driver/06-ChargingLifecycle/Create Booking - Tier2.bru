@@ -1,0 +1,70 @@
+meta {
+  name: Create Booking - Tier2
+  type: http
+  seq: 5
+}
+
+tags {
+  tier2Pre
+}
+
+post {
+  url: {{baseUrl}}/api/v1/bookings
+  body: json
+  auth: bearer
+}
+
+headers {
+  Idempotency-Key: {{idempotencyKey}}
+}
+
+auth:bearer {
+  token: {{access_token}}
+}
+
+script:pre-request {
+  function uuid() {
+    return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, function(c) {
+      const r = (Math.random() * 16) | 0;
+      const v = c === "x" ? r : (r & 0x3) | 0x8;
+      return v.toString(16);
+    });
+  }
+  // Key LUON moi: tier2-pre chay rieng, khong duoc replay booking da huy o tier1
+  bru.setEnvVar("idempotencyKey", uuid());
+}
+
+body:json {
+  {
+    "connectorId": "{{connectorId}}",
+    "startAt": "{{startTime}}",
+    "durationMin": 60,
+    "acceptedTotalAmount": {{previewTotal}},
+    "acceptedPricingVersion": "{{pricingVersion}}",
+    "acceptedPolicyVersion": "{{policyVersion}}",
+    "paymentMethod": "SIMULATOR"
+  }
+}
+
+script:post-response {
+  if (res.status === 201 && res.body.data) {
+    bru.setEnvVar("bookingId", res.body.data.bookingId);
+    bru.setEnvVar("bookingCode", res.body.data.bookingCode);
+    bru.setEnvVar("bookingVersion", String(res.body.data.version));
+    bru.setEnvVar("bookingTotal", String(res.body.data.totalAmount));
+    if (res.body.data.payment && res.body.data.payment.paymentId) {
+      bru.setEnvVar("paymentId", res.body.data.payment.paymentId);
+    }
+  }
+}
+
+tests {
+  test("Status code is 201", function() {
+    expect(res.getStatus()).to.equal(201);
+  });
+  test("Booking created in PENDING state", function() {
+    const d = res.getBody().data;
+    expect(d.status).to.equal("PENDING");
+    expect(d.payment.status).to.equal("PENDING");
+  });
+}

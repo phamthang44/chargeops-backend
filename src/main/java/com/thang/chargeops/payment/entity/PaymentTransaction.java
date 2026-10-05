@@ -23,23 +23,49 @@ import static com.thang.chargeops.payment.model.PaymentValues.requiredText;
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class PaymentTransaction extends AuditableEntity {
+
     @ManyToOne(fetch = FetchType.LAZY) @JoinColumn(name = "payment_id")
     private Payment payment;
-    @Column(nullable = false, length = 30, updatable = false) private String provider;
-    @Column(name = "receiving_account_ref", nullable = false, updatable = false) private String receivingAccountRef;
-    @Column(name = "transaction_ref", nullable = false, updatable = false) private String transactionRef;
-    @Column(nullable = false, precision = 19, scale = 2, updatable = false) private BigDecimal amount;
-    @Column(nullable = false, length = 3, updatable = false) private String currency;
-    @Column(name = "provider_paid_at", updatable = false) private Instant providerPaidAt;
-    @Column(name = "received_at", nullable = false, updatable = false) private Instant receivedAt;
+
+    @Column(nullable = false, length = 30, updatable = false)
+    private String provider;
+
+    @Column(name = "receiving_account_ref", nullable = false, updatable = false)
+    private String receivingAccountRef;
+
+    @Column(name = "transaction_ref", nullable = false, updatable = false)
+    private String transactionRef;
+
+    @Column(nullable = false, precision = 19, scale = 2, updatable = false)
+    private BigDecimal amount;
+
+    @Column(nullable = false, length = 3, updatable = false)
+    private String currency;
+
+    @Column(name = "provider_paid_at", updatable = false)
+    private Instant providerPaidAt;
+
+    @Column(name = "received_at", nullable = false, updatable = false)
+    private Instant receivedAt;
+
     @Enumerated(EnumType.STRING) @Column(name = "application_classification", nullable = false, length = 30)
     private PaymentApplicationClassification applicationClassification;
-    @Column(name = "application_reason", columnDefinition = "text") private String applicationReason;
-    @Column(name = "payment_code", length = 50, updatable = false) private String paymentCode;
-    @Column(name = "va_number", updatable = false) private String vaNumber;
-    @Column(name = "transfer_content", columnDefinition = "text", updatable = false) private String transferContent;
+
+    @Column(name = "application_reason", columnDefinition = "text")
+    private String applicationReason;
+
+    @Column(name = "payment_code", length = 50, updatable = false)
+    private String paymentCode;
+
+    @Column(name = "va_number", updatable = false)
+    private String vaNumber;
+
+    @Column(name = "transfer_content", columnDefinition = "text", updatable = false)
+    private String transferContent;
+
     @JdbcTypeCode(SqlTypes.JSON) @Column(name = "raw_payload", columnDefinition = "jsonb", updatable = false)
     private String rawPayload;
+
     @Version @Column(nullable = false) private Long version = 0L;
 
     /** Only verified incoming receipts reach here; provider cannot dictate APPLIED. */

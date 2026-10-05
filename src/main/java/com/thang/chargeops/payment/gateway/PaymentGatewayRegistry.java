@@ -23,15 +23,23 @@ public class PaymentGatewayRegistry {
         return gateways.stream().anyMatch(gateway -> gateway.supports(method));
     }
 
+    public PaymentGatewayProfile profile(PaymentMethod method) {
+        return requireGateway(method).profile();
+    }
+
     public OrderCheckout createCheckout(Payment payment, Instant now) {
-        PaymentGateway gateway = gateways.stream()
-                .filter(candidate -> candidate.supports(payment.getMethod()))
-                .findFirst()
-                .orElseThrow(() -> new AppException(PaymentErrorCode.METHOD_INVALID));
+        PaymentGateway gateway = requireGateway(payment.getMethod());
         try {
             return gateway.createCheckout(payment, now);
         } catch (PaymentGatewayUnavailableException exception) {
             throw new AppException(PaymentErrorCode.CHECKOUT_UNAVAILABLE);
         }
+    }
+
+    private PaymentGateway requireGateway(PaymentMethod method) {
+        return gateways.stream()
+                .filter(candidate -> candidate.supports(method))
+                .findFirst()
+                .orElseThrow(() -> new AppException(PaymentErrorCode.METHOD_INVALID));
     }
 }

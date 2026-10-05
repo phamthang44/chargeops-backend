@@ -1,0 +1,58 @@
+meta {
+  name: Create Ticket
+  type: http
+  seq: 1
+}
+
+post {
+  url: {{baseUrl}}/api/v1/tickets
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{access_token}}
+}
+
+body:json {
+  {
+    "category": "CHARGING_ISSUE",
+    "priority": "MEDIUM",
+    "subject": "Tram khong sac duoc xe - Bruno automation",
+    "description": "Xe gan vao tram nhung khong nhan dien duoc ket noi sac. Vui long kiem tra tram.",
+    "bookingId": "{{bookingId}}",
+    "stationId": "{{stationId}}"
+  }
+}
+
+script:post-response {
+  if (res.status === 201 && res.body.data) {
+    bru.setEnvVar("ticketId", res.body.data.ticketId);
+    bru.setEnvVar("ticketVersion", String(res.body.data.version));
+    bru.setEnvVar("ticketCode", res.body.data.ticketCode);
+  }
+}
+
+tests {
+  test("Status code is 201", function() {
+    expect(res.getStatus()).to.equal(201);
+  });
+  test("Ticket created in OPEN state", function() {
+    const d = res.getBody().data;
+    expect(d.ticketId).to.be.a("string");
+    expect(d.ticketCode).to.be.a("string");
+    expect(d.status).to.equal("OPEN");
+    expect(d.category).to.equal("CHARGING_ISSUE");
+    expect(d.priority).to.equal("MEDIUM");
+  });
+  test("Ticket bound to booking and station", function() {
+    const d = res.getBody().data;
+    expect(d.bookingId).to.equal(bru.getEnvVar("bookingId"));
+    expect(d.stationId).to.equal(bru.getEnvVar("stationId"));
+    expect(d.reporterId).to.equal(bru.getEnvVar("profileId"));
+  });
+  test("ticketId/version captured", function() {
+    expect(bru.getEnvVar("ticketId")).to.be.a("string");
+    expect(bru.getEnvVar("ticketVersion")).to.match(/^\d+$/);
+  });
+}

@@ -1,0 +1,54 @@
+meta {
+  name: Get Ticket Detail - Scope REPORTER
+  type: http
+  seq: 3
+}
+
+get {
+  url: {{baseUrl}}/api/v1/tickets/{{ticketId}}?scope=REPORTER
+  body: none
+  auth: bearer
+}
+
+params:query {
+  scope: REPORTER
+}
+
+auth:bearer {
+  token: {{access_token}}
+}
+
+script:post-response {
+  if (res.status === 200 && res.body.data && res.body.data.overview) {
+    bru.setEnvVar("ticketVersion", String(res.body.data.overview.version));
+  }
+}
+
+tests {
+  test("Status code is 200", function() {
+    expect(res.getStatus()).to.equal(200);
+  });
+  test("Detail overview matches ticket", function() {
+    const o = res.getBody().data.overview;
+    expect(o.ticketId).to.equal(bru.getEnvVar("ticketId"));
+    expect(o.ticketCode).to.equal(bru.getEnvVar("ticketCode"));
+    expect(o.status).to.equal("OPEN");
+    expect(o.category).to.equal("CHARGING_ISSUE");
+  });
+  test("Reporter context is current driver", function() {
+    const p = res.getBody().data.participants;
+    expect(p.reporterId).to.equal(bru.getEnvVar("profileId"));
+  });
+  test("Detail carries booking, station and conversation blocks", function() {
+    const d = res.getBody().data;
+    expect(d.booking.bookingCode).to.equal(bru.getEnvVar("bookingCode"));
+    expect(d.station.stationId).to.equal(bru.getEnvVar("stationId"));
+    expect(d.conversation).to.be.an("object");
+    expect(d.resolution).to.be.an("object");
+  });
+  test("Not yet escalated and escalation gated", function() {
+    const d = res.getBody().data;
+    expect(d.isEscalated).to.equal(false);
+    expect(d.escalationAvailability.canRequest).to.equal(false);
+  });
+}

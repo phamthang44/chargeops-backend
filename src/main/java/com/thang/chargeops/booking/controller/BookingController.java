@@ -2,10 +2,15 @@ package com.thang.chargeops.booking.controller;
 
 
 import com.thang.chargeops.booking.dto.filter.DriverBookingHistoryFilter;
+import com.thang.chargeops.booking.dto.request.CancelBookingRequest;
+import com.thang.chargeops.booking.dto.request.ConfirmCheckInRequest;
 import com.thang.chargeops.booking.dto.request.CreateBookingRequest;
 import com.thang.chargeops.booking.dto.request.PricePreviewRequest;
+import com.thang.chargeops.booking.dto.request.ResolveCheckInRequest;
+import com.thang.chargeops.booking.dto.request.VersionRequest;
 import com.thang.chargeops.booking.dto.response.*;
 import com.thang.chargeops.booking.service.BookingPricingService;
+import com.thang.chargeops.booking.service.BookingSessionService;
 import com.thang.chargeops.booking.service.BookingService;
 import com.thang.chargeops.common.constant.SystemConstant;
 import com.thang.chargeops.common.response.ApiResult;
@@ -27,6 +32,8 @@ public class BookingController {
 
     private final BookingPricingService bookingPricingService;
     private final BookingService bookingService;
+    private final BookingSessionService bookingSessionService;
+    private final com.thang.chargeops.booking.service.BookingCancellationService bookingCancellationService;
 
     private static final String CACHE_CONTROL_NO_STORE = "no-store";
 
@@ -62,6 +69,78 @@ public class BookingController {
         return ResponseEntity.ok(ApiResult.success(
                 bookingService.createCheckout(bookingId, requestKey)
         ));
+    }
+
+    @PostMapping("/{bookingId}/cancel")
+    @PreAuthorize("hasRole('DRIVER')")
+    public ResponseEntity<ApiResult<BookingDetailResponse>> cancelBooking(
+            @PathVariable UUID bookingId,
+            @RequestHeader("Idempotency-Key") UUID requestKey,
+            @Valid @RequestBody CancelBookingRequest request
+    ) {
+        BookingDetailResponse response = bookingCancellationService
+                .cancelBooking(bookingId, requestKey, request);
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CACHE_CONTROL, CACHE_CONTROL_NO_STORE)
+                .body(ApiResult.success(response));
+    }
+
+    @PostMapping("/check-in/resolve")
+    @PreAuthorize("hasRole('DRIVER')")
+    public ResponseEntity<ApiResult<ResolveCheckInResponse>> resolveCheckIn(
+            @Valid @RequestBody ResolveCheckInRequest request
+    ) {
+        ResolveCheckInResponse response = bookingService.resolveCheckIn(request);
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CACHE_CONTROL, CACHE_CONTROL_NO_STORE)
+                .body(ApiResult.success(response));
+    }
+
+    @PostMapping("/{bookingId}/check-in")
+    @PreAuthorize("hasRole('DRIVER')")
+    public ResponseEntity<ApiResult<BookingDetailResponse>> confirmCheckIn(
+            @PathVariable UUID bookingId,
+            @RequestHeader("Idempotency-Key") UUID requestKey,
+            @Valid @RequestBody ConfirmCheckInRequest request
+    ) {
+        BookingDetailResponse response = bookingService.confirmCheckIn(bookingId, requestKey, request);
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CACHE_CONTROL, CACHE_CONTROL_NO_STORE)
+                .body(ApiResult.success(response));
+    }
+
+    @PostMapping("/{bookingId}/start-charging")
+    @PreAuthorize("hasRole('DRIVER')")
+    public ResponseEntity<ApiResult<BookingDetailResponse>> startCharging(
+            @PathVariable UUID bookingId,
+            @RequestHeader("Idempotency-Key") UUID requestKey,
+            @Valid @RequestBody VersionRequest request
+    ) {
+        BookingDetailResponse response = bookingSessionService.startCharging(
+                bookingId,
+                requestKey,
+                request
+        );
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CACHE_CONTROL, CACHE_CONTROL_NO_STORE)
+                .body(ApiResult.success(response));
+    }
+
+    @PostMapping("/{bookingId}/complete")
+    @PreAuthorize("hasRole('DRIVER')")
+    public ResponseEntity<ApiResult<BookingDetailResponse>> completeBooking(
+            @PathVariable UUID bookingId,
+            @RequestHeader("Idempotency-Key") UUID requestKey,
+            @Valid @RequestBody VersionRequest request
+    ) {
+        BookingDetailResponse response = bookingSessionService.completeBooking(
+                bookingId,
+                requestKey,
+                request
+        );
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CACHE_CONTROL, CACHE_CONTROL_NO_STORE)
+                .body(ApiResult.success(response));
     }
 
     @GetMapping("/active")

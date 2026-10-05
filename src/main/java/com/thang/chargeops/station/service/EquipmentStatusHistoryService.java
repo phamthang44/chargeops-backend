@@ -10,6 +10,7 @@ import com.thang.chargeops.station.dto.chargepoint.response.ConnectorStatusEvent
 import com.thang.chargeops.station.entity.ChargePoint;
 import com.thang.chargeops.station.entity.Connector;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 
@@ -42,11 +43,10 @@ public interface EquipmentStatusHistoryService {
             String reason
     );
 
-    /** TODO(T19): call this from booking/session transitions to and from IN_USE. */
-    void recordConnectorSystemRuntimeTransition(
+    void transitionConnectorRuntimeAsSystem(
             Connector connector,
-            RuntimeStatus fromStatus,
             RuntimeStatus toStatus,
+            Instant occurredAt,
             String reason
     );
 

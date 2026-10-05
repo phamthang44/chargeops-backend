@@ -5,6 +5,7 @@ import com.thang.chargeops.common.enums.ConnectorType;
 import com.thang.chargeops.common.enums.EquipmentStatusActorType;
 import com.thang.chargeops.common.enums.OperationalChargePointStatus;
 import com.thang.chargeops.common.enums.ProvisioningStatus;
+import com.thang.chargeops.common.constant.LogConstant;
 import com.thang.chargeops.exception.AppException;
 import com.thang.chargeops.exception.errorcode.StationErrorCode;
 import com.thang.chargeops.profile.entity.UserProfile;
@@ -24,6 +25,7 @@ import com.thang.chargeops.station.repository.StationRepository;
 import com.thang.chargeops.station.service.ChargePointService;
 import com.thang.chargeops.station.service.EquipmentStatusHistoryService;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -34,6 +36,7 @@ import java.util.ArrayList;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class ChargePointServiceImpl implements ChargePointService {
 
     private final StationRepository stationRepository;
@@ -48,6 +51,9 @@ public class ChargePointServiceImpl implements ChargePointService {
     @Override
     @Transactional
     public ChargePointDetailResponse provision(UUID stationId, ProvisionChargePointRequest request) {
+        UUID adminId = currentProfileProvider.requireProfileId();
+        log.info(LogConstant.SERVICE_LOG_FORMAT, LogConstant.ACTION_START, "provision", adminId,
+                "stationId=" + stationId + ", request=" + request);
         Station station = requireStation(stationId);
         provisioningPolicy.requireCanProvision(station);
 
@@ -86,6 +92,9 @@ public class ChargePointServiceImpl implements ChargePointService {
             }
         }
         connectorRepository.saveAll(connectors);
+        log.info(LogConstant.SERVICE_LOG_FORMAT, LogConstant.ACTION_SUCCESS, "provision", adminId,
+                "stationId=" + stationId + ", chargePointId=" + chargePoint.getId()
+                        + ", code=" + chargePoint.getChargePointCode() + ", connectorCount=" + connectors.size());
         return mapper.toResponse(chargePoint);
     }
 
@@ -139,6 +148,8 @@ public class ChargePointServiceImpl implements ChargePointService {
         provisioningPolicy.requireCanActivate(chargePoint, request.expectedConnectorCount());
 
         UserProfile performedBy = currentProfileProvider.requireProfile();
+        log.info(LogConstant.SERVICE_LOG_FORMAT, LogConstant.ACTION_START, "activate",
+                performedBy.getId(), "stationId=" + stationId + ", chargePointId=" + chargePointId);
         ProvisioningStatus fromStatus = chargePoint.getProvisioningStatus();
         chargePoint.activate();
         equipmentStatusHistoryService.recordChargePointProvisioningTransition(
@@ -149,6 +160,9 @@ public class ChargePointServiceImpl implements ChargePointService {
                 performedBy,
                 null
         );
+        log.info(LogConstant.SERVICE_LOG_FORMAT, LogConstant.ACTION_SUCCESS, "activate",
+                performedBy.getId(), "stationId=" + stationId + ", chargePointId=" + chargePointId
+                        + ", fromStatus=" + fromStatus + ", toStatus=" + chargePoint.getProvisioningStatus());
         return mapper.toResponse(chargePoint);
     }
 
@@ -158,6 +172,8 @@ public class ChargePointServiceImpl implements ChargePointService {
         ChargePoint chargePoint = requireChargePoint(stationId, chargePointId);
         provisioningPolicy.requireCanSuspend(chargePoint, reason);
         UserProfile performedBy = currentProfileProvider.requireProfile();
+        log.info(LogConstant.SERVICE_LOG_FORMAT, LogConstant.ACTION_START, "suspend",
+                performedBy.getId(), "stationId=" + stationId + ", chargePointId=" + chargePointId);
         ProvisioningStatus fromStatus = chargePoint.getProvisioningStatus();
         chargePoint.suspend();
         equipmentStatusHistoryService.recordChargePointProvisioningTransition(
@@ -168,6 +184,9 @@ public class ChargePointServiceImpl implements ChargePointService {
                 performedBy,
                 reason
         );
+        log.info(LogConstant.SERVICE_LOG_FORMAT, LogConstant.ACTION_SUCCESS, "suspend",
+                performedBy.getId(), "stationId=" + stationId + ", chargePointId=" + chargePointId
+                        + ", fromStatus=" + fromStatus + ", toStatus=" + chargePoint.getProvisioningStatus());
         return mapper.toResponse(chargePoint);
     }
 
@@ -177,6 +196,8 @@ public class ChargePointServiceImpl implements ChargePointService {
         ChargePoint chargePoint = requireChargePoint(stationId, chargePointId);
         provisioningPolicy.requireCanReactivate(chargePoint, reason);
         UserProfile performedBy = currentProfileProvider.requireProfile();
+        log.info(LogConstant.SERVICE_LOG_FORMAT, LogConstant.ACTION_START, "reactivate",
+                performedBy.getId(), "stationId=" + stationId + ", chargePointId=" + chargePointId);
         ProvisioningStatus fromStatus = chargePoint.getProvisioningStatus();
         chargePoint.reactivate();
         equipmentStatusHistoryService.recordChargePointProvisioningTransition(
@@ -187,6 +208,9 @@ public class ChargePointServiceImpl implements ChargePointService {
                 performedBy,
                 reason
         );
+        log.info(LogConstant.SERVICE_LOG_FORMAT, LogConstant.ACTION_SUCCESS, "reactivate",
+                performedBy.getId(), "stationId=" + stationId + ", chargePointId=" + chargePointId
+                        + ", fromStatus=" + fromStatus + ", toStatus=" + chargePoint.getProvisioningStatus());
         return mapper.toResponse(chargePoint);
     }
 
@@ -228,6 +252,10 @@ public class ChargePointServiceImpl implements ChargePointService {
             UUID chargePointId,
             ChangeOperationalStatusRequest request
     ) {
+        UUID ownerId = currentProfileProvider.requireProfileId();
+        log.info(LogConstant.SERVICE_LOG_FORMAT, LogConstant.ACTION_START, "changeOperationalStatusForCurrentOwner",
+                ownerId, "stationId=" + stationId + ", chargePointId=" + chargePointId
+                        + ", requestedStatus=" + request.operationalStatus());
         requireOwnedStation(stationId);
         ChargePoint chargePoint = requireChargePoint(stationId, chargePointId);
         operationPolicy.requireCanChangeOperationalStatus(
@@ -237,6 +265,10 @@ public class ChargePointServiceImpl implements ChargePointService {
         );
         OperationalChargePointStatus fromStatus = chargePoint.getOperationalChargePointStatus();
         if (fromStatus == request.operationalStatus()) {
+            log.debug(LogConstant.SERVICE_LOG_FORMAT, LogConstant.ACTION_SUCCESS,
+                    "changeOperationalStatusForCurrentOwner", ownerId,
+                    "stationId=" + stationId + ", chargePointId=" + chargePointId
+                            + ", status=" + fromStatus + ", changed=false");
             return mapper.toResponse(chargePoint);
         }
 
@@ -250,11 +282,19 @@ public class ChargePointServiceImpl implements ChargePointService {
                 performedBy,
                 request.reason()
         );
+        log.info(LogConstant.SERVICE_LOG_FORMAT, LogConstant.ACTION_SUCCESS,
+                "changeOperationalStatusForCurrentOwner", performedBy.getId(),
+                "stationId=" + stationId + ", chargePointId=" + chargePointId
+                        + ", fromStatus=" + fromStatus
+                        + ", toStatus=" + chargePoint.getOperationalChargePointStatus());
         return mapper.toResponse(chargePoint);
     }
     @Override
     @Transactional
     public void deleteDraft(UUID stationId, UUID chargePointId) {
+        UUID adminId = currentProfileProvider.requireProfileId();
+        log.info(LogConstant.SERVICE_LOG_FORMAT, LogConstant.ACTION_START, "deleteDraft", adminId,
+                "stationId=" + stationId + ", chargePointId=" + chargePointId);
         ChargePoint chargePoint = requireChargePointForUpdate(stationId, chargePointId);
         provisioningPolicy.requireCanDeleteDraft(chargePoint);
         List<Connector> connectors =
@@ -262,6 +302,9 @@ public class ChargePointServiceImpl implements ChargePointService {
         connectorRepository.deleteAll(connectors);
         connectorRepository.flush();
         chargePointRepository.delete(chargePoint);
+        log.info(LogConstant.SERVICE_LOG_FORMAT, LogConstant.ACTION_SUCCESS, "deleteDraft", adminId,
+                "stationId=" + stationId + ", chargePointId=" + chargePointId
+                        + ", connectorCount=" + connectors.size());
     }
 
 

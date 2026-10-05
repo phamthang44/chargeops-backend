@@ -8,6 +8,7 @@ import com.thang.chargeops.booking.checkin.CheckInChallengeRepository;
 import com.thang.chargeops.station.repository.ConnectorRepository;
 import com.thang.chargeops.station.policy.CheckInChallengePolicy;
 import com.thang.chargeops.booking.checkin.CheckInChallengeServiceImpl;
+import com.thang.chargeops.booking.checkin.ResolvedCheckInChallenge;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -78,6 +79,17 @@ class CheckInChallengeServiceImplTest {
     }
 
     @Test
+    void create_throwsWhenConnectorIdInvalidUuid() {
+        assertThatThrownBy(() -> service.create("not-a-valid-uuid"))
+                .isInstanceOfSatisfying(
+                        AppException.class,
+                        e -> assertThat(e.getErrorCode()).isEqualTo(StationErrorCode.CONNECTOR_NOT_FOUND)
+                );
+
+        verify(checkInChallengeRepository, never()).save(any(), any(), any());
+    }
+
+    @Test
     void resolve_successWhenTokenActive() {
         String token = UUID.randomUUID().toString();
         when(checkInChallengeRepository.findConnectorId(token)).thenReturn(Optional.of(connectorId));
@@ -93,6 +105,27 @@ class CheckInChallengeServiceImplTest {
         when(checkInChallengeRepository.findConnectorId(token)).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> service.resolve(token))
+                .isInstanceOf(InvalidCheckInChallengeException.class);
+    }
+
+    @Test
+    void resolveWithExpiry_successWhenTokenActive() {
+        String token = UUID.randomUUID().toString();
+        when(checkInChallengeRepository.findConnectorId(token)).thenReturn(Optional.of(connectorId));
+        when(checkInChallengeRepository.getRemainingTtlSeconds(token)).thenReturn(Optional.of(55L));
+
+        ResolvedCheckInChallenge resolved = service.resolveWithExpiry(token);
+
+        assertThat(resolved.connectorId()).isEqualTo(connectorId);
+        assertThat(resolved.expiresAt()).isNotNull();
+    }
+
+    @Test
+    void resolveWithExpiry_throwsWhenTokenExpiredOrInvalid() {
+        String token = UUID.randomUUID().toString();
+        when(checkInChallengeRepository.findConnectorId(token)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.resolveWithExpiry(token))
                 .isInstanceOf(InvalidCheckInChallengeException.class);
     }
 
@@ -118,29 +151,32 @@ class CheckInChallengeServiceImplTest {
     @Test
     void validateAndConsume_successWhenConnectorMatches() {
         String token = UUID.randomUUID().toString();
-        when(checkInChallengeRepository.getAndDelete(token)).thenReturn(Optional.of(connectorId));
+        when(checkInChallengeRepository.compareAndDelete(token, connectorId)).thenReturn(true);
 
         service.validateAndConsume(token, connectorId);
 
-        verify(checkInChallengeRepository).getAndDelete(token);
+        verify(checkInChallengeRepository).compareAndDelete(token, connectorId);
     }
 
     @Test
     void validateAndConsume_throwsOnWrongConnector() {
         String token = UUID.randomUUID().toString();
-        UUID differentConnectorId = UUID.randomUUID();
-        when(checkInChallengeRepository.getAndDelete(token)).thenReturn(Optional.of(differentConnectorId));
+        when(checkInChallengeRepository.compareAndDelete(token, connectorId)).thenReturn(false);
 
         assertThatThrownBy(() -> service.validateAndConsume(token, connectorId))
                 .isInstanceOf(InvalidCheckInChallengeException.class);
+
+        verify(checkInChallengeRepository).compareAndDelete(token, connectorId);
     }
 
     @Test
     void validateAndConsume_throwsOnExpiredOrReplayedToken() {
         String token = UUID.randomUUID().toString();
-        when(checkInChallengeRepository.getAndDelete(token)).thenReturn(Optional.empty());
+        when(checkInChallengeRepository.compareAndDelete(token, connectorId)).thenReturn(false);
 
         assertThatThrownBy(() -> service.validateAndConsume(token, connectorId))
                 .isInstanceOf(InvalidCheckInChallengeException.class);
+
+        verify(checkInChallengeRepository).compareAndDelete(token, connectorId);
     }
 }

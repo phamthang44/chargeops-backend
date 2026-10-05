@@ -1,0 +1,46 @@
+meta {
+  name: Preview Booking Price - Tier2
+  type: http
+  seq: 4
+}
+
+tags {
+  tier2Pre
+}
+
+post {
+  url: {{baseUrl}}/api/v1/bookings/price-preview
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{access_token}}
+}
+
+body:json {
+  {
+    "connectorId": "{{connectorId}}",
+    "startAt": "{{startTime}}",
+    "durationMin": 60
+  }
+}
+
+script:post-response {
+  if (res.status === 200 && res.body.data) {
+    bru.setEnvVar("pricingVersion", res.body.data.pricingVersion || "");
+    bru.setEnvVar("previewTotal", String(res.body.data.totalAmount));
+    if (res.body.data.policy && res.body.data.policy.policyVersion) {
+      bru.setEnvVar("policyVersion", res.body.data.policy.policyVersion);
+    }
+  }
+}
+
+tests {
+  test("Status code is 200", function() {
+    expect(res.getStatus()).to.equal(200);
+  });
+  test("pricingVersion is 64-hex consent token", function() {
+    expect(res.getBody().data.pricingVersion).to.match(/^[0-9a-f]{64}$/);
+  });
+}

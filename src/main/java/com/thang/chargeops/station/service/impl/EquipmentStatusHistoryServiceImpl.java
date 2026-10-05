@@ -4,6 +4,8 @@ import com.thang.chargeops.common.enums.EquipmentStatusActorType;
 import com.thang.chargeops.common.enums.OperationalChargePointStatus;
 import com.thang.chargeops.common.enums.ProvisioningStatus;
 import com.thang.chargeops.common.enums.RuntimeStatus;
+import com.thang.chargeops.exception.AppException;
+import com.thang.chargeops.exception.errorcode.StationErrorCode;
 import com.thang.chargeops.profile.entity.UserProfile;
 import com.thang.chargeops.station.dto.chargepoint.response.ChargePointStatusEventResponse;
 import com.thang.chargeops.station.dto.chargepoint.response.ConnectorStatusEventResponse;
@@ -21,6 +23,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Objects;
 import java.util.UUID;
 
 @Service
@@ -95,17 +98,28 @@ public class EquipmentStatusHistoryServiceImpl implements EquipmentStatusHistory
 
     @Override
     @Transactional(propagation = Propagation.MANDATORY)
-    public void recordConnectorSystemRuntimeTransition(
+    public void transitionConnectorRuntimeAsSystem(
             Connector connector,
-            RuntimeStatus fromStatus,
             RuntimeStatus toStatus,
+            Instant occurredAt,
             String reason
     ) {
+        Objects.requireNonNull(connector, "connector must not be null");
+        Objects.requireNonNull(toStatus, "toStatus must not be null");
+        Objects.requireNonNull(occurredAt, "occurredAt must not be null");
+
+        RuntimeStatus fromStatus = connector.getRuntimeStatus();
+
+        if (fromStatus == toStatus) {
+            throw new AppException(StationErrorCode.INVALID_STATUS_TRANSITION);
+        }
+
+        connector.updateRuntimeStatus(toStatus);
         connectorStatusEventRepository.save(ConnectorStatusEvent.systemTransition(
                 connector,
                 fromStatus,
                 toStatus,
-                Instant.now(),
+                occurredAt,
                 reason
         ));
     }

@@ -1,0 +1,38 @@
+meta {
+  name: Get or Bootstrap Profile
+  type: http
+  seq: 2
+}
+
+get {
+  url: {{baseUrl}}/api/v1/me/profile
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{access_token}}
+}
+
+script:post-response {
+  if (res.status === 200 && res.body.data && res.body.data.id) {
+    bru.setEnvVar("profileId", res.body.data.id);
+  }
+}
+
+tests {
+  test("Status code is 200", function() {
+    expect(res.getStatus()).to.equal(200);
+  });
+  test("Envelope has data and meta", function() {
+    expect(res.getBody()).to.have.property("data").that.is.an("object");
+    expect(res.getBody()).to.have.property("meta").that.is.an("object");
+  });
+  test("Profile carries id and email", function() {
+    expect(res.getBody().data.id).to.be.a("string");
+    expect(res.getBody().data.email).to.be.a("string");
+  });
+  test("profileId captured for later assertions", function() {
+    expect(bru.getEnvVar("profileId")).to.be.a("string");
+  });
+}

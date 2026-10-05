@@ -1,0 +1,51 @@
+meta {
+  name: Create Booking - Tampered Consent
+  type: http
+  seq: 8
+}
+
+post {
+  url: {{baseUrl}}/api/v1/bookings
+  body: json
+  auth: bearer
+}
+
+headers {
+  Idempotency-Key: {{tamperKey}}
+}
+
+auth:bearer {
+  token: {{access_token}}
+}
+
+script:pre-request {
+  function uuid() {
+    return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, function(c) {
+      const r = (Math.random() * 16) | 0;
+      const v = c === "x" ? r : (r & 0x3) | 0x8;
+      return v.toString(16);
+    });
+  }
+  bru.setEnvVar("tamperKey", uuid());
+}
+
+body:json {
+  {
+    "connectorId": "{{connectorId}}",
+    "startAt": "{{startTime}}",
+    "durationMin": 60,
+    "acceptedTotalAmount": 1,
+    "acceptedPricingVersion": "{{pricingVersion}}",
+    "acceptedPolicyVersion": "{{policyVersion}}",
+    "paymentMethod": "SIMULATOR"
+  }
+}
+
+tests {
+  test("Status code is 409 (consent mismatch rejects booking)", function() {
+    expect(res.getStatus()).to.equal(409);
+  });
+  test("Error code is BKG_PRICE_CHANGED", function() {
+    expect(res.getBody().error.code).to.equal("BKG_PRICE_CHANGED");
+  });
+}

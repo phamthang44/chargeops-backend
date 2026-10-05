@@ -1,0 +1,31 @@
+meta {
+  name: Request Escalation - Blocked By Owner Window
+  type: http
+  seq: 8
+}
+
+post {
+  url: {{baseUrl}}/api/v1/tickets/{{ticketId}}/escalation
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{access_token}}
+}
+
+body:json {
+  {
+    "reason": "Tram van khong phan hoi qua 24h, yeu cau can thiep."
+  }
+}
+
+tests {
+  test("Status code is 409 (escalation gated by owner-response window)", function() {
+    expect(res.getStatus()).to.equal(409);
+  });
+  test("Error code is TKT_STATE_CONFLICT", function() {
+    expect(res.getBody().error.code).to.equal("TKT_STATE_CONFLICT");
+    expect(res.getBody().error.traceId).to.be.a("string");
+  });
+}

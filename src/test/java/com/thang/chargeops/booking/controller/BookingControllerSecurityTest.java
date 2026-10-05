@@ -2,6 +2,7 @@ package com.thang.chargeops.booking.controller;
 
 import com.thang.chargeops.booking.service.BookingPricingService;
 import com.thang.chargeops.booking.service.BookingService;
+import com.thang.chargeops.booking.service.BookingSessionService;
 import com.thang.chargeops.exception.GlobalHandlerError;
 import com.thang.chargeops.infra.security.RestAccessDeniedHandler;
 import com.thang.chargeops.infra.security.RestAuthenticationEntryPoint;
@@ -43,6 +44,12 @@ class BookingControllerSecurityTest {
     private BookingService bookingService;
 
     @MockitoBean
+    private BookingSessionService bookingSessionService;
+
+    @MockitoBean
+    private com.thang.chargeops.booking.service.BookingCancellationService bookingCancellationService;
+
+    @MockitoBean
     private RestAuthenticationEntryPoint authenticationEntryPoint;
 
     @MockitoBean
@@ -79,7 +86,70 @@ class BookingControllerSecurityTest {
         mockMvc.perform(post("/api/v1/bookings/{bookingId}/checkout", bookingId)
                         .header("Idempotency-Key", UUID.randomUUID()))
                 .andExpect(status().isForbidden());
+        mockMvc.perform(post("/api/v1/bookings/{bookingId}/cancel", bookingId)
+                        .header("Idempotency-Key", UUID.randomUUID())
+                        .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "expectedVersion": 1,
+                                  "expectedRefundAmount": 0,
+                                  "acceptedPolicyVersion": "booking-v4.9"
+                                }
+                                """))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(post("/api/v1/bookings/check-in/resolve")
+                        .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "bookingId": "%s",
+                                  "challengeToken": "challenge-token-1234567890"
+                                }
+                                """.formatted(bookingId)))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(post("/api/v1/bookings/{bookingId}/check-in", bookingId)
+                        .header("Idempotency-Key", UUID.randomUUID())
+                        .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "expectedVersion": 1,
+                                  "challengeToken": "challenge-token-1234567890"
+                                }
+                                """))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(post("/api/v1/bookings/{bookingId}/start-charging", bookingId)
+                        .header("Idempotency-Key", UUID.randomUUID())
+                        .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+                        .content("{\"expectedVersion\": 1}"))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(post("/api/v1/bookings/{bookingId}/complete", bookingId)
+                        .header("Idempotency-Key", UUID.randomUUID())
+                        .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+                        .content("{\"expectedVersion\": 1}"))
+                .andExpect(status().isForbidden());
 
-        verifyNoInteractions(bookingService);
+        verifyNoInteractions(
+                bookingService,
+                bookingSessionService,
+                bookingCancellationService
+        );
+    }
+
+    @Test
+    @WithMockUser(roles = "DRIVER")
+    void driverCanCallCancelEndpoint() throws Exception {
+        UUID bookingId = UUID.randomUUID();
+        UUID requestKey = UUID.randomUUID();
+
+        mockMvc.perform(post("/api/v1/bookings/{bookingId}/cancel", bookingId)
+                        .header("Idempotency-Key", requestKey)
+                        .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "expectedVersion": 1,
+                                  "expectedRefundAmount": 0,
+                                  "acceptedPolicyVersion": "booking-v4.9"
+                                }
+                                """))
+                .andExpect(status().isOk());
     }
 }

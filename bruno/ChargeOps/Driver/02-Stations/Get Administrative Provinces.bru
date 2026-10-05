@@ -1,0 +1,20 @@
+meta {
+  name: Get Administrative Provinces
+  type: http
+  seq: 4
+}
+
+get {
+  url: {{baseUrl}}/api/v1/administrative-units/provinces
+  body: none
+  auth: none
+}
+
+tests {
+  test("Status code is 200", function() {
+    expect(res.getStatus()).to.equal(200);
+  });
+  test("Provinces list returned", function() {
+    expect(res.getBody().data).to.be.an('array');
+  });
+}

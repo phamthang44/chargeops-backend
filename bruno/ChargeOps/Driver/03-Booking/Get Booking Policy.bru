@@ -1,0 +1,42 @@
+meta {
+  name: Get Booking Policy
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{baseUrl}}/api/v1/booking-policy
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{access_token}}
+}
+
+script:post-response {
+  if (res.status === 200 && res.body.data && res.body.data.policyVersion) {
+    bru.setEnvVar("policyVersion", res.body.data.policyVersion);
+  }
+}
+
+tests {
+  test("Status code is 200", function() {
+    expect(res.getStatus()).to.equal(200);
+  });
+  test("Policy carries version and timing rules", function() {
+    const d = res.getBody().data;
+    expect(d.policyVersion).to.be.a("string").and.not.empty;
+    expect(d.advanceMinMinutes).to.be.a("number");
+    expect(d.minDurationMin).to.be.a("number");
+    expect(d.durationStepMin).to.be.a("number");
+    expect(d.paymentHoldMin).to.be.a("number");
+    expect(d.cancellationGraceMin).to.be.a("number");
+  });
+  test("Supported payment methods include SIMULATOR", function() {
+    expect(res.getBody().data.supportedPaymentMethods).to.include("SIMULATOR");
+  });
+  test("policyVersion captured for create/cancel consent", function() {
+    expect(bru.getEnvVar("policyVersion")).to.be.a("string");
+  });
+}

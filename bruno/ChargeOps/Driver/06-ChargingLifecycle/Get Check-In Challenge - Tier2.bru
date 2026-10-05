@@ -1,0 +1,36 @@
+meta {
+  name: Get Check-In Challenge - Tier2
+  type: http
+  seq: 8
+}
+
+tags {
+  tier2Post
+}
+
+post {
+  url: {{baseUrl}}/api/v1/internal/connectors/{{connectorId}}/check-in-challenge
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{access_token}}
+}
+
+script:post-response {
+  if (res.status === 200 && res.body.data && res.body.data.challengeToken) {
+    bru.setEnvVar("challengeToken", res.body.data.challengeToken);
+  }
+}
+
+tests {
+  test("Status code is 200", function() {
+    expect(res.getStatus()).to.equal(200);
+  });
+  test("Challenge token issued with TTL", function() {
+    const d = res.getBody().data;
+    expect(d.challengeToken).to.be.a("string");
+    expect(d.challengeToken.length).to.be.at.least(16);
+  });
+}

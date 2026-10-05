@@ -29,8 +29,10 @@ import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.MissingRequestHeaderException;
 import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.HandlerMethodValidationException;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.servlet.NoHandlerFoundException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 import tools.jackson.core.JacksonException;
@@ -167,6 +169,16 @@ public class GlobalHandlerError {
                         CommonErrorCode.RESOURCE_NOT_FOUND.format(request.getRequestURI()),
                         traceId
                 ));
+    }
+
+    @ExceptionHandler(MethodArgumentTypeMismatchException.class)
+    public ResponseEntity<ApiResult<?>> handleTypeMismatch(
+            HttpServletRequest request, MethodArgumentTypeMismatchException e) {
+        if (e.getRequiredType() == UUID.class
+                && e.getParameter().hasParameterAnnotation(PathVariable.class)) {
+            return handleNotFound(request, e);
+        }
+        return handleValidationException(e);
     }
 
     @ExceptionHandler(HttpRequestMethodNotSupportedException.class)

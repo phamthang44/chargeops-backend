@@ -4,6 +4,7 @@ import com.thang.chargeops.common.enums.ChargerType;
 import com.thang.chargeops.common.enums.ConnectorType;
 import com.thang.chargeops.common.enums.EquipmentStatusActorType;
 import com.thang.chargeops.common.enums.RuntimeStatus;
+import com.thang.chargeops.common.constant.LogConstant;
 import com.thang.chargeops.exception.AppException;
 import com.thang.chargeops.exception.errorcode.StationErrorCode;
 import com.thang.chargeops.profile.entity.UserProfile;
@@ -25,6 +26,7 @@ import com.thang.chargeops.station.repository.StationRepository;
 import com.thang.chargeops.station.service.ConnectorService;
 import com.thang.chargeops.station.service.EquipmentStatusHistoryService;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -35,6 +37,7 @@ import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class ConnectorServiceImpl implements ConnectorService {
 
     private final StationRepository stationRepository;
@@ -80,6 +83,9 @@ public class ConnectorServiceImpl implements ConnectorService {
             UUID chargePointId,
             ProvisionConnectorRequest request
     ) {
+        UUID adminId = currentProfileProvider.requireProfileId();
+        log.info(LogConstant.SERVICE_LOG_FORMAT, LogConstant.ACTION_START, "provision", adminId,
+                "stationId=" + stationId + ", chargePointId=" + chargePointId + ", request=" + request);
         ChargePoint chargePoint = requireChargePointForUpdate(stationId, chargePointId);
         provisioningPolicy.requireCanProvision(chargePoint);
 
@@ -101,7 +107,12 @@ public class ConnectorServiceImpl implements ConnectorService {
                 deriveChargerType(request.connectorType())
         );
         chargePoint.addConnector(connector);
-        return mapper.toResponse(connectorRepository.save(connector));
+        Connector saved = connectorRepository.save(connector);
+        log.info(LogConstant.SERVICE_LOG_FORMAT, LogConstant.ACTION_SUCCESS, "provision", adminId,
+                "stationId=" + stationId + ", chargePointId=" + chargePointId
+                        + ", connectorId=" + saved.getId() + ", code=" + saved.getConnectorCode()
+                        + ", powerKw=" + saved.getPowerKw());
+        return mapper.toResponse(saved);
     }
 
     @Override
@@ -112,6 +123,10 @@ public class ConnectorServiceImpl implements ConnectorService {
             UUID connectorId,
             UpdateConnectorRequest request
     ) {
+        UUID adminId = currentProfileProvider.requireProfileId();
+        log.info(LogConstant.SERVICE_LOG_FORMAT, LogConstant.ACTION_START, "updateForAdmin", adminId,
+                "stationId=" + stationId + ", chargePointId=" + chargePointId
+                        + ", connectorId=" + connectorId + ", request=" + request);
         ChargePoint chargePoint = requireChargePointForUpdate(stationId, chargePointId);
         provisioningPolicy.requireCanUpdate(chargePoint);
 
@@ -134,7 +149,12 @@ public class ConnectorServiceImpl implements ConnectorService {
         );
         recomputeMaxPower(chargePoint);
 
-        return mapper.toResponse(connectorRepository.save(connector));
+        Connector saved = connectorRepository.save(connector);
+        log.info(LogConstant.SERVICE_LOG_FORMAT, LogConstant.ACTION_SUCCESS, "updateForAdmin", adminId,
+                "stationId=" + stationId + ", chargePointId=" + chargePointId
+                        + ", connectorId=" + connectorId + ", type=" + saved.getConnectorType()
+                        + ", powerKw=" + saved.getPowerKw());
+        return mapper.toResponse(saved);
     }
 
     @Override
@@ -144,6 +164,10 @@ public class ConnectorServiceImpl implements ConnectorService {
             UUID chargePointId,
             UUID connectorId
     ) {
+        UUID adminId = currentProfileProvider.requireProfileId();
+        log.info(LogConstant.SERVICE_LOG_FORMAT, LogConstant.ACTION_START, "deleteDraft", adminId,
+                "stationId=" + stationId + ", chargePointId=" + chargePointId
+                        + ", connectorId=" + connectorId);
         ChargePoint chargePoint = requireChargePointForUpdate(stationId, chargePointId);
         provisioningPolicy.requireCanDeleteDraft(chargePoint);
         Connector connector = connectorRepository.findByIdAndChargePointId(connectorId, chargePointId)
@@ -151,6 +175,9 @@ public class ConnectorServiceImpl implements ConnectorService {
         connectorRepository.delete(connector);
         connectorRepository.flush();
         recomputeMaxPower(chargePoint);
+        log.info(LogConstant.SERVICE_LOG_FORMAT, LogConstant.ACTION_SUCCESS, "deleteDraft", adminId,
+                "stationId=" + stationId + ", chargePointId=" + chargePointId
+                        + ", connectorId=" + connectorId);
     }
 
     @Override
@@ -181,6 +208,10 @@ public class ConnectorServiceImpl implements ConnectorService {
             UUID connectorId,
             ChangeRuntimeStatusRequest request
     ) {
+        UUID ownerId = currentProfileProvider.requireProfileId();
+        log.info(LogConstant.SERVICE_LOG_FORMAT, LogConstant.ACTION_START, "changeRuntimeStatusForCurrentOwner", ownerId,
+                "stationId=" + stationId + ", chargePointId=" + chargePointId
+                        + ", connectorId=" + connectorId + ", requestedStatus=" + request.runtimeStatus());
         requireOwnedStation(stationId);
         Connector connector = requireConnector(stationId, chargePointId, connectorId);
         operationPolicy.requireCanChangeRuntimeStatus(
@@ -190,6 +221,9 @@ public class ConnectorServiceImpl implements ConnectorService {
         );
         RuntimeStatus fromStatus = connector.getRuntimeStatus();
         if (fromStatus == request.runtimeStatus()) {
+            log.debug(LogConstant.SERVICE_LOG_FORMAT, LogConstant.ACTION_SUCCESS, "changeRuntimeStatusForCurrentOwner",
+                    ownerId, "stationId=" + stationId + ", chargePointId=" + chargePointId
+                            + ", connectorId=" + connectorId + ", status=" + fromStatus + ", changed=false");
             return mapper.toResponse(connector);
         }
 
@@ -203,6 +237,10 @@ public class ConnectorServiceImpl implements ConnectorService {
                 performedBy,
                 request.reason()
         );
+        log.info(LogConstant.SERVICE_LOG_FORMAT, LogConstant.ACTION_SUCCESS, "changeRuntimeStatusForCurrentOwner",
+                performedBy.getId(), "stationId=" + stationId + ", chargePointId=" + chargePointId
+                        + ", connectorId=" + connectorId + ", fromStatus=" + fromStatus
+                        + ", toStatus=" + connector.getRuntimeStatus());
         return mapper.toResponse(connector);
     }
 

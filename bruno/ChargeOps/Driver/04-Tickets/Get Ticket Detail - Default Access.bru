@@ -1,0 +1,41 @@
+meta {
+  name: Get Ticket Detail - Default Access
+  type: http
+  seq: 5
+}
+
+get {
+  url: {{baseUrl}}/api/v1/tickets/{{ticketId}}
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{access_token}}
+}
+
+script:post-response {
+  if (res.status === 200 && res.body.data && res.body.data.overview) {
+    bru.setEnvVar("ticketVersion", String(res.body.data.overview.version));
+  }
+}
+
+tests {
+  test("Status code is 200 (reporter passes default access)", function() {
+    expect(res.getStatus()).to.equal(200);
+  });
+  test("Conversation reflects the reply", function() {
+    const c = res.getBody().data.conversation;
+    expect(c.messageCount).to.be.a("number").and.is.at.least(1);
+    expect(c.lastMessagePreview).to.be.a("string").and.not.empty;
+  });
+  test("Escalation gate still closed (24h owner window)", function() {
+    const d = res.getBody().data;
+    expect(d.isEscalated).to.equal(false);
+    expect(d.escalationAvailability.canRequest).to.equal(false);
+    expect(d.escalation).to.equal(null);
+  });
+  test("version refreshed for status-change tests", function() {
+    expect(bru.getEnvVar("ticketVersion")).to.match(/^\d+$/);
+  });
+}

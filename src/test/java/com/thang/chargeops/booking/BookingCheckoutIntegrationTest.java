@@ -24,6 +24,7 @@ import com.thang.chargeops.payment.entity.Payment;
 import com.thang.chargeops.payment.gateway.PaymentGateway;
 import com.thang.chargeops.payment.gateway.PaymentGatewayRegistry;
 import com.thang.chargeops.payment.gateway.PaymentGatewayUnavailableException;
+import com.thang.chargeops.payment.gateway.PaymentGatewayProfile;
 import com.thang.chargeops.payment.gateway.SimulatorPaymentGateway;
 import com.thang.chargeops.payment.model.OrderCheckout;
 import com.thang.chargeops.payment.repository.PaymentRepository;
@@ -115,12 +116,16 @@ class BookingCheckoutIntegrationTest {
                 mock(BookingMapper.class),
                 mock(BookingPolicyConfig.class),
                 paymentRepository,
-                paymentTransactionRepository,
+                mock(com.thang.chargeops.booking.service.DriverBookingDetailAssembler.class),
                 mock(DriverBookingReadPolicy.class),
                 mock(BookingStatusHistoryRecorder.class),
                 gatewayRegistry,
                 bookingCheckoutPersistence,
                 inFlightLock,
+                mock(com.thang.chargeops.booking.checkin.CheckInChallengeService.class),
+                mock(com.thang.chargeops.station.repository.ConnectorRepository.class),
+                mock(com.thang.chargeops.station.policy.CheckInPolicy.class),
+                mock(com.thang.chargeops.station.service.EquipmentStatusHistoryService.class),
                 Clock.fixed(NOW, ZoneOffset.UTC)
         );
     }
@@ -348,10 +353,10 @@ class BookingCheckoutIntegrationTest {
                 INSERT INTO payments(
                     id, booking_id, amount, status, method, refund_amount,
                     provider, receiving_account_ref, currency, version,
-                    needs_reconciliation, payment_code, created_at, updated_at
+                    needs_reconciliation, payment_code, environment, created_at, updated_at
                 )
                 VALUES (?, ?, 126000, 'PENDING', 'SIMULATOR', 0,
-                        'SIMULATOR', 'SIMULATOR', 'VND', 0, false, ?, ?, ?)
+                        'SIMULATOR', 'SIMULATOR', 'VND', 0, false, ?, 'SIMULATOR', ?, ?)
                 """,
                 fixturePaymentId,
                 fixtureBookingId,
@@ -382,6 +387,11 @@ class BookingCheckoutIntegrationTest {
         @Override
         public boolean supports(PaymentMethod method) {
             return method == PaymentMethod.SIMULATOR;
+        }
+
+        @Override
+        public PaymentGatewayProfile profile() {
+            return delegate.profile();
         }
 
         @Override

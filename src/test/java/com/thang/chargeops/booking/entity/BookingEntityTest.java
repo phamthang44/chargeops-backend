@@ -219,6 +219,21 @@ class BookingEntityTest {
         }
 
         @Test
+        @DisplayName("start charging đúng endAt hoặc sau endAt bị từ chối")
+        void startCharging_atOrAfterEndAt_rejected() {
+            Booking booking = createValidPendingBooking();
+            booking.confirmPayment(now, now.plus(Duration.ofMinutes(10)));
+            booking.checkIn(startAt);
+
+            assertThatThrownBy(() -> booking.startCharging(endAt))
+                    .isInstanceOf(IllegalStateException.class)
+                    .hasMessageContaining("at or after booking end time");
+
+            assertThat(booking.getStatus()).isEqualTo(BookingStatus.CHECKED_IN);
+            assertThat(booking.getChargingStartedAt()).isNull();
+        }
+
+        @Test
         @DisplayName("cancel ghi nhận reason và chỉ cho phép từ PENDING hoặc CONFIRMED (BR-BOK-06)")
         void cancel_recordsReasonAndRejectsCheckedInBooking() {
             Booking booking = createValidPendingBooking();

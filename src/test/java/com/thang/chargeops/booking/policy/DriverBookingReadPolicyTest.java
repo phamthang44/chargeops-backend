@@ -5,6 +5,14 @@ import com.thang.chargeops.booking.service.model.BookingReadEvaluation;
 import com.thang.chargeops.booking.service.model.BookingReadSnapshot;
 import com.thang.chargeops.booking.service.model.DriverBookingCapabilities;
 import com.thang.chargeops.common.enums.BookingStatus;
+import com.thang.chargeops.common.enums.OperationalChargePointStatus;
+import com.thang.chargeops.common.enums.ProvisioningStatus;
+import com.thang.chargeops.common.enums.RuntimeStatus;
+import com.thang.chargeops.common.enums.StationOperationalStatus;
+import com.thang.chargeops.common.enums.StationStatus;
+import com.thang.chargeops.station.entity.ChargePoint;
+import com.thang.chargeops.station.entity.Connector;
+import com.thang.chargeops.station.entity.Station;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
@@ -86,6 +94,155 @@ class DriverBookingReadPolicyTest {
                 .isEqualTo(BookingReadEvaluation.CancellationReason.NO_SHOW);
         assertThat(evaluation.capabilities().checkInReason()).isEqualTo(
                 DriverBookingCapabilities.CheckInReason.WINDOW_CLOSED
+        );
+    }
+
+    @Test
+    void disablesCheckInWhenChargePointProvisioningIsNotActive() {
+        Instant evaluatedAt = Instant.parse("2026-09-17T03:05:00Z");
+        Booking booking = booking(BookingStatus.CONFIRMED);
+        when(booking.getCheckInDeadline())
+                .thenReturn(Instant.parse("2026-09-17T03:45:00Z"));
+
+        Station station = mock(Station.class);
+        when(station.getStatus()).thenReturn(StationStatus.ACTIVE);
+        when(station.getOperationalStatus())
+                .thenReturn(StationOperationalStatus.OPERATING);
+
+        ChargePoint chargePoint = mock(ChargePoint.class);
+        when(chargePoint.getStation()).thenReturn(station);
+        when(chargePoint.getProvisioningStatus())
+                .thenReturn(ProvisioningStatus.SUSPENDED);
+        when(chargePoint.getOperationalChargePointStatus())
+                .thenReturn(OperationalChargePointStatus.AVAILABLE);
+
+        Connector connector = mock(Connector.class);
+        when(connector.getChargePoint()).thenReturn(chargePoint);
+        when(connector.getRuntimeStatus()).thenReturn(RuntimeStatus.AVAILABLE);
+        when(booking.getConnector()).thenReturn(connector);
+
+        BookingReadSnapshot snapshot = policy.snapshotForList(
+                booking,
+                evaluatedAt
+        );
+        BookingReadEvaluation evaluation = policy.evaluate(booking, snapshot);
+
+        assertThat(snapshot.stationAvailable()).isFalse();
+        assertThat(evaluation.capabilities().canCheckIn()).isFalse();
+        assertThat(evaluation.capabilities().checkInReason()).isEqualTo(
+                DriverBookingCapabilities.CheckInReason.STATION_UNAVAILABLE
+        );
+    }
+
+    @Test
+    void enablesStartForCheckedInBookingWhoseConnectorIsInUse() {
+        Instant evaluatedAt = Instant.parse("2026-09-17T03:10:00Z");
+        Booking booking = booking(BookingStatus.CHECKED_IN);
+
+        Station station = mock(Station.class);
+        when(station.getStatus()).thenReturn(StationStatus.ACTIVE);
+        when(station.getOperationalStatus())
+                .thenReturn(StationOperationalStatus.OPERATING);
+
+        ChargePoint chargePoint = mock(ChargePoint.class);
+        when(chargePoint.getStation()).thenReturn(station);
+        when(chargePoint.getProvisioningStatus())
+                .thenReturn(ProvisioningStatus.ACTIVE);
+        when(chargePoint.getOperationalChargePointStatus())
+                .thenReturn(OperationalChargePointStatus.AVAILABLE);
+
+        Connector connector = mock(Connector.class);
+        when(connector.getChargePoint()).thenReturn(chargePoint);
+        when(connector.getRuntimeStatus()).thenReturn(RuntimeStatus.IN_USE);
+        when(booking.getConnector()).thenReturn(connector);
+
+        BookingReadSnapshot snapshot = policy.snapshotForList(booking, evaluatedAt);
+        BookingReadEvaluation evaluation = policy.evaluate(booking, snapshot);
+
+        assertThat(snapshot.stationAvailable()).isTrue();
+        assertThat(evaluation.capabilities().canStartCharging()).isTrue();
+        assertThat(evaluation.capabilities().canComplete()).isTrue();
+    }
+
+    @Test
+    void doesNotTreatInUseConnectorAsAvailableForConfirmedCheckIn() {
+        Instant evaluatedAt = Instant.parse("2026-09-17T03:10:00Z");
+        Booking booking = booking(BookingStatus.CONFIRMED);
+        when(booking.getCheckInDeadline())
+                .thenReturn(Instant.parse("2026-09-17T03:45:00Z"));
+
+        Station station = mock(Station.class);
+        when(station.getStatus()).thenReturn(StationStatus.ACTIVE);
+        when(station.getOperationalStatus())
+                .thenReturn(StationOperationalStatus.OPERATING);
+        ChargePoint chargePoint = mock(ChargePoint.class);
+        when(chargePoint.getStation()).thenReturn(station);
+        when(chargePoint.getProvisioningStatus())
+                .thenReturn(ProvisioningStatus.ACTIVE);
+        when(chargePoint.getOperationalChargePointStatus())
+                .thenReturn(OperationalChargePointStatus.AVAILABLE);
+        Connector connector = mock(Connector.class);
+        when(connector.getChargePoint()).thenReturn(chargePoint);
+        when(connector.getRuntimeStatus()).thenReturn(RuntimeStatus.IN_USE);
+        when(booking.getConnector()).thenReturn(connector);
+
+        BookingReadSnapshot snapshot = policy.snapshotForList(booking, evaluatedAt);
+        BookingReadEvaluation evaluation = policy.evaluate(booking, snapshot);
+
+        assertThat(snapshot.stationAvailable()).isFalse();
+        assertThat(evaluation.capabilities().canCheckIn()).isFalse();
+    }
+
+    @Test
+    void disablesStartExactlyAtBookingEndEvenWhenHardwareIsServiceable() {
+        Booking booking = booking(BookingStatus.CHECKED_IN);
+
+        BookingReadEvaluation evaluation = policy.evaluate(
+                booking,
+                BookingReadSnapshot.forList(END_AT, true)
+        );
+
+        assertThat(evaluation.capabilities().canStartCharging()).isFalse();
+        assertThat(evaluation.capabilities().canComplete()).isTrue();
+    }
+
+    @Test
+    void failsClosedWhenConfirmedBookingHasNoStartAt() {
+        Booking booking = booking(BookingStatus.CONFIRMED);
+        when(booking.getStartAt()).thenReturn(null);
+        when(booking.getCheckInDeadline())
+                .thenReturn(Instant.parse("2026-09-17T03:45:00Z"));
+
+        BookingReadEvaluation evaluation = policy.evaluate(
+                booking,
+                BookingReadSnapshot.forList(
+                        Instant.parse("2026-09-17T03:05:00Z"),
+                        true
+                )
+        );
+
+        assertThat(evaluation.capabilities().canCheckIn()).isFalse();
+        assertThat(evaluation.capabilities().checkInReason()).isEqualTo(
+                DriverBookingCapabilities.CheckInReason.WRONG_STATE
+        );
+    }
+
+    @Test
+    void failsClosedWhenConfirmedBookingHasNoDeadlineSnapshot() {
+        Booking booking = booking(BookingStatus.CONFIRMED);
+        when(booking.getCheckInDeadline()).thenReturn(null);
+
+        BookingReadEvaluation evaluation = policy.evaluate(
+                booking,
+                BookingReadSnapshot.forList(
+                        Instant.parse("2026-09-17T03:05:00Z"),
+                        true
+                )
+        );
+
+        assertThat(evaluation.capabilities().canCheckIn()).isFalse();
+        assertThat(evaluation.capabilities().checkInReason()).isEqualTo(
+                DriverBookingCapabilities.CheckInReason.WRONG_STATE
         );
     }
 
