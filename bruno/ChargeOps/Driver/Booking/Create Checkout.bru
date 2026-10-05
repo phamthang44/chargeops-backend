@@ -1,0 +1,31 @@
+meta {
+  name: Create Checkout
+  type: http
+  seq: 4
+}
+
+post {
+  url: {{baseUrl}}/api/v1/bookings/{{bookingId}}/checkout
+  body: none
+  auth: bearer
+}
+
+headers {
+  Idempotency-Key: 223e4567-e89b-12d3-a456-426614174001
+}
+
+auth:bearer {
+  token: {{access_token}}
+}
+
+script:post-response {
+  if (res.status === 200 && res.body.data && res.body.data.paymentId) {
+    bru.setEnvVar("paymentId", res.body.data.paymentId);
+  }
+}
+
+tests {
+  test("Status code is 200 or 400 or 404", function() {
+    expect([200, 400, 404]).to.include(res.getStatus());
+  });
+}

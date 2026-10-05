@@ -1,0 +1,39 @@
+meta {
+  name: Create Booking
+  type: http
+  seq: 3
+}
+
+post {
+  url: {{baseUrl}}/api/v1/bookings
+  body: json
+  auth: bearer
+}
+
+headers {
+  Idempotency-Key: 123e4567-e89b-12d3-a456-426614174000
+}
+
+auth:bearer {
+  token: {{access_token}}
+}
+
+body:json {
+  {
+    "connectorId": "{{connectorId}}",
+    "startTime": "2026-03-30T10:00:00Z",
+    "endTime": "2026-03-30T11:00:00Z"
+  }
+}
+
+script:post-response {
+  if (res.status === 201 && res.body.data && res.body.data.id) {
+    bru.setEnvVar("bookingId", res.body.data.id);
+  }
+}
+
+tests {
+  test("Status code is 201 or 400", function() {
+    expect([201, 400]).to.include(res.getStatus());
+  });
+}

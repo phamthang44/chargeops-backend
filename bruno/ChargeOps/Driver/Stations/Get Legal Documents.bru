@@ -1,0 +1,26 @@
+meta {
+  name: Get Legal Documents
+  type: http
+  seq: 6
+}
+
+get {
+  url: {{baseUrl}}/api/v1/legal-documents
+  body: none
+  auth: none
+}
+
+script:post-response {
+  if (res.status === 200 && res.body.data && res.body.data.length > 0) {
+    bru.setEnvVar("slug", res.body.data[0].slug);
+  }
+}
+
+tests {
+  test("Status code is 200", function() {
+    expect(res.getStatus()).to.equal(200);
+  });
+  test("Legal documents list returned", function() {
+    expect(res.getBody().data).to.be.an('array');
+  });
+}
