@@ -1,5 +1,7 @@
 package com.thang.chargeops.support.service;
 
+import com.thang.chargeops.incident.IncidentFinancialEvidenceReader;
+
 import com.thang.chargeops.booking.command.BookingCommand;
 import com.thang.chargeops.booking.command.BookingCommandOperation;
 import com.thang.chargeops.booking.command.BookingCommandPayloadHasher;
@@ -71,6 +73,7 @@ import java.util.UUID;
 @RequiredArgsConstructor
 @PreAuthorize("hasRole('ADMIN')")
 public class AdminRefundPolicyService {
+    private final IncidentFinancialEvidenceReader incidentEvidence;
     private static final BookingCommandOperation OPERATION = BookingCommandOperation.ADMIN_REVIEW_STATION_FAILURE;
 
     private final CurrentProfileProvider currentProfile;
@@ -272,6 +275,7 @@ public class AdminRefundPolicyService {
     private Map<String, Object> evidence(SupportTicket ticket, TicketEscalation escalation, Booking booking,
                                        Payment payment, PaymentTransaction source, Refund refund, Instant now) {
         Map<String, Object> data = new LinkedHashMap<>();
+        data.put("incidents", incidentEvidence.forBooking(booking.getId()));
         data.put("ticketVersion", ticket.getVersion());
         data.put("escalationRequestedAt", escalation.getRequestedAt().toString());
         data.put("findingIds", findings.findByTicketIdOrderByRecordedAtAscIdAsc(ticket.getId()).stream().map(f -> f.getId().toString()).toList());

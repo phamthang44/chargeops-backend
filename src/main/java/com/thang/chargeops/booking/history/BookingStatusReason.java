@@ -10,5 +10,6 @@ public enum BookingStatusReason {
     CHECK_IN_CONFIRMED,
     CHARGING_STARTED,
     SESSION_COMPLETED,
+    INCIDENT_SESSION_STOPPED,
     NO_SHOW
 }

@@ -11,5 +11,6 @@ public enum BookingCommandOperation {
     CONFIRM_CHECK_IN,
     START_CHARGING,
     COMPLETE_BOOKING,
+    RESOLVE_INCIDENT_SESSION,
     SIMULATE_PAYMENT
 }

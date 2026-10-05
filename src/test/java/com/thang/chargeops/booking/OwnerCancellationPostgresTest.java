@@ -105,6 +105,245 @@ class OwnerCancellationPostgresTest {
         assertCount("refunds", paid.bookingId(), 1);
     }
 
+    @Test void incidentStaffReportSnapshotsAndBlocksNewBookingsWithoutGrantingRefund() throws Exception {
+        PaidBooking paid = createAndPayBooking(START_AT);
+        UUID stationId = incidentStationId();
+        UUID staffId = UUID.randomUUID();
+        insertUser(staffId, "incident-staff-" + staffId, "Incident Staff");
+        jdbc.update("INSERT INTO station_staff_assignments(id,station_id,user_id,assigned_by,status,assigned_at,version) VALUES (?,?,?,?, 'ACTIVE',?,0)",
+                UUID.randomUUID(), stationId, staffId, ownerId, Timestamp.from(NOW));
+        currentActorId.set(staffId);
+        UUID key = UUID.randomUUID();
+        JsonNode reported = incidentReport(key, 0, "driver", 200);
+        UUID incidentId = UUID.fromString(reported.at("/data/incidentId").asText());
+        assertThat(reported.at("/data/runtimeStatus").asText()).isEqualTo("OFFLINE");
+        assertThat(reported.at("/data/affectedBookingIds/0").asText()).isEqualTo(paid.bookingId().toString());
+        assertThat(reported.toString()).doesNotContain("paymentId", "receiptId", "amount", "payloadHash", "keycloakId");
+        assertThat(incidentReport(key, 0, "driver", 200).at("/data/incidentId")).isEqualTo(reported.at("/data/incidentId"));
+        incidentReport(key, 1, "driver", 409);
+        assertCount("refunds", paid.bookingId(), 0);
+        assertThat(jdbc.queryForObject("SELECT actor_type FROM connector_incidents WHERE id=?", String.class, incidentId)).isEqualTo("STAFF");
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM incident_commands WHERE incident_id=?", Long.class, incidentId)).isEqualTo(1L);
+        mockMvc.perform(post("/api/v1/bookings/price-preview").with(user("driver").roles("DRIVER"))
+                .contentType("application/json").content(json(Map.of("connectorId",connectorId,"startAt",START_AT.plusSeconds(7200),"durationMin",60))))
+                .andExpect(status().isConflict());
+        jdbc.update("UPDATE station_staff_assignments SET status='REVOKED',revoked_by=?,revoked_at=? WHERE user_id=?",ownerId,Timestamp.from(NOW),staffId);
+        mockMvc.perform(get("/api/v1/stations/{s}/incidents/{i}",stationId,incidentId).with(user("staff").roles("DRIVER")))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test void incidentSafeStopThenOwnerRefundRecoveryPreservesHistoryAndPendingObligation() throws Exception {
+        PaidBooking paid = createAndPayBooking(START_AT);
+        activateIncidentSession(paid.bookingId(), "CHARGING");
+        currentActorId.set(ownerId);
+        JsonNode reported = incidentReport(UUID.randomUUID(), 0, "owner", 200);
+        UUID incidentId = UUID.fromString(reported.at("/data/incidentId").asText());
+        assertThat(reported.at("/data/handlingState").asText()).isEqualTo("PENDING");
+        UUID key = UUID.randomUUID();
+        JsonNode resolved = incidentResolve(incidentId,paid.bookingId(),1,key,true,200);
+        assertThat(resolved.at("/data/handlingState").asText()).isEqualTo("COMPLETED");
+        assertThat(resolved.at("/data/runtimeStatus").asText()).isEqualTo("OFFLINE");
+        assertThat(resolved.at("/data/affectedBookings/0/currentStatus").asText()).isEqualTo("COMPLETED");
+        incidentResolve(incidentId,paid.bookingId(),1,key,true,200);
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM booking_status_history WHERE booking_id=? AND actor_type='OWNER' AND reason='INCIDENT_SESSION_STOPPED'",Long.class,paid.bookingId())).isEqualTo(1L);
+        assertThat(jdbc.queryForObject("SELECT end_at FROM bookings WHERE id=?",Timestamp.class,paid.bookingId()).toInstant()).isEqualTo(START_AT.plusSeconds(3600));
+        assertCount("refunds",paid.bookingId(),0);
+        mockMvc.perform(post("/api/v1/owner/bookings/{id}/station-failure-refund",paid.bookingId()).with(user("owner").roles("OWNER"))
+                .header("Idempotency-Key",UUID.randomUUID()).contentType("application/json")
+                .content(json(Map.of("expectedVersion",2,"expectedDecisionVersion",0,"affectedAt",START_AT.plusSeconds(60),"reason",REASON + " Incident " + incidentId))))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.refund.status").value("PENDING"));
+        JsonNode recovered = incidentRecover(incidentId,0,UUID.randomUUID(),200);
+        assertThat(recovered.at("/data/runtimeStatus").asText()).isEqualTo("AVAILABLE");
+        assertThat(jdbc.queryForObject("SELECT status FROM refunds WHERE booking_id=?",String.class,paid.bookingId())).isEqualTo("PENDING");
+        assertThat(jdbc.queryForObject("SELECT status FROM bookings WHERE id=?",String.class,paid.bookingId())).isEqualTo("COMPLETED");
+        assertCount("refunds",paid.bookingId(),1);
+        JsonNode evidence = objectMapper.readTree(jdbc.queryForObject("SELECT evidence_snapshot::text FROM booking_service_failure_decisions WHERE booking_id=?",String.class,paid.bookingId()));
+        assertThat(evidence.at("/incidents/0/incidentId").asText()).isEqualTo(incidentId.toString());
+        assertThat(evidence.at("/incidents/0/safetyState").asText()).isEqualTo("SESSION_RESOLVED");
+    }
+
+    @Test void incidentTwoOpenIncidentsRecoveryAndOrdinaryRuntimeGuard() throws Exception {
+        currentActorId.set(ownerId);
+        UUID first = UUID.fromString(incidentReport(UUID.randomUUID(),0,"owner",200).at("/data/incidentId").asText());
+        UUID second = UUID.fromString(incidentReport(UUID.randomUUID(),1,"owner",200).at("/data/incidentId").asText());
+        UUID key = UUID.randomUUID();
+        assertThat(incidentRecover(first,0,key,200).at("/data/runtimeStatus").asText()).isEqualTo("OFFLINE");
+        UUID cpId = jdbc.queryForObject("SELECT charge_point_id FROM connectors WHERE id=?",UUID.class,connectorId);
+        mockMvc.perform(patch("/api/v1/owner/stations/{s}/charge-points/{cp}/connectors/{c}/runtime-status",incidentStationId(),cpId,connectorId)
+                .with(user("owner").roles("OWNER")).contentType("application/json").content(json(Map.of("runtimeStatus","AVAILABLE","reason",REASON))))
+                .andExpect(status().isConflict());
+        assertThat(incidentRecover(first,0,key,200).at("/data/status").asText()).isEqualTo("RECOVERED");
+        incidentRecover(first,0,UUID.randomUUID(),409);
+        assertThat(incidentRecover(second,0,UUID.randomUUID(),200).at("/data/runtimeStatus").asText()).isEqualTo("AVAILABLE");
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM connector_incidents WHERE connector_id=?",Long.class,connectorId)).isEqualTo(2L);
+        assertThatThrownBy(() -> jdbc.update("DELETE FROM connector_incidents WHERE id=?",first)).hasMessageContaining("cannot be deleted");
+        assertThatThrownBy(() -> jdbc.update("UPDATE connector_incidents SET reason='rewritten evidence' WHERE id=?",first)).hasMessageContaining("immutable");
+    }
+
+    @Test void incidentRecoveryRetainsInUseForActiveSessionAndOfflineForMaintenance() throws Exception {
+        PaidBooking paid = createAndPayBooking(START_AT);
+        activateIncidentSession(paid.bookingId(),"CHECKED_IN");
+        currentActorId.set(ownerId);
+        UUID first = UUID.fromString(incidentReport(UUID.randomUUID(),0,"owner",200).at("/data/incidentId").asText());
+        assertThat(incidentRecover(first,0,UUID.randomUUID(),200).at("/data/runtimeStatus").asText()).isEqualTo("IN_USE");
+        incidentResolve(first,paid.bookingId(),1,UUID.randomUUID(),true,200);
+        UUID second = UUID.fromString(incidentReport(UUID.randomUUID(),3,"owner",200).at("/data/incidentId").asText());
+        jdbc.update("UPDATE charge_points SET operational_status='MAINTENANCE' WHERE id=(SELECT charge_point_id FROM connectors WHERE id=?)",connectorId);
+        assertThat(incidentRecover(second,0,UUID.randomUUID(),200).at("/data/runtimeStatus").asText()).isEqualTo("OFFLINE");
+    }
+
+    @Test void incidentRejectsStaleVersionWrongScopeFutureTimeUnknownMoneyAndUnsafeStop() throws Exception {
+        PaidBooking paid = createAndPayBooking(START_AT);
+        activateIncidentSession(paid.bookingId(),"CHARGING");
+        currentActorId.set(ownerId);
+        incidentReport(UUID.randomUUID(),99,"owner",409);
+        mockMvc.perform(post("/api/v1/stations/{s}/connectors/{c}/incidents",incidentStationId(),connectorId)
+                .with(user("owner").roles("OWNER")).header("Idempotency-Key",UUID.randomUUID()).contentType("application/json")
+                .content(json(Map.of("expectedConnectorVersion",0,"reason",REASON,"occurredAt",START_AT.plusSeconds(61)))))
+                .andExpect(status().isBadRequest());
+        mockMvc.perform(post("/api/v1/stations/{s}/connectors/{c}/incidents",incidentStationId(),connectorId)
+                .with(user("owner").roles("OWNER")).header("Idempotency-Key",UUID.randomUUID()).contentType("application/json")
+                .content(json(Map.of("expectedConnectorVersion",0,"reason",REASON,"occurredAt",START_AT,"amount",100))))
+                .andExpect(status().isBadRequest());
+        UUID incidentId = UUID.fromString(incidentReport(UUID.randomUUID(),0,"owner",200).at("/data/incidentId").asText());
+        incidentResolve(incidentId,paid.bookingId(),1,UUID.randomUUID(),false,400);
+        incidentResolve(incidentId,paid.bookingId(),99,UUID.randomUUID(),true,409);
+        mockMvc.perform(get("/api/v1/stations/{s}/incidents/{i}",UUID.randomUUID(),incidentId).with(user("owner").roles("OWNER")))
+                .andExpect(status().isNotFound());
+        currentActorId.set(driverId);
+        mockMvc.perform(get("/api/v1/stations/{s}/incidents/{i}",incidentStationId(),incidentId).with(user("driver").roles("DRIVER")))
+                .andExpect(status().isForbidden());
+        assertCount("refunds",paid.bookingId(),0);
+        assertThat(jdbc.queryForObject("SELECT status FROM bookings WHERE id=?",String.class,paid.bookingId())).isEqualTo("CHARGING");
+    }
+
+    @Test void incidentSnapshotFailureRollsBackOfflineAndCommand() throws Exception {
+        PaidBooking paid = createAndPayBooking(START_AT);
+        currentActorId.set(ownerId);
+        UUID key = UUID.randomUUID();
+        jdbc.execute("CREATE FUNCTION fail_incident_snapshot_test() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'Injected snapshot crash'; END $$");
+        jdbc.execute("CREATE TRIGGER fail_incident_snapshot_test BEFORE INSERT ON incident_bookings FOR EACH ROW EXECUTE FUNCTION fail_incident_snapshot_test()");
+        try {
+            incidentReport(key,0,"owner",500);
+            assertThat(jdbc.queryForObject("SELECT runtime_status FROM connectors WHERE id=?",String.class,connectorId)).isEqualTo("AVAILABLE");
+            assertThat(jdbc.queryForObject("SELECT count(*) FROM connector_incidents WHERE connector_id=?",Long.class,connectorId)).isZero();
+        } finally {
+            jdbc.execute("DROP TRIGGER fail_incident_snapshot_test ON incident_bookings");
+            jdbc.execute("DROP FUNCTION fail_incident_snapshot_test()");
+        }
+        incidentReport(key,0,"owner",200);
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM incident_bookings WHERE booking_id=?",Long.class,paid.bookingId())).isEqualTo(1L);
+    }
+
+    private UUID incidentStationId() {
+        return jdbc.queryForObject("SELECT cp.station_id FROM charge_points cp JOIN connectors c ON c.charge_point_id=cp.id WHERE c.id=?",UUID.class,connectorId);
+    }
+
+    @Test void incidentUnpaidOwnerCancellationAndRecoveryNeverResurrectBooking() throws Exception {
+        PendingBooking pending = createPendingBookingWithCheckout(START_AT);
+        currentActorId.set(ownerId);
+        UUID incidentId = UUID.fromString(incidentReport(UUID.randomUUID(),0,"owner",200).at("/data/incidentId").asText());
+        ownerCancel(pending.bookingId(),0,UUID.randomUUID(),REASON,200);
+        incidentRecover(incidentId,0,UUID.randomUUID(),200);
+        assertThat(jdbc.queryForObject("SELECT status FROM bookings WHERE id=?",String.class,pending.bookingId())).isEqualTo("CANCELLED");
+        assertCount("refunds",pending.bookingId(),0);
+    }
+
+    @Test void incidentSnapshotIncludesMultipleBookingsAndCannotBeRewritten() throws Exception {
+        PaidBooking first = createAndPayBooking(START_AT);
+        PaidBooking second = createAndPayBooking(START_AT.plusSeconds(7200));
+        currentActorId.set(ownerId);
+        JsonNode response = incidentReport(UUID.randomUUID(),0,"owner",200);
+        assertThat(response.at("/data/affectedBookingIds").size()).isEqualTo(2);
+        UUID incidentId = UUID.fromString(response.at("/data/incidentId").asText());
+        ownerCancel(first.bookingId(),1,UUID.randomUUID(),REASON,200);
+        incidentRecover(incidentId,0,UUID.randomUUID(),200);
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM incident_bookings WHERE incident_id=?",Long.class,incidentId)).isEqualTo(2L);
+        assertThat(jdbc.queryForObject("SELECT status FROM bookings WHERE id=?",String.class,second.bookingId())).isEqualTo("CONFIRMED");
+        assertThatThrownBy(() -> jdbc.update("UPDATE incident_bookings SET snapshot_version=99 WHERE incident_id=?",incidentId))
+                .hasMessageContaining("immutable");
+    }
+
+    @Test void incidentAdminOperationalAuthorityDoesNotCreateFinancialDecision() throws Exception {
+        PaidBooking paid = createAndPayBooking(START_AT);
+        UUID adminId = UUID.randomUUID();
+        insertUser(adminId,"incident-admin-" + adminId,"Incident Admin");
+        currentActorId.set(adminId);
+        JsonNode reported = body(mockMvc.perform(post("/api/v1/stations/{s}/connectors/{c}/incidents",incidentStationId(),connectorId)
+                .with(user("admin").roles("ADMIN")).header("Idempotency-Key",UUID.randomUUID()).contentType("application/json")
+                .content(json(Map.of("expectedConnectorVersion",0,"reason",REASON,"occurredAt",NOW))))
+                .andExpect(status().isOk()).andReturn());
+        UUID incidentId = UUID.fromString(reported.at("/data/incidentId").asText());
+        assertThat(jdbc.queryForObject("SELECT actor_type FROM connector_incidents WHERE id=?",String.class,incidentId)).isEqualTo("ADMIN");
+        assertCount("refunds",paid.bookingId(),0);
+        assertCount("booking_service_failure_decisions",paid.bookingId(),0);
+        jdbc.update("UPDATE user_profile SET status='SUSPENDED' WHERE id=?",adminId);
+        mockMvc.perform(get("/api/v1/stations/{s}/incidents/{i}",incidentStationId(),incidentId).with(user("admin").roles("ADMIN")))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test void incidentConcurrentReportSameKeyCreatesOneSnapshotAndOneCommand() throws Exception {
+        PaidBooking paid = createAndPayBooking(START_AT);
+        currentActorId.set(ownerId);
+        UUID key = UUID.randomUUID();
+        CountDownLatch ready = new CountDownLatch(2), start = new CountDownLatch(1);
+        try (ExecutorService pool = Executors.newFixedThreadPool(2)) {
+            Callable<JsonNode> call = () -> { ready.countDown(); start.await(10,TimeUnit.SECONDS); return incidentReport(key,0,"owner",200); };
+            Future<JsonNode> a = pool.submit(call), b = pool.submit(call);
+            assertThat(ready.await(10,TimeUnit.SECONDS)).isTrue(); start.countDown();
+            assertThat(a.get(30,TimeUnit.SECONDS).at("/data/incidentId")).isEqualTo(b.get(30,TimeUnit.SECONDS).at("/data/incidentId"));
+        }
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM connector_incidents WHERE connector_id=?",Long.class,connectorId)).isEqualTo(1L);
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM incident_bookings WHERE booking_id=?",Long.class,paid.bookingId())).isEqualTo(1L);
+    }
+
+    @Test void incidentRecoveryWaitingOnConnectorSeesNewIncidentAndKeepsOffline() throws Exception {
+        currentActorId.set(ownerId);
+        UUID first = UUID.fromString(incidentReport(UUID.randomUUID(),0,"owner",200).at("/data/incidentId").asText());
+        UUID otherOwner = UUID.randomUUID();
+        insertUser(otherOwner,"incident-race-" + otherOwner,"Incident race admin");
+        AtomicReference<Future<Integer>> response = new AtomicReference<>();
+        try (ExecutorService executor = Executors.newSingleThreadExecutor()) {
+            new org.springframework.transaction.support.TransactionTemplate(transactionManager).executeWithoutResult(tx -> {
+                jdbc.queryForObject("SELECT version FROM connectors WHERE id=? FOR UPDATE",Long.class,connectorId);
+                response.set(executor.submit(() -> mockMvc.perform(post("/api/v1/stations/{s}/incidents/{i}/recover",incidentStationId(),first)
+                        .with(user("owner").roles("OWNER")).header("Idempotency-Key",UUID.randomUUID()).contentType("application/json")
+                        .content(json(Map.of("expectedVersion",0,"reason",REASON)))).andReturn().getResponse().getStatus()));
+                org.awaitility.Awaitility.await().atMost(Duration.ofSeconds(10)).until(() ->
+                        jdbc.queryForObject("SELECT count(*) FROM pg_stat_activity WHERE wait_event_type='Lock' AND query LIKE '%connectors%'",Long.class) > 0);
+                jdbc.update("INSERT INTO connector_incidents(id,connector_id,status,reason,occurred_at,reported_at,reported_by,actor_type,previous_runtime_status) VALUES (?,?,'OPEN',?,?,?,?,'ADMIN','OFFLINE')",
+                        UUID.randomUUID(),connectorId,REASON,Timestamp.from(NOW),Timestamp.from(NOW),otherOwner);
+            });
+            assertThat(response.get().get(30,TimeUnit.SECONDS)).isEqualTo(200);
+        }
+        assertThat(jdbc.queryForObject("SELECT runtime_status FROM connectors WHERE id=?",String.class,connectorId)).isEqualTo("OFFLINE");
+    }
+    private JsonNode incidentReport(UUID key,long version,String role,int expectedStatus) throws Exception {
+        return body(mockMvc.perform(post("/api/v1/stations/{s}/connectors/{c}/incidents",incidentStationId(),connectorId)
+                .with(user(role).roles(role.equals("owner") ? "OWNER" : "DRIVER"))
+                .header("Idempotency-Key",key).contentType("application/json")
+                .content(json(Map.of("expectedConnectorVersion",version,"reason",REASON,"occurredAt",NOW))))
+                .andExpect(status().is(expectedStatus)).andReturn());
+    }
+    private JsonNode incidentRecover(UUID incidentId,long version,UUID key,int expectedStatus) throws Exception {
+        return body(mockMvc.perform(post("/api/v1/stations/{s}/incidents/{i}/recover",incidentStationId(),incidentId)
+                .with(user("owner").roles("OWNER")).header("Idempotency-Key",key).contentType("application/json")
+                .content(json(Map.of("expectedVersion",version,"reason",REASON))))
+                .andExpect(status().is(expectedStatus)).andReturn());
+    }
+    private JsonNode incidentResolve(UUID incidentId,UUID bookingId,long version,UUID key,boolean confirmed,int expectedStatus) throws Exception {
+        return body(mockMvc.perform(post("/api/v1/stations/{s}/incidents/{i}/bookings/{b}/resolve-session",incidentStationId(),incidentId,bookingId)
+                .with(user("owner").roles("OWNER")).header("Idempotency-Key",key).contentType("application/json")
+                .content(json(Map.of("expectedBookingVersion",version,"reason",REASON,"safetyConfirmed",confirmed))))
+                .andExpect(status().is(expectedStatus)).andReturn());
+    }
+    private void activateIncidentSession(UUID bookingId,String status) {
+        jdbc.update("UPDATE bookings SET status=?,checked_in_at=?,charging_started_at=? WHERE id=?",status,Timestamp.from(START_AT),
+                status.equals("CHARGING") ? Timestamp.from(START_AT.plusSeconds(30)) : null,bookingId);
+        jdbc.update("UPDATE connectors SET runtime_status='IN_USE' WHERE id=?",connectorId);
+        when(applicationClock.instant()).thenReturn(START_AT.plusSeconds(60));
+    }
+
     @Test void adminInsufficientDoesNotPreventOwnerAdmissionAndReplayShowsCurrentRefund() throws Exception {
         PaidBooking paid = createAndPayBooking(START_AT);
         jdbc.update("UPDATE bookings SET status='COMPLETED' WHERE id=?", paid.bookingId());

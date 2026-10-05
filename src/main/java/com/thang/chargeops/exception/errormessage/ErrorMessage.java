@@ -71,6 +71,7 @@ public final class ErrorMessage {
                         ValidationErrorMessage.templates(),
                         ProfileErrorMessage.templates(),
                         StationErrorMessage.templates(),
+                        IncidentErrorMessage.templates(),
                         LicenseErrorMessage.templates(),
                         ApprovalErrorMessage.templates(),
                         BookingErrorMessage.templates(),

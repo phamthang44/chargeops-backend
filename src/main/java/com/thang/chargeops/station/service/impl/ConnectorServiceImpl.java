@@ -213,7 +213,10 @@ public class ConnectorServiceImpl implements ConnectorService {
                 "stationId=" + stationId + ", chargePointId=" + chargePointId
                         + ", connectorId=" + connectorId + ", requestedStatus=" + request.runtimeStatus());
         requireOwnedStation(stationId);
-        Connector connector = requireConnector(stationId, chargePointId, connectorId);
+        requireChargePoint(stationId, chargePointId);
+        Connector connector = connectorRepository.findByIdWithLock(connectorId)
+                .filter(current -> current.getChargePoint().getId().equals(chargePointId))
+                .orElseThrow(() -> new AppException(StationErrorCode.CONNECTOR_NOT_FOUND, connectorId));
         operationPolicy.requireCanChangeRuntimeStatus(
                 connector,
                 request.runtimeStatus(),

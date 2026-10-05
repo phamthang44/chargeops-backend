@@ -1,6 +1,7 @@
 package com.thang.chargeops.booking.service;
 
 import com.thang.chargeops.booking.command.BookingCommand;
+import com.thang.chargeops.incident.IncidentFinancialEvidenceReader;
 import com.thang.chargeops.booking.command.BookingCommandOperation;
 import com.thang.chargeops.booking.command.BookingCommandPayloadHasher;
 import com.thang.chargeops.booking.command.BookingCommandRegistry;
@@ -82,6 +83,7 @@ public class BookingServiceFailureService {
     private final ServiceFailureEligibilityPolicy eligibility;
     private final BookingEffectiveStatePolicy effectiveState;
     private final Clock applicationClock;
+    private final IncidentFinancialEvidenceReader incidentEvidence;
 
     // =========================================================================
     // Public Command API
@@ -578,6 +580,7 @@ public class BookingServiceFailureService {
 
     private Map<String, Object> evidence(Booking booking, Payment payment, FinancialFacts facts, Instant now) {
         Map<String, Object> data = new LinkedHashMap<>();
+        data.put("incidents", incidentEvidence.forBooking(booking.getId()));
         data.put("persistedStatus", booking.getStatus().name());
         data.put("bookingVersion", booking.getVersion());
         data.put("effectiveStatus", effectiveState.evaluate(booking, now).effectiveStatus().name());

@@ -1,6 +1,9 @@
 package com.thang.chargeops.station.policy.impl;
 
 import com.thang.chargeops.booking.repository.BookingRepository;
+import com.thang.chargeops.incident.ConnectorIncident;
+import com.thang.chargeops.incident.ConnectorIncidentRepository;
+import com.thang.chargeops.exception.errorcode.IncidentErrorCode;
 import com.thang.chargeops.common.enums.BookingStatus;
 import com.thang.chargeops.common.enums.ProvisioningStatus;
 import com.thang.chargeops.common.enums.RuntimeStatus;
@@ -23,6 +26,7 @@ public class ConnectorOperationPolicyImpl implements ConnectorOperationPolicy {
             EnumSet.of(BookingStatus.CONFIRMED, BookingStatus.CHECKED_IN);
 
     private final BookingRepository bookingRepository;
+    private final ConnectorIncidentRepository incidentRepository;
 
     @Override
     public void requireCanChangeRuntimeStatus(
@@ -32,6 +36,11 @@ public class ConnectorOperationPolicyImpl implements ConnectorOperationPolicy {
     ) {
         if (targetStatus == null) {
             throw new AppException(StationErrorCode.CONNECTOR_RUNTIME_STATUS_REQUIRED);
+        }
+
+        if (targetStatus == RuntimeStatus.AVAILABLE
+                && incidentRepository.existsByConnectorIdAndStatus(connector.getId(), ConnectorIncident.Status.OPEN)) {
+            throw new AppException(IncidentErrorCode.OPEN_INCIDENT);
         }
 
         ChargePoint chargePoint = connector.getChargePoint();

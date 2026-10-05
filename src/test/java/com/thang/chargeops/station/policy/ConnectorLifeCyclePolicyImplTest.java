@@ -35,6 +35,9 @@ class ConnectorLifeCyclePolicyImplTest {
     @Mock
     private BookingRepository bookingRepository;
 
+    @Mock
+    private com.thang.chargeops.incident.ConnectorIncidentRepository incidentRepository;
+
 
     private ConnectorProvisioningPolicyImpl provisioningPolicy;
     private ConnectorOperationPolicyImpl operationPolicy;
@@ -43,7 +46,7 @@ class ConnectorLifeCyclePolicyImplTest {
     @BeforeEach
     void setUp() {
         provisioningPolicy = new ConnectorProvisioningPolicyImpl();
-        operationPolicy = new ConnectorOperationPolicyImpl(bookingRepository);
+        operationPolicy = new ConnectorOperationPolicyImpl(bookingRepository, incidentRepository);
         challengePolicy = new CheckInChallengePolicyImpl();
     }
 
@@ -56,6 +59,18 @@ class ConnectorLifeCyclePolicyImplTest {
                 () -> provisioningPolicy.requireCanProvision(chargePoint),
                 StationErrorCode.CONNECTOR_HARDWARE_LOCKED
         );
+    }
+
+    @Test
+    void openIncidentPreventsOrdinaryAvailableTransition() {
+        Connector connector = mock(Connector.class);
+        UUID connectorId = UUID.randomUUID();
+        when(connector.getId()).thenReturn(connectorId);
+        when(incidentRepository.existsByConnectorIdAndStatus(connectorId,
+                com.thang.chargeops.incident.ConnectorIncident.Status.OPEN)).thenReturn(true);
+        assertThatThrownBy(() -> operationPolicy.requireCanChangeRuntimeStatus(connector, RuntimeStatus.AVAILABLE, "Repaired"))
+                .isInstanceOfSatisfying(AppException.class, exception -> assertThat(exception.getErrorCode())
+                        .isEqualTo(com.thang.chargeops.exception.errorcode.IncidentErrorCode.OPEN_INCIDENT));
     }
 
     @Test
