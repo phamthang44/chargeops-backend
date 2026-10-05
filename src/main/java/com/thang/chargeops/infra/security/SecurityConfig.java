@@ -60,6 +60,9 @@ public class SecurityConfig {
                 .csrf(AbstractHttpConfigurer::disable)
                 .cors(Customizer.withDefaults())
                 .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                .headers(headers -> headers
+                        .contentSecurityPolicy(csp -> csp.policyDirectives("default-src 'self'; frame-ancestors 'none'; form-action 'self'"))
+                        .frameOptions(frame -> frame.deny()))
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(SecurityConstants.publicEndpoints()).permitAll()
                         .requestMatchers(
