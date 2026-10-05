@@ -75,6 +75,12 @@ class BookingControllerSecurityTest {
             throws Exception {
         UUID bookingId = UUID.randomUUID();
 
+        mockMvc.perform(post("/api/v1/bookings/price-preview")
+                        .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+                        .content("{\"connectorId\":\"" + UUID.randomUUID()
+                                + "\",\"startAt\":\"2026-10-06T10:00:00Z\",\"durationMin\":30}"))
+                .andExpect(status().isForbidden());
+
         mockMvc.perform(get("/api/v1/bookings/active"))
                 .andExpect(status().isForbidden());
         mockMvc.perform(get("/api/v1/bookings/history"))
@@ -130,7 +136,8 @@ class BookingControllerSecurityTest {
         verifyNoInteractions(
                 bookingService,
                 bookingSessionService,
-                bookingCancellationService
+                bookingCancellationService,
+                bookingPricingService
         );
     }
 
@@ -151,5 +158,16 @@ class BookingControllerSecurityTest {
                                 }
                                 """))
                 .andExpect(status().isOk());
+    }
+
+    @Test
+    @WithMockUser(roles = "STAFF")
+    void staffCannotPreviewDriverBookingPrice() throws Exception {
+        mockMvc.perform(post("/api/v1/bookings/price-preview")
+                        .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+                        .content("{\"connectorId\":\"" + UUID.randomUUID()
+                                + "\",\"startAt\":\"2026-10-06T10:00:00Z\",\"durationMin\":30}"))
+                .andExpect(status().isForbidden());
+        verifyNoInteractions(bookingPricingService);
     }
 }

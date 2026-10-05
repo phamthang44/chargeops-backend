@@ -92,8 +92,12 @@ public class TicketResponseService {
                         Collectors.mapping(this::toFindingResponse, Collectors.toList())
                 ));
 
+        // Staff-only console records operational facts; financial identifiers belong to
+        // Owner/Admin or to a Driver viewing their own case through the existing flow.
+        boolean staffOnly = access.hasRole("STAFF")
+                && !access.hasRole("OWNER") && !access.hasRole("ADMIN");
         Map<UUID, List<UUID>> refundIdsByBooking;
-        if (bookingIds.isEmpty()) {
+        if (bookingIds.isEmpty() || staffOnly) {
             refundIdsByBooking = Collections.emptyMap();
         } else {
             refundIdsByBooking = refundRepository

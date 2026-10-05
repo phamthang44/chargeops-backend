@@ -3,7 +3,6 @@ package com.thang.chargeops.support.controller;
 import com.thang.chargeops.common.constant.SystemConstant;
 import com.thang.chargeops.common.response.ApiResult;
 import com.thang.chargeops.support.dto.response.AdminOperationsSummaryResponse;
-import com.thang.chargeops.support.dto.response.AdminTicketSummaryResponse;
 import com.thang.chargeops.support.service.AdminOperationsSummaryService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.CacheControl;
@@ -26,15 +25,4 @@ public class AdminOperationsSummaryController {
                 .body(ApiResult.success(service.dashboard()));
     }
 
-    @GetMapping("/tickets/summary")
-    public ResponseEntity<ApiResult<AdminTicketSummaryResponse>> platformTickets() {
-        return ResponseEntity.ok().cacheControl(CacheControl.noStore())
-                .body(ApiResult.success(service.tickets(false)));
-    }
-
-    @GetMapping("/tickets/escalated/summary")
-    public ResponseEntity<ApiResult<AdminTicketSummaryResponse>> escalatedTickets() {
-        return ResponseEntity.ok().cacheControl(CacheControl.noStore())
-                .body(ApiResult.success(service.tickets(true)));
-    }
 }

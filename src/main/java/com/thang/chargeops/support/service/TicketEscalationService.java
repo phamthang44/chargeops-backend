@@ -1,5 +1,6 @@
 package com.thang.chargeops.support.service;
 
+import com.thang.chargeops.common.enums.Role;
 import com.thang.chargeops.exception.AppException;
 import com.thang.chargeops.common.enums.UserStatus;
 import com.thang.chargeops.exception.errorcode.TicketErrorCode;
@@ -54,7 +55,7 @@ public class TicketEscalationService {
     @Transactional(readOnly = true)
     public TicketEscalationsSummaryResponse adminSummary() {
         currentProfile.requireProfile();
-        if (!access.hasRole("ADMIN")) throw new AppException(TicketErrorCode.ACCESS_DENIED);
+        if (!access.hasRole(Role.ADMIN.toString())) throw new AppException(TicketErrorCode.ACCESS_DENIED);
         return new TicketEscalationsSummaryResponse(escalations.count(),
                 escalations.countPendingArbiter(), escalations.countUnresponsiveAtRequest(),
                 escalations.countDisputedFindingsAtRequest());
@@ -111,19 +112,16 @@ public class TicketEscalationService {
         var actor = currentProfile.requireProfile();
         if (!access.canRead(ticket, actor)) throw new AppException(TicketErrorCode.ACCESS_DENIED);
         var existing = escalations.findByTicket_IdAndResolvedAtIsNull(ticket.getId());
-        if (existing.isPresent()) {
-            return new State(response(existing.get()),
-                    new TicketEscalationAvailabilityResponse(false, null,
-                            TicketEscalationAvailabilityResponse.Reason.ALREADY_ESCALATED));
-        }
-        return new State(escalations.findFirstByTicket_IdOrderByRequestedAtDescIdDesc(ticket.getId())
-                .map(this::response).orElse(null), availability(ticket, actor));
+        return existing.map(ticketEscalation -> new State(response(ticketEscalation),
+                new TicketEscalationAvailabilityResponse(false, null,
+                        TicketEscalationAvailabilityResponse.Reason.ALREADY_ESCALATED))).orElseGet(() -> new State(escalations.findFirstByTicket_IdOrderByRequestedAtDescIdDesc(ticket.getId())
+                .map(this::response).orElse(null), availability(ticket, actor)));
     }
 
     @Transactional(readOnly = true)
     public Page<TicketEscalationResponse> adminQueue(int page, int size) {
         currentProfile.requireProfile();
-        if (!access.hasRole("ADMIN")) throw new AppException(TicketErrorCode.ACCESS_DENIED);
+        if (!access.hasRole(Role.ADMIN.toString())) throw new AppException(TicketErrorCode.ACCESS_DENIED);
         return escalations.findByResolvedAtIsNull(PageRequest.of(page - 1, size,
                 Sort.by(Sort.Order.desc("requestedAt"), Sort.Order.desc("id")))).map(this::response);
     }
@@ -131,32 +129,45 @@ public class TicketEscalationService {
     @Transactional
     public TicketEscalationResponse review(UUID ticketId, ReviewTicketEscalationRequest request) {
         var admin = currentProfile.requireProfile();
-        if (!access.hasRole("ADMIN") || admin.getStatus() != UserStatus.ACTIVE)
+        if (!access.hasRole(Role.ADMIN.toString()) || admin.getStatus() != UserStatus.ACTIVE)
             throw new AppException(TicketErrorCode.ACCESS_DENIED);
         SupportTicket ticket = tickets.findByIdForUpdate(ticketId)
                 .orElseThrow(() -> new AppException(TicketErrorCode.NOT_FOUND));
         if (ticket.getStation() == null) throw new AppException(TicketErrorCode.INVALID_SCOPE);
         if (!request.expectedVersion().equals(ticket.getVersion())) throw new AppException(TicketErrorCode.VERSION_CONFLICT);
-        if (ticket.getStatus() != TicketStatus.OPEN && ticket.getStatus() != TicketStatus.IN_PROGRESS)
-            throw new AppException(TicketErrorCode.STATE_CONFLICT);
         TicketEscalation escalation = escalations.findByTicket_IdAndResolvedAtIsNull(ticketId)
-                .orElseThrow(() -> new AppException(TicketErrorCode.STATE_CONFLICT));
-        if (request.action() == TicketEscalationResolutionType.RETURN_TO_STATION && request.closureReason() != null
-                || request.action() == TicketEscalationResolutionType.CLOSE_SUPPORT_CASE && request.closureReason() == null)
-            throw new AppException(TicketErrorCode.STATE_CONFLICT);
+                .orElseThrow(() -> new AppException(TicketErrorCode.ESCALATION_NOT_ACTIVE));
+        validateReview(ticket, request);
         TicketStatus before = ticket.getStatus();
         UUID oldHandler = ticket.getAssignedHandler() == null ? null : ticket.getAssignedHandler().getId();
         Instant now = clock.instant();
         escalation.review(admin, now, request.action(), request.closureReason(), request.note());
-        if (request.action() == TicketEscalationResolutionType.RETURN_TO_STATION) ticket.returnFromEscalation();
-        else ticket.closeEscalatedSupportCase();
+        applyReviewAction(ticket, request.action(), before);
         ticket.setUpdatedAt(now);
-        events.saveAndFlush(TicketEvent.create(ticket,
-                new TicketEvent.EventActor(admin.getId(), "ADMIN"), request.action().name(),
-                before, oldHandler, request.note().strip(), now));
+        if (before != TicketStatus.CLOSED) {
+            events.saveAndFlush(TicketEvent.create(ticket,
+                    new TicketEvent.EventActor(admin.getId(), Role.ADMIN.toString()), request.action().name(),
+                    before, oldHandler, request.note().strip(), now));
+        }
         tickets.saveAndFlush(ticket);
         escalations.saveAndFlush(escalation);
         return response(escalation);
+    }
+
+    private void validateReview(SupportTicket ticket, ReviewTicketEscalationRequest request) {
+        if ((request.action() == TicketEscalationResolutionType.RETURN_TO_STATION && request.closureReason() != null)
+                || (request.action() == TicketEscalationResolutionType.CLOSE_SUPPORT_CASE && request.closureReason() == null))
+            throw new AppException(TicketErrorCode.ESCALATION_REVIEW_INVALID);
+        TicketStatus before = ticket.getStatus();
+        if ((before == TicketStatus.RESOLVED || before == TicketStatus.CLOSED)
+                && request.action() != TicketEscalationResolutionType.CLOSE_SUPPORT_CASE)
+            throw new AppException(TicketErrorCode.ESCALATION_RETURN_UNAVAILABLE);
+    }
+
+    private void applyReviewAction(SupportTicket ticket, TicketEscalationResolutionType action, TicketStatus before) {
+        if (action == TicketEscalationResolutionType.RETURN_TO_STATION) ticket.returnFromEscalation();
+        else if (before == TicketStatus.RESOLVED) ticket.close("ADMIN_SUPPORT_CASE_CLOSED");
+        else if (before != TicketStatus.CLOSED) ticket.closeEscalatedSupportCase();
     }
 
     private TicketEscalationAvailabilityResponse availability(SupportTicket ticket,
@@ -168,7 +179,7 @@ public class TicketEscalationService {
         if (access.isOwner(ticket, actor.getId())) {
             return available(TicketEscalationAvailabilityResponse.Reason.OWNER_CAN_REQUEST);
         }
-        if (!ticket.getReporter().getId().equals(actor.getId()) || !access.hasRole("DRIVER")) {
+        if (!ticket.getReporter().getId().equals(actor.getId()) || !access.hasRole(Role.DRIVER.toString())) {
             return unavailable(reason);
         }
         var latestFinding = findings.findFirstByTicket_IdOrderByRecordedAtDescIdDesc(ticket.getId());
@@ -180,6 +191,10 @@ public class TicketEscalationService {
                 ticket.getId(), "REPORTER_CONTINUED").isPresent()) {
             return available(TicketEscalationAvailabilityResponse.Reason.REPORTER_CONTINUED);
         }
+        return messageAvailability(ticket);
+    }
+
+    private TicketEscalationAvailabilityResponse messageAvailability(SupportTicket ticket) {
         var thread = messages.findByTicketIdOrderByCreatedAtAscIdAsc(ticket.getId());
         Instant lastReporter = null;
         Instant lastStation = null;

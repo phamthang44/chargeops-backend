@@ -47,7 +47,7 @@ public class SupportTicketController {
     public ResponseEntity<ApiResult<TicketResponse>> recordFinding(@PathVariable UUID ticketId,
             @Valid @RequestBody FindingRequest request) {
         return ResponseEntity.status(HttpStatus.CREATED)
-                .body(ApiResult.success(findings.record(ticketId, request)));
+                .body(ApiResult.success(findings.recordTicketFinding(ticketId, request)));
     }
 
     @GetMapping("/{ticketId}/events")

@@ -97,7 +97,7 @@ class SupportTicketControllerTest {
     @WithMockUser(roles = "STAFF")
     void findingEndpointDelegatesToFindingServiceWhenValid() throws Exception {
         UUID ticketId = UUID.randomUUID();
-        when(findings.record(eq(ticketId), any())).thenReturn(null);
+        when(findings.recordTicketFinding(eq(ticketId), any())).thenReturn(null);
 
         mockMvc.perform(post("/api/v1/tickets/{ticketId}/findings", ticketId)
                 .contentType(MediaType.APPLICATION_JSON)
@@ -106,7 +106,7 @@ class SupportTicketControllerTest {
                      "affectedAt":"2026-10-02T10:00:00Z","reason":"Hardware failure verified"}
                     """))
             .andExpect(status().isCreated());
-        verify(findings).record(eq(ticketId), any());
+        verify(findings).recordTicketFinding(eq(ticketId), any());
     }
 
     @Test

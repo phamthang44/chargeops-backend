@@ -170,8 +170,49 @@ class TicketEscalationServiceTest {
         assertThatThrownBy(() -> service.review(ticketId,
                 new com.thang.chargeops.support.dto.request.ReviewTicketEscalationRequest(1L,
                         com.thang.chargeops.support.model.TicketEscalationResolutionType.CLOSE_SUPPORT_CASE,
-                        null, "No further action"))).isInstanceOf(AppException.class);
+                        null, "No further action")))
+                .isInstanceOfSatisfying(AppException.class, error -> assertThat(error.getErrorCode())
+                        .isEqualTo(com.thang.chargeops.exception.errorcode.TicketErrorCode.ESCALATION_REVIEW_INVALID));
         verify(ticket, never()).closeEscalatedSupportCase();
+    }
+
+    @Test
+    void adminGetsSpecificErrorWhenEscalationIsAlreadyCompleted() {
+        var admin = UserProfile.builder().email("admin@example.test")
+                .status(com.thang.chargeops.common.enums.UserStatus.ACTIVE).build();
+        admin.setId(UUID.randomUUID());
+        when(currentProfile.requireProfile()).thenReturn(admin);
+        when(access.hasRole("ADMIN")).thenReturn(true);
+        when(ticket.getVersion()).thenReturn(1L);
+
+        assertThatThrownBy(() -> service.review(ticketId,
+                new com.thang.chargeops.support.dto.request.ReviewTicketEscalationRequest(1L,
+                        com.thang.chargeops.support.model.TicketEscalationResolutionType.CLOSE_SUPPORT_CASE,
+                        com.thang.chargeops.support.model.TicketEscalationClosureReason.RESOLVED_EXTERNALLY,
+                        "Already handled")))
+                .isInstanceOfSatisfying(AppException.class, error -> assertThat(error.getErrorCode())
+                        .isEqualTo(com.thang.chargeops.exception.errorcode.TicketErrorCode.ESCALATION_NOT_ACTIVE));
+    }
+
+    @Test
+    void adminCannotReturnClosedTicketToStation() {
+        var admin = UserProfile.builder().email("admin@example.test")
+                .status(com.thang.chargeops.common.enums.UserStatus.ACTIVE).build();
+        admin.setId(UUID.randomUUID());
+        when(currentProfile.requireProfile()).thenReturn(admin);
+        when(access.hasRole("ADMIN")).thenReturn(true);
+        when(ticket.getVersion()).thenReturn(1L);
+        when(ticket.getStatus()).thenReturn(TicketStatus.CLOSED);
+        when(escalations.findByTicket_IdAndResolvedAtIsNull(ticketId)).thenReturn(Optional.of(
+                TicketEscalation.request(ticket, driver, now.minusSeconds(60), "Need review")));
+
+        assertThatThrownBy(() -> service.review(ticketId,
+                new com.thang.chargeops.support.dto.request.ReviewTicketEscalationRequest(1L,
+                        com.thang.chargeops.support.model.TicketEscalationResolutionType.RETURN_TO_STATION,
+                        null, "Try station again")))
+                .isInstanceOfSatisfying(AppException.class, error -> assertThat(error.getErrorCode())
+                        .isEqualTo(com.thang.chargeops.exception.errorcode.TicketErrorCode.ESCALATION_RETURN_UNAVAILABLE));
+        verify(escalations, never()).saveAndFlush(any());
     }
 
     @Test
@@ -196,6 +237,31 @@ class TicketEscalationServiceTest {
         assertThat(result.resolutionNote()).isEqualTo("No platform operation remains");
         verify(ticket).closeEscalatedSupportCase();
         verify(events).saveAndFlush(any());
+    }
+
+    @Test
+    void adminCompletesEscalationLeftActiveOnAlreadyClosedTicket() {
+        var admin = UserProfile.builder().email("admin@example.test")
+                .status(com.thang.chargeops.common.enums.UserStatus.ACTIVE).build();
+        admin.setId(UUID.randomUUID());
+        when(currentProfile.requireProfile()).thenReturn(admin);
+        when(access.hasRole("ADMIN")).thenReturn(true);
+        when(ticket.getVersion()).thenReturn(1L);
+        when(ticket.getStatus()).thenReturn(TicketStatus.CLOSED);
+        var escalation = TicketEscalation.request(ticket, driver, now.minusSeconds(60), "Need review");
+        when(escalations.findByTicket_IdAndResolvedAtIsNull(ticketId)).thenReturn(Optional.of(escalation));
+
+        var result = service.review(ticketId,
+                new com.thang.chargeops.support.dto.request.ReviewTicketEscalationRequest(1L,
+                        com.thang.chargeops.support.model.TicketEscalationResolutionType.CLOSE_SUPPORT_CASE,
+                        com.thang.chargeops.support.model.TicketEscalationClosureReason.RESOLVED_EXTERNALLY,
+                        "Driver already accepted the station's resolution"));
+
+        assertThat(result.resolvedAt()).isEqualTo(now);
+        verify(ticket, never()).closeEscalatedSupportCase();
+        verify(ticket, never()).close(any());
+        verifyNoInteractions(events);
+        verify(escalations).saveAndFlush(escalation);
     }
 
     @Test

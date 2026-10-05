@@ -21,8 +21,8 @@ public class AdminOperationsSummaryService {
     public AdminOperationsSummaryResponse dashboard() {
         long activeStations = stationCount(StationStatus.ACTIVE);
         long pendingApprovals = stationCount(StationStatus.PENDING_APPROVAL);
-        AdminTicketSummaryResponse platform = tickets(false);
-        AdminTicketSummaryResponse escalated = tickets(true);
+        AdminTicketSummaryResponse platform = ticketCounts(false);
+        AdminTicketSummaryResponse escalated = ticketCounts(true);
         return new AdminOperationsSummaryResponse(activeStations, pendingApprovals,
                 platform.open() + platform.inProgress(),
                 escalated.open() + escalated.inProgress());
@@ -30,11 +30,16 @@ public class AdminOperationsSummaryService {
 
     @Transactional(readOnly = true)
     public AdminTicketSummaryResponse tickets(boolean escalated) {
-        String scope = escalated
-                ? "t.station IS NOT NULL AND EXISTS (SELECT e.id FROM TicketEscalation e WHERE e.ticket = t)"
-                : "t.station IS NULL";
-        var rows = entityManager.createQuery("SELECT t.status, COUNT(t) FROM SupportTicket t WHERE "
-                        + scope + " GROUP BY t.status", Object[].class).getResultList();
+        return ticketCounts(escalated);
+    }
+
+    private AdminTicketSummaryResponse ticketCounts(boolean escalated) {
+        var rows = escalated
+                ? entityManager.createQuery("SELECT t.status, COUNT(t) FROM SupportTicket t WHERE t.station IS NOT NULL "
+                        + "AND EXISTS (SELECT e.id FROM TicketEscalation e WHERE e.ticket = t AND e.resolvedAt IS NULL) GROUP BY t.status",
+                        Object[].class).getResultList()
+                : entityManager.createQuery("SELECT t.status, COUNT(t) FROM SupportTicket t WHERE t.station IS NULL GROUP BY t.status",
+                        Object[].class).getResultList();
         Map<String, Long> counts = new LinkedHashMap<>();
         long total = 0;
         for (TicketStatus status : TicketStatus.values()) {

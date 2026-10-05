@@ -10,7 +10,9 @@ import com.thang.chargeops.support.dto.response.TicketEventResponse;
 import com.thang.chargeops.support.dto.response.TicketMessageResponse;
 import com.thang.chargeops.support.dto.response.TicketResponse;
 import com.thang.chargeops.support.dto.response.TicketDetailResponse;
+import com.thang.chargeops.support.dto.response.AdminTicketSummaryResponse;
 import com.thang.chargeops.support.model.TicketStatus;
+import com.thang.chargeops.support.service.AdminOperationsSummaryService;
 import com.thang.chargeops.support.service.AdminTicketService;
 import com.thang.chargeops.support.service.TicketEventQueryService;
 import jakarta.validation.Valid;
@@ -19,6 +21,7 @@ import jakarta.validation.constraints.Min;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.CacheControl;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
@@ -34,6 +37,19 @@ import java.util.UUID;
 public class AdminTicketController {
     private final AdminTicketService service;
     private final TicketEventQueryService events;
+    private final AdminOperationsSummaryService summaries;
+
+    @GetMapping("/summary")
+    public ResponseEntity<ApiResult<AdminTicketSummaryResponse>> platformSummary() {
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore())
+                .body(ApiResult.success(summaries.tickets(false)));
+    }
+
+    @GetMapping("/escalated/summary")
+    public ResponseEntity<ApiResult<AdminTicketSummaryResponse>> escalatedSummary() {
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore())
+                .body(ApiResult.success(summaries.tickets(true)));
+    }
 
     @GetMapping
     public ResponseEntity<ApiResult<List<TicketResponse>>> platformQueue(

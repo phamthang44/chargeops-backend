@@ -5,6 +5,7 @@ import com.thang.chargeops.infra.security.RestAccessDeniedHandler;
 import com.thang.chargeops.infra.security.RestAuthenticationEntryPoint;
 import com.thang.chargeops.support.controller.AdminTicketController;
 import com.thang.chargeops.support.service.AdminTicketService;
+import com.thang.chargeops.support.service.AdminOperationsSummaryService;
 import com.thang.chargeops.support.service.TicketEventQueryService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -38,6 +39,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class AdminTicketControllerTest {
     @Autowired MockMvc mockMvc;
     @MockitoBean AdminTicketService service;
+    @MockitoBean AdminOperationsSummaryService summaries;
     @MockitoBean TicketEventQueryService events;
     @MockitoBean RestAuthenticationEntryPoint authenticationEntryPoint;
     @MockitoBean RestAccessDeniedHandler accessDeniedHandler;

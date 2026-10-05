@@ -247,6 +247,41 @@ class TicketWorkflowServiceTest {
     }
 
     @Test
+    void reporterCannotConfirmWhileStationEscalationIsActive() {
+        SupportTicket stationTicket = SupportTicket.open("TKT-20261001-0014", TicketCategory.CHARGING_ISSUE,
+            TicketPriority.HIGH, reporter, mock(Station.class), null,
+            new SupportTicket.TicketDetails("Station issue", "Escalation awaiting admin"));
+        stationTicket.setId(ticketId);
+        stationTicket.assign(admin);
+        stationTicket.resolve(now);
+        when(currentProfile.requireProfile()).thenReturn(reporter);
+        when(tickets.findByIdForUpdate(ticketId)).thenReturn(Optional.of(stationTicket));
+        when(escalations.existsByTicket_IdAndResolvedAtIsNull(ticketId)).thenReturn(true);
+
+        assertThatThrownBy(() -> workflow.changeStatus(ticketId,
+            new TicketStatusRequest(0L, TicketStatus.CLOSED, "Accepted")))
+            .isInstanceOf(AppException.class);
+        assertThat(stationTicket.getStatus()).isEqualTo(TicketStatus.RESOLVED);
+        verifyNoInteractions(events);
+    }
+
+    @Test
+    void autoCloseSkipsStationTicketWithActiveEscalation() {
+        SupportTicket stationTicket = SupportTicket.open("TKT-20261001-0015", TicketCategory.CHARGING_ISSUE,
+            TicketPriority.HIGH, reporter, mock(Station.class), null,
+            new SupportTicket.TicketDetails("Station issue", "Escalation awaiting admin"));
+        stationTicket.setId(ticketId);
+        stationTicket.assign(admin);
+        stationTicket.resolve(now);
+        when(tickets.findByIdForUpdate(ticketId)).thenReturn(Optional.of(stationTicket));
+        when(escalations.existsByTicket_IdAndResolvedAtIsNull(ticketId)).thenReturn(true);
+
+        assertThat(workflow.autoClose(ticketId, stationTicket.getAutoCloseAt())).isFalse();
+        assertThat(stationTicket.getStatus()).isEqualTo(TicketStatus.RESOLVED);
+        verifyNoInteractions(events);
+    }
+
+    @Test
     void ownerRoutesOpenStationTicketToActiveStationStaffWithoutClaiming() {
         UUID stationId = UUID.randomUUID();
         UserProfile owner = UserProfile.builder().status(UserStatus.ACTIVE).build();

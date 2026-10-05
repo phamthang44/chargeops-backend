@@ -54,6 +54,10 @@ import java.util.UUID;
 @RequiredArgsConstructor
 @Slf4j
 public class AdminRefundServiceImpl implements AdminRefundService {
+    private static final String REFUND_ID_LABEL = "refundId=";
+    private static final String REQUEST_KEY_LABEL = ", requestKey=";
+    private static final String EXECUTE_ACTION = "execute";
+    private static final String BOOKING_FIELD = "booking";
     private final CurrentProfileProvider currentProfileProvider;
     private final UserProfileRepository userProfileRepository;
     private final ConnectorRepository connectorRepository;
@@ -118,16 +122,16 @@ public class AdminRefundServiceImpl implements AdminRefundService {
         Objects.requireNonNull(requestKey, "requestKey must not be null");
         Objects.requireNonNull(request, "request must not be null");
         UUID actorId = currentProfileProvider.requireProfileId();
-        log.info(LogConstant.SERVICE_LOG_FORMAT, LogConstant.ACTION_START, "execute", actorId,
-                "refundId=" + refundId + ", requestKey=" + requestKey
+        log.info(LogConstant.SERVICE_LOG_FORMAT, LogConstant.ACTION_START, EXECUTE_ACTION, actorId,
+                REFUND_ID_LABEL + refundId + REQUEST_KEY_LABEL + requestKey
                         + ", executionMode=" + request.executionMode()
                         + ", expectedVersion=" + request.expectedVersion());
 
         String payloadHash = RefundExecutionPayloadHasher.sha256(refundId, request);
         Optional<RefundAttempt> fastReplay = refundAttemptRepository.findByRefundIdAndRequestKey(refundId, requestKey);
         if (fastReplay.isPresent()) {
-            log.info(LogConstant.SERVICE_LOG_FORMAT, LogConstant.ACTION_SUCCESS, "execute", actorId,
-                    "refundId=" + refundId + ", requestKey=" + requestKey + ", replay=true, phase=fast");
+            log.info(LogConstant.SERVICE_LOG_FORMAT, LogConstant.ACTION_SUCCESS, EXECUTE_ACTION, actorId,
+                    REFUND_ID_LABEL + refundId + REQUEST_KEY_LABEL + requestKey + ", replay=true, phase=fast");
             return replay(fastReplay.get(), payloadHash);
         }
 
@@ -138,8 +142,8 @@ public class AdminRefundServiceImpl implements AdminRefundService {
 
         Optional<RefundAttempt> lockedReplay = refundAttemptRepository.findByRefundIdAndRequestKey(refundId, requestKey);
         if (lockedReplay.isPresent()) {
-            log.info(LogConstant.SERVICE_LOG_FORMAT, LogConstant.ACTION_SUCCESS, "execute", lockedActor.getId(),
-                    "refundId=" + refundId + ", requestKey=" + requestKey
+            log.info(LogConstant.SERVICE_LOG_FORMAT, LogConstant.ACTION_SUCCESS, EXECUTE_ACTION, lockedActor.getId(),
+                    REFUND_ID_LABEL + refundId + REQUEST_KEY_LABEL + requestKey
                             + ", replay=true, phase=actor_locked");
             return replay(lockedReplay.get(), payloadHash);
         }
@@ -149,7 +153,7 @@ public class AdminRefundServiceImpl implements AdminRefundService {
 
         connectorRepository.findByIdWithLock(route.getConnectorId())
                 .orElseThrow(() -> new AppException(CommonErrorCode.RESOURCE_NOT_FOUND));
-        Booking booking = bookingRepository.findByIdWithLock(route.getBookingId())
+        bookingRepository.findByIdWithLock(route.getBookingId())
                 .orElseThrow(() -> new AppException(CommonErrorCode.RESOURCE_NOT_FOUND));
         Payment payment = paymentRepository.findByIdWithLock(route.getPaymentId())
                 .orElseThrow(() -> new AppException(CommonErrorCode.RESOURCE_NOT_FOUND));
@@ -160,8 +164,8 @@ public class AdminRefundServiceImpl implements AdminRefundService {
 
         Optional<RefundAttempt> refundLockedReplay = refundAttemptRepository.findByRefundIdAndRequestKey(refundId, requestKey);
         if (refundLockedReplay.isPresent()) {
-            log.info(LogConstant.SERVICE_LOG_FORMAT, LogConstant.ACTION_SUCCESS, "execute", lockedActor.getId(),
-                    "refundId=" + refundId + ", requestKey=" + requestKey
+            log.info(LogConstant.SERVICE_LOG_FORMAT, LogConstant.ACTION_SUCCESS, EXECUTE_ACTION, lockedActor.getId(),
+                    REFUND_ID_LABEL + refundId + REQUEST_KEY_LABEL + requestKey
                             + ", replay=true, phase=refund_locked");
             return replay(refundLockedReplay.get(), payloadHash);
         }
@@ -188,8 +192,8 @@ public class AdminRefundServiceImpl implements AdminRefundService {
 
         resultHandler.apply(refund, payment, attempt, result, executionAt);
 
-        log.info(LogConstant.SERVICE_LOG_FORMAT, LogConstant.ACTION_SUCCESS, "execute", lockedActor.getId(),
-                "refundId=" + refundId + ", attemptId=" + attempt.getId()
+        log.info(LogConstant.SERVICE_LOG_FORMAT, LogConstant.ACTION_SUCCESS, EXECUTE_ACTION, lockedActor.getId(),
+                REFUND_ID_LABEL + refundId + ", attemptId=" + attempt.getId()
                         + ", executionMode=" + request.executionMode() + ", outcome=" + result.outcome()
                         + ", refundStatus=" + refund.getStatus()
                         + ", adminActionRequired=" + refund.isRequiresAdminAction());
@@ -222,15 +226,15 @@ public class AdminRefundServiceImpl implements AdminRefundService {
             UUID id = UUID.fromString(search);
             return (root, query, cb) -> cb.or(
                     cb.equal(root.get("id"), id),
-                    cb.equal(root.get("booking").get("id"), id),
-                    cb.equal(root.get("booking").get("driver").get("id"), id)
+                    cb.equal(root.get(BOOKING_FIELD).get("id"), id),
+                    cb.equal(root.get(BOOKING_FIELD).get("driver").get("id"), id)
             );
         } catch (IllegalArgumentException ignored) {
             String pattern = "%" + search.toLowerCase() + "%";
             return (root, query, cb) -> cb.or(
-                    cb.like(cb.lower(root.get("booking").get("bookingCode")), pattern),
-                    cb.like(cb.lower(root.get("booking").get("driver").get("displayName")), pattern),
-                    cb.like(cb.lower(root.get("booking").get("stationNameSnapshot")), pattern)
+                    cb.like(cb.lower(root.get(BOOKING_FIELD).get("bookingCode")), pattern),
+                    cb.like(cb.lower(root.get(BOOKING_FIELD).get("driver").get("displayName")), pattern),
+                    cb.like(cb.lower(root.get(BOOKING_FIELD).get("stationNameSnapshot")), pattern)
             );
         }
     }

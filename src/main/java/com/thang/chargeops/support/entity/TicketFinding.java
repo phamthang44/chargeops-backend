@@ -45,7 +45,7 @@ public class TicketFinding extends BaseEntity {
     @JoinColumn(name = "recorded_by", nullable = false, updatable = false)
     private UserProfile recordedBy;
 
-    public static TicketFinding record(
+    public static TicketFinding recordTicketFinding(
             SupportTicket ticket,
             Booking booking,
             TicketFindingConclusion conclusion,

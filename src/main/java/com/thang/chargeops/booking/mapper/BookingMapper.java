@@ -39,14 +39,18 @@ import java.util.Objects;
 @RequiredArgsConstructor
 public class BookingMapper {
 
+    private static final String BOOKING_MUST_BE_NOT_NULL = "booking must not be null";
+    private static final String PAYMENT_MUST_BE_NOT_NULL = "payment must not be null";
+    private static final String SNAPSHOT_MUST_BE_NOT_NULL = "snapshot must not be null";
+
     private final DriverBookingReadPolicy driverReadPolicy;
 
     public CreateBookingResponse toCreateBookingResponse(
             Booking booking,
             Payment payment
     ) {
-        Objects.requireNonNull(booking, "booking must not be null");
-        Objects.requireNonNull(payment, "payment must not be null");
+        Objects.requireNonNull(booking, BOOKING_MUST_BE_NOT_NULL);
+        Objects.requireNonNull(payment, PAYMENT_MUST_BE_NOT_NULL);
 
         return CreateBookingResponse.builder()
                 .bookingId(booking.getId())
@@ -88,8 +92,8 @@ public class BookingMapper {
             Booking booking,
             BookingReadSnapshot snapshot
     ) {
-        Objects.requireNonNull(booking, "booking must not be null");
-        Objects.requireNonNull(snapshot, "snapshot must not be null");
+        Objects.requireNonNull(booking, BOOKING_MUST_BE_NOT_NULL);
+        Objects.requireNonNull(snapshot, SNAPSHOT_MUST_BE_NOT_NULL);
         BookingReadEvaluation evaluation = driverReadPolicy.evaluate(
                 booking,
                 snapshot
@@ -131,9 +135,9 @@ public class BookingMapper {
             Payment payment,
             BookingReadSnapshot snapshot
     ) {
-        Objects.requireNonNull(booking, "booking must not be null");
-        Objects.requireNonNull(payment, "payment must not be null");
-        Objects.requireNonNull(snapshot, "snapshot must not be null");
+        Objects.requireNonNull(booking, BOOKING_MUST_BE_NOT_NULL);
+        Objects.requireNonNull(payment, PAYMENT_MUST_BE_NOT_NULL);
+        Objects.requireNonNull(snapshot, SNAPSHOT_MUST_BE_NOT_NULL);
         BookingReadEvaluation evaluation = driverReadPolicy.evaluate(
                 booking,
                 snapshot

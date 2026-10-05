@@ -16,7 +16,7 @@ public class AppException extends RuntimeException {
     @Serial
     private static final long serialVersionUID = 1L;
     private final BaseErrorCode errorCode;
-    private final Object details;
+    private final transient Object details;
 
     public AppException(BaseErrorCode errorCode, Object... args) {
         super(resolveMessage(errorCode, args));

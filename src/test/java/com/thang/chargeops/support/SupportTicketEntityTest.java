@@ -68,7 +68,7 @@ class SupportTicketEntityTest {
         TicketMessage message = TicketMessage.create(
                 ticket, reporter, TicketActorKind.REPORTER, " Initial report ", affectedAt
         );
-        TicketFinding finding = TicketFinding.record(
+        TicketFinding finding = TicketFinding.recordTicketFinding(
                 ticket,
                 booking,
                 TicketFindingConclusion.STATION_FAILURE,
@@ -114,7 +114,7 @@ class SupportTicketEntityTest {
         assertThatThrownBy(() -> TicketMessage.create(
                 ticket, actor, TicketActorKind.REPORTER, " ", now
         )).isInstanceOf(IllegalArgumentException.class);
-        assertThatThrownBy(() -> TicketFinding.record(
+        assertThatThrownBy(() -> TicketFinding.recordTicketFinding(
                 ticket,
                 booking,
                 TicketFindingConclusion.STATION_FAILURE,

@@ -195,6 +195,8 @@ public class TicketWorkflowService {
 
     private void confirmByReporter(SupportTicket t, UUID actorId, UUID oldHandler, String reason) {
         if (!t.getReporter().getId().equals(actorId)) throw new AppException(TicketErrorCode.ACCESS_DENIED);
+        if (t.getStation() != null && escalations.existsByTicket_IdAndResolvedAtIsNull(t.getId()))
+            throw new AppException(TicketErrorCode.STATE_CONFLICT);
         t.close("REPORTER_CONFIRMED");
         event(t, actorId, REPORTER, "REPORTER_CONFIRMED", TicketStatus.RESOLVED, oldHandler, reason);
     }
@@ -242,6 +244,7 @@ public class TicketWorkflowService {
     public boolean autoClose(UUID id, Instant now) {
         SupportTicket t = locked(id, null);
         if (t.getStatus() != TicketStatus.RESOLVED || t.getAutoCloseAt() == null || t.getAutoCloseAt().isAfter(now)) return false;
+        if (t.getStation() != null && escalations.existsByTicket_IdAndResolvedAtIsNull(t.getId())) return false;
         UUID oldHandler = t.getAssignedHandler() == null ? null : t.getAssignedHandler().getId();
         t.close("AUTO_CLOSED_NO_RESPONSE");
         event(t, null, "SYSTEM", "AUTO_CLOSED_NO_RESPONSE", TicketStatus.RESOLVED, oldHandler, null);

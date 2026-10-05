@@ -26,6 +26,15 @@ public final class TicketErrorMessage {
     public static final ErrorMessage.Template STATE_CONFLICT = template(
             "error.ticket.stateConflict", "The support ticket cannot be changed in its current state"
     );
+    public static final ErrorMessage.Template ESCALATION_NOT_ACTIVE = template(
+            "error.ticket.escalationNotActive", "This ticket has no active escalation to review"
+    );
+    public static final ErrorMessage.Template ESCALATION_RETURN_UNAVAILABLE = template(
+            "error.ticket.escalationReturnUnavailable", "A resolved or closed ticket cannot be returned to station handling; complete the escalation instead"
+    );
+    public static final ErrorMessage.Template ESCALATION_REVIEW_INVALID = template(
+            "error.ticket.escalationReviewInvalid", "Closure reason is required only when closing the escalated support case"
+    );
     public static final ErrorMessage.Template VERSION_CONFLICT = template(
             "error.ticket.versionConflict", "Support ticket data changed; refresh before continuing"
     );
@@ -50,6 +59,9 @@ public final class TicketErrorMessage {
                 NOT_CURRENT_HANDLER,
                 INVALID_SCOPE,
                 STATE_CONFLICT,
+                ESCALATION_NOT_ACTIVE,
+                ESCALATION_RETURN_UNAVAILABLE,
+                ESCALATION_REVIEW_INVALID,
                 VERSION_CONFLICT,
                 CLOSED,
                 ASSIGNMENT_INVALID,

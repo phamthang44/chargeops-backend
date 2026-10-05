@@ -31,6 +31,7 @@ import java.util.Map;
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public class ApiResult<T> {
 
+
     /** The success payload. Null on error responses. */
     private T data;
 
@@ -300,12 +301,12 @@ public class ApiResult<T> {
      * @param message English default message
      * @param traceId correlation id
      */
-    public static ApiResult<?> error(String code, String message, String traceId) {
+    public static ApiResult<Void> error(String code, String message, String traceId) {
         return error(code, null, message, traceId);
     }
 
-    public static ApiResult<?> error(String code, String messageKey, String message, String traceId) {
-        return ApiResult.builder()
+    public static ApiResult<Void> error(String code, String messageKey, String message, String traceId) {
+        return ApiResult.<Void>builder()
                 .error(ErrorDetail.builder()
                         .code(code)
                         .messageKey(messageKey)
@@ -325,12 +326,12 @@ public class ApiResult<T> {
      * @param traceId correlation id
      * @param details structured extras (validation map, params, ...)
      */
-    public static ApiResult<?> error(String code, String message, String traceId, Object details) {
+    public static ApiResult<Void> error(String code, String message, String traceId, Object details) {
         return error(code, null, message, traceId, details);
     }
 
-    public static ApiResult<?> error(String code, String messageKey, String message, String traceId, Object details) {
-        return ApiResult.builder()
+    public static ApiResult<Void> error(String code, String messageKey, String message, String traceId, Object details) {
+        return ApiResult.<Void>builder()
                 .error(ErrorDetail.builder()
                         .code(code)
                         .messageKey(messageKey)
@@ -349,12 +350,12 @@ public class ApiResult<T> {
      * @param errorCode the error code (null → generic UNKNOWN_ERROR)
      * @param args      optional values substituted into the message's {@code {0}, {1}, ...} placeholders
      */
-    public static ApiResult<?> error(BaseErrorCode errorCode, Object... args) {
+    public static ApiResult<Void> error(BaseErrorCode errorCode, Object... args) {
         String message = errorCode != null ? errorCode.format(args) : CommonErrorMessage.UNKNOWN_ERROR.defaultMessage();
         String code = errorCode != null ? errorCode.getCode() : "UNKNOWN_ERROR";
         String messageKey = errorCode != null ? errorCode.getMessageKey() : null;
         String traceId = java.util.UUID.randomUUID().toString();
-        return ApiResult.builder()
+        return ApiResult.<Void>builder()
                 .error(ErrorDetail.builder()
                         .code(code)
                         .messageKey(messageKey)

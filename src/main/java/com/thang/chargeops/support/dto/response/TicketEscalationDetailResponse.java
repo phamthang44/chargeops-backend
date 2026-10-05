@@ -23,8 +23,11 @@ public record TicketEscalationDetailResponse(
     public static TicketEscalationDetailResponse from(TicketEscalationResponse escalation,
                                                        UUID ownerId, UUID reporterId) {
         if (escalation == null) return null;
+        String roleDriver = escalation.requestedBy().equals(reporterId) ? "driver" : null;
         String role = escalation.requestedBy().equals(ownerId) ? "owner"
-                : escalation.requestedBy().equals(reporterId) ? "driver" : null;
+                : roleDriver;
+
+
         return new TicketEscalationDetailResponse(escalation.ticketId(), escalation.requestedBy(),
                 escalation.requestedAt(), escalation.reason(), role, escalation.resolvedAt(),
                 escalation.resolvedBy(), escalation.resolutionType() == null ? null : escalation.resolutionType().name(),

@@ -14,7 +14,7 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequiredArgsConstructor
 @RequestMapping(SystemConstant.API_URL_PATTERN + "me/staff-context")
-@PreAuthorize("isAuthenticated()")
+@PreAuthorize("hasRole('STAFF')")
 public class CurrentStationStaffController {
 
     private final StationStaffService stationStaffService;

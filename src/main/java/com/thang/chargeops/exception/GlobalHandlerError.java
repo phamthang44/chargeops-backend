@@ -280,12 +280,11 @@ public class GlobalHandlerError {
         Set<Throwable> visited = Collections.newSetFromMap(new IdentityHashMap<>());
         Throwable current = ex;
         while (current != null && visited.add(current)) {
-            if (current instanceof org.hibernate.exception.ConstraintViolationException cve) {
-                if (cve.getConstraintName() != null &&
+            if (current instanceof org.hibernate.exception.ConstraintViolationException cve && cve.getConstraintName() != null &&
                     cve.getConstraintName().equalsIgnoreCase(constraintName)) {
                     return true;
                 }
-            }
+
             if (current.getMessage() != null &&
                 current.getMessage().toLowerCase(Locale.ROOT).contains(constraintName.toLowerCase(Locale.ROOT))) {
                 return true;

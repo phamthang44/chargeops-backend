@@ -7,6 +7,8 @@ import com.thang.chargeops.profile.support.CurrentProfileProvider;
 import com.thang.chargeops.support.dto.request.FindingRequest;
 import com.thang.chargeops.support.dto.response.TicketResponse;
 import com.thang.chargeops.support.entity.TicketFinding;
+import com.thang.chargeops.support.entity.SupportTicket;
+import com.thang.chargeops.profile.entity.UserProfile;
 import com.thang.chargeops.support.model.TicketStatus;
 import com.thang.chargeops.support.repository.SupportTicketRepository;
 import com.thang.chargeops.support.repository.TicketEscalationRepository;
@@ -32,10 +34,29 @@ public class TicketFindingService {
     private final Clock clock;
 
     @Transactional
-    public TicketResponse record(UUID ticketId, FindingRequest request) {
+    public TicketResponse recordTicketFinding(UUID ticketId, FindingRequest request) {
         var actor = currentProfile.requireProfile();
         var ticket = tickets.findByIdForUpdate(ticketId)
                 .orElseThrow(() -> new AppException(TicketErrorCode.NOT_FOUND));
+        Instant now = validateFinding(ticketId, ticket, actor, request);
+        var latestFinding = findings.findFirstByTicket_IdOrderByRecordedAtDescIdDesc(ticketId);
+        Instant recordedAt = latestFinding.isPresent() && !now.isAfter(latestFinding.get().getRecordedAt())
+                ? latestFinding.get().getRecordedAt().plusNanos(1) : now;
+        if (ticket.getResolvedAt() != null && !recordedAt.isAfter(ticket.getResolvedAt())) {
+            recordedAt = ticket.getResolvedAt().plusNanos(1);
+        }
+        findings.saveAndFlush(TicketFinding.recordTicketFinding(ticket, ticket.getBooking(), request.conclusion(),
+                request.affectedAt(), request.reason(), recordedAt, actor));
+        // A finding is independent of status, but it still advances the aggregate version.
+        // This makes a replay with the old expectedVersion return 409.
+        Instant previousUpdate = ticket.getUpdatedAt();
+        ticket.setUpdatedAt(previousUpdate != null && !recordedAt.isAfter(previousUpdate)
+                ? previousUpdate.plusNanos(1) : recordedAt);
+        tickets.saveAndFlush(ticket);
+        return responses.toResponse(ticket);
+    }
+
+    private Instant validateFinding(UUID ticketId, SupportTicket ticket, UserProfile actor, FindingRequest request) {
         boolean admin = access.hasRole("ADMIN");
         boolean allowed = admin ? access.canRead(ticket, actor)
                 : access.isOwner(ticket, actor.getId()) || access.isStaff(ticket, actor.getId());
@@ -63,7 +84,6 @@ public class TicketFindingService {
                 throw new AppException(TicketErrorCode.ACCESS_DENIED);
             }
         }
-        var latestFinding = findings.findFirstByTicket_IdOrderByRecordedAtDescIdDesc(ticketId);
         var bookingStation = ticket.getBooking().getConnector().getChargePoint().getStation();
         if (!ticket.getStation().getId().equals(bookingStation.getId())) {
             throw new AppException(TicketErrorCode.FINDING_INVALID);
@@ -72,19 +92,6 @@ public class TicketFindingService {
         if (request.affectedAt().isAfter(now)) {
             throw new AppException(TicketErrorCode.FINDING_INVALID);
         }
-        Instant recordedAt = latestFinding.isPresent() && !now.isAfter(latestFinding.get().getRecordedAt())
-                ? latestFinding.get().getRecordedAt().plusNanos(1) : now;
-        if (ticket.getResolvedAt() != null && !recordedAt.isAfter(ticket.getResolvedAt())) {
-            recordedAt = ticket.getResolvedAt().plusNanos(1);
-        }
-        findings.saveAndFlush(TicketFinding.record(ticket, ticket.getBooking(), request.conclusion(),
-                request.affectedAt(), request.reason(), recordedAt, actor));
-        // A finding is independent of status, but it still advances the aggregate version.
-        // This makes a replay with the old expectedVersion return 409.
-        Instant previousUpdate = ticket.getUpdatedAt();
-        ticket.setUpdatedAt(previousUpdate != null && !recordedAt.isAfter(previousUpdate)
-                ? previousUpdate.plusNanos(1) : recordedAt);
-        tickets.saveAndFlush(ticket);
-        return responses.toResponse(ticket);
+        return now;
     }
 }

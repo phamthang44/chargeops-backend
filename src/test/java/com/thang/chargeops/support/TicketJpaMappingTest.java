@@ -108,7 +108,7 @@ class TicketJpaMappingTest {
         TicketMessage message = messageRepository.saveAndFlush(TicketMessage.create(
                 ticket, actor, TicketActorKind.REPORTER, "Initial report", affectedAt
         ));
-        TicketFinding finding = findingRepository.saveAndFlush(TicketFinding.record(
+        TicketFinding finding = findingRepository.saveAndFlush(TicketFinding.recordTicketFinding(
                 ticket,
                 booking,
                 TicketFindingConclusion.STATION_FAILURE,

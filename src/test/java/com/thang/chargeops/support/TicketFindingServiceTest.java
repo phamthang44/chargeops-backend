@@ -76,7 +76,7 @@ class TicketFindingServiceTest {
         when(point.getStation()).thenReturn(station);
         when(clock.instant()).thenReturn(now);
 
-        service.record(id, new FindingRequest(4L, TicketFindingConclusion.STATION_FAILURE,
+        service.recordTicketFinding(id, new FindingRequest(4L, TicketFindingConclusion.STATION_FAILURE,
                 now.minusSeconds(60), "Charger failed"));
 
         var captor = ArgumentCaptor.forClass(TicketFinding.class);
@@ -100,7 +100,7 @@ class TicketFindingServiceTest {
         when(ticket.getBooking()).thenReturn(mock(Booking.class));
         when(ticket.getVersion()).thenReturn(4L);
 
-        assertThatThrownBy(() -> service.record(id, new FindingRequest(4L,
+        assertThatThrownBy(() -> service.recordTicketFinding(id, new FindingRequest(4L,
                 TicketFindingConclusion.STATION_FAILURE,
                 Instant.parse("2026-10-02T09:00:00Z"), "Late review")))
                 .isInstanceOf(AppException.class);
@@ -120,7 +120,7 @@ class TicketFindingServiceTest {
         var request = new FindingRequest(0L, TicketFindingConclusion.NOT_STATION_FAILURE,
                 Instant.parse("2026-10-02T09:00:00Z"), "Not a station fault");
 
-        assertThatThrownBy(() -> service.record(id, request)).isInstanceOf(AppException.class);
+        assertThatThrownBy(() -> service.recordTicketFinding(id, request)).isInstanceOf(AppException.class);
         verifyNoInteractions(findings);
     }
 
@@ -132,7 +132,7 @@ class TicketFindingServiceTest {
         when(currentProfile.requireProfile()).thenReturn(actor);
         when(tickets.findByIdForUpdate(id)).thenReturn(Optional.of(mock(SupportTicket.class)));
 
-        assertThatThrownBy(() -> service.record(id, new FindingRequest(0L,
+        assertThatThrownBy(() -> service.recordTicketFinding(id, new FindingRequest(0L,
                 TicketFindingConclusion.STATION_FAILURE, Instant.parse("2026-10-02T09:00:00Z"), "Fault")))
                 .isInstanceOf(AppException.class);
         verifyNoInteractions(findings);
@@ -166,7 +166,7 @@ class TicketFindingServiceTest {
         when(previous.getRecordedAt()).thenReturn(Instant.parse("2026-10-02T09:00:00Z"));
         when(clock.instant()).thenReturn(now);
 
-        service.record(id, new FindingRequest(2L, TicketFindingConclusion.STATION_FAILURE,
+        service.recordTicketFinding(id, new FindingRequest(2L, TicketFindingConclusion.STATION_FAILURE,
                 Instant.parse("2026-10-02T08:00:00Z"), "Reinspection found a charger fault"));
 
         verify(findings).saveAndFlush(any(TicketFinding.class));
@@ -196,7 +196,7 @@ class TicketFindingServiceTest {
         when(point.getStation()).thenReturn(station);
         when(clock.instant()).thenReturn(now);
 
-        service.record(id, new FindingRequest(1L, TicketFindingConclusion.STATION_FAILURE,
+        service.recordTicketFinding(id, new FindingRequest(1L, TicketFindingConclusion.STATION_FAILURE,
                 now.minusSeconds(300), "Hardware failure verified by owner"));
 
         var captor = ArgumentCaptor.forClass(TicketFinding.class);
@@ -231,7 +231,7 @@ class TicketFindingServiceTest {
         when(point.getStation()).thenReturn(station);
         when(clock.instant()).thenReturn(now);
 
-        service.record(id, new FindingRequest(2L, TicketFindingConclusion.NOT_STATION_FAILURE,
+        service.recordTicketFinding(id, new FindingRequest(2L, TicketFindingConclusion.NOT_STATION_FAILURE,
                 now.minusSeconds(600), "User error, station is healthy"));
 
         var captor = ArgumentCaptor.forClass(TicketFinding.class);
@@ -255,7 +255,7 @@ class TicketFindingServiceTest {
         var request = new FindingRequest(0L, TicketFindingConclusion.NOT_STATION_FAILURE,
                 Instant.parse("2026-10-02T09:00:00Z"), "Platform issue");
 
-        assertThatThrownBy(() -> service.record(id, request))
+        assertThatThrownBy(() -> service.recordTicketFinding(id, request))
                 .isInstanceOf(AppException.class);
         verifyNoInteractions(findings);
     }
@@ -290,7 +290,7 @@ class TicketFindingServiceTest {
         var request = new FindingRequest(1L, TicketFindingConclusion.STATION_FAILURE,
                 now.minusSeconds(60), "Cross station fault");
 
-        assertThatThrownBy(() -> service.record(id, request))
+        assertThatThrownBy(() -> service.recordTicketFinding(id, request))
                 .isInstanceOf(AppException.class);
         verify(findings, never()).saveAndFlush(any(TicketFinding.class));
     }
@@ -323,7 +323,7 @@ class TicketFindingServiceTest {
         var request = new FindingRequest(1L, TicketFindingConclusion.STATION_FAILURE,
                 now.plusSeconds(3600), "Future fault");
 
-        assertThatThrownBy(() -> service.record(id, request))
+        assertThatThrownBy(() -> service.recordTicketFinding(id, request))
                 .isInstanceOf(AppException.class);
         verify(findings, never()).saveAndFlush(any(TicketFinding.class));
     }
@@ -344,7 +344,7 @@ class TicketFindingServiceTest {
         var request = new FindingRequest(2L, TicketFindingConclusion.STATION_FAILURE,
                 Instant.parse("2026-10-02T09:00:00Z"), "Stale version fault");
 
-        assertThatThrownBy(() -> service.record(id, request))
+        assertThatThrownBy(() -> service.recordTicketFinding(id, request))
                 .isInstanceOf(AppException.class);
         verify(findings, never()).saveAndFlush(any(TicketFinding.class));
     }
@@ -378,7 +378,7 @@ class TicketFindingServiceTest {
         when(previous.getRecordedAt()).thenReturn(Instant.parse("2026-10-02T09:00:00Z"));
         when(clock.instant()).thenReturn(now);
 
-        service.record(id, new FindingRequest(5L, TicketFindingConclusion.STATION_FAILURE,
+        service.recordTicketFinding(id, new FindingRequest(5L, TicketFindingConclusion.STATION_FAILURE,
                 Instant.parse("2026-10-02T08:30:00Z"), "Admin review confirms station fault after dispute"));
 
         var captor = ArgumentCaptor.forClass(TicketFinding.class);
@@ -403,7 +403,7 @@ class TicketFindingServiceTest {
         var request = new FindingRequest(1L, TicketFindingConclusion.STATION_FAILURE,
                 Instant.parse("2026-10-02T09:00:00Z"), "Fault on closed ticket");
 
-        assertThatThrownBy(() -> service.record(id, request))
+        assertThatThrownBy(() -> service.recordTicketFinding(id, request))
                 .isInstanceOf(AppException.class);
         verifyNoInteractions(findings);
     }
@@ -426,7 +426,7 @@ class TicketFindingServiceTest {
         var request = new FindingRequest(1L, TicketFindingConclusion.STATION_FAILURE,
                 Instant.parse("2026-10-02T09:00:00Z"), "Post-resolution finding by owner");
 
-        assertThatThrownBy(() -> service.record(id, request))
+        assertThatThrownBy(() -> service.recordTicketFinding(id, request))
                 .isInstanceOf(AppException.class);
         verifyNoInteractions(findings);
     }
@@ -450,7 +450,7 @@ class TicketFindingServiceTest {
         var request = new FindingRequest(1L, TicketFindingConclusion.STATION_FAILURE,
                 Instant.parse("2026-10-02T09:00:00Z"), "Owner attempting finding during dispute");
 
-        assertThatThrownBy(() -> service.record(id, request))
+        assertThatThrownBy(() -> service.recordTicketFinding(id, request))
                 .isInstanceOf(AppException.class);
         verifyNoInteractions(findings);
     }

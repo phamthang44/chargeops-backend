@@ -1,6 +1,5 @@
 package com.thang.chargeops.refund.controller;
 
-import com.thang.chargeops.common.constant.SystemConstant;
 import com.thang.chargeops.common.response.ApiResult;
 import com.thang.chargeops.refund.dto.request.ExecuteRefundRequest;
 import com.thang.chargeops.refund.dto.response.RefundDetailResponse;
@@ -20,9 +19,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
-import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
 import java.util.UUID;

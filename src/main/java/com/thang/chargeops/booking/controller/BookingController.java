@@ -37,7 +37,7 @@ public class BookingController {
 
     private static final String CACHE_CONTROL_NO_STORE = "no-store";
 
-    @PreAuthorize("isAuthenticated()")
+    @PreAuthorize("hasRole('DRIVER')")
     @PostMapping("/price-preview")
     public ResponseEntity<ApiResult<PricePreviewResponse>> previewBookingPrice(
             @Valid @RequestBody PricePreviewRequest request

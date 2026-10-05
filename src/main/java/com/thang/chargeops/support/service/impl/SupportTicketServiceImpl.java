@@ -244,7 +244,7 @@ public class SupportTicketServiceImpl implements SupportTicketService {
         }
 
         TicketActorKind authorKind = adminConsole ? TicketActorKind.ADMIN : resolveAuthorKind(ticket, author, roles);
-        prepareReply(ticket, ticketId, author, authorKind, request.body(), adminConsole);
+        prepareReply(ticket, author, authorKind, adminConsole);
 
         TicketMessage message = TicketMessage.create(
                 ticket, author, authorKind, request.body(), clock.instant(), clientMessageId);
@@ -254,7 +254,7 @@ public class SupportTicketServiceImpl implements SupportTicketService {
         }
 
         // The unique index remains the final duplicate guard. ON CONFLICT avoids
-        // aborting the PostgreSQL transaction before we read the original message.
+        // aborting the PostgresSQL transaction before we read the original message.
         messageRepository.insertIgnoreDuplicate(ticketId, author.getId(), authorKind.name(),
                 message.getBody(), message.getCreatedAt(), clientMessageId);
         return messageRepository.findByAuthor_IdAndClientMessageId(author.getId(), clientMessageId)
@@ -262,8 +262,8 @@ public class SupportTicketServiceImpl implements SupportTicketService {
                 .orElseThrow(() -> new IllegalStateException("Ticket message was not found after insert or replay"));
     }
 
-    private void prepareReply(SupportTicket ticket, UUID ticketId, UserProfile author,
-                              TicketActorKind authorKind, String body, boolean adminConsole) {
+    private void prepareReply(SupportTicket ticket, UserProfile author,
+                              TicketActorKind authorKind, boolean adminConsole) {
         if (authorKind == null) {
             throw new AppException(TicketErrorCode.ACCESS_DENIED);
         }
@@ -299,10 +299,8 @@ public class SupportTicketServiceImpl implements SupportTicketService {
                     && ticket.getStation().getOwner().getId().equals(profile.getId())) {
                 return true;
             }
-            if (stationStaffAssignmentRepository
-                    .existsByStation_IdAndStaff_IdAndStatus(ticket.getStation().getId(), profile.getId(), StaffAssignmentStatus.ACTIVE)) {
-                return true;
-            }
+            return stationStaffAssignmentRepository
+                    .existsByStation_IdAndStaff_IdAndStatus(ticket.getStation().getId(), profile.getId(), StaffAssignmentStatus.ACTIVE);
         }
         return false;
     }
