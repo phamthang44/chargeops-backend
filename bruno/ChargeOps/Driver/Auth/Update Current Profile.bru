@@ -1,0 +1,35 @@
+meta {
+  name: Update Current Profile
+  type: http
+  seq: 3
+}
+
+put {
+  url: {{baseUrl}}/api/v1/me/profile
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{access_token}}
+}
+
+body:json {
+  {
+    "fullName": "Driver User",
+    "phoneNumber": "0912345678",
+    "avatarUrl": "https://ik.imagekit.io/chargeops/avatar.png"
+  }
+}
+
+tests {
+  test("Status code is 200", function() {
+    expect(res.getStatus()).to.equal(200);
+  });
+  test("Response has success true", function() {
+    expect(res.getBody().success).to.equal(true);
+  });
+  test("Profile data updated", function() {
+    expect(res.getBody().data.fullName).to.equal("Driver User");
+  });
+}
