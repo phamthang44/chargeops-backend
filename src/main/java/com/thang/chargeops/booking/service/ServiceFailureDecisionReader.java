@@ -25,7 +25,7 @@ public class ServiceFailureDecisionReader {
         var refund = obligations.size() == 1 ? obligations.getFirst() : null;
         return new FinancialResolution(history.isEmpty() ? 0 : history.getLast().getSequenceNo(), publicHistory,
                 refund == null ? null : new ServiceFailureContextResponse.RefundSummary(refund.getId(), refund.getAmount().longValueExact(),
-                        refund.getCurrency(), refund.getStatus(), owner ? refund.isRequiresAdminAction() : null));
+                        refund.getCurrency(), refund.getStatus(), owner ? refund.isRequiresOwnerAction() : null));
     }
     public record FinancialResolution(long decisionVersion, List<ServiceFailureDecisionResponse> serviceFailureDecisions,
                                      ServiceFailureContextResponse.RefundSummary refund) {}

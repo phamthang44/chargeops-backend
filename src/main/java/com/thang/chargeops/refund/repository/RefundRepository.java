@@ -39,7 +39,7 @@ public interface RefundRepository extends JpaRepository<Refund, UUID>, JpaSpecif
                COALESCE(SUM(CASE WHEN r.status = com.thang.chargeops.refund.model.RefundStatus.PENDING THEN 1 ELSE 0 END), 0) AS pendingCount,
                COALESCE(SUM(CASE WHEN r.status = com.thang.chargeops.refund.model.RefundStatus.SUCCEEDED THEN 1 ELSE 0 END), 0) AS succeededCount,
                COALESCE(SUM(CASE WHEN r.status = com.thang.chargeops.refund.model.RefundStatus.PENDING
-                                  AND r.requiresAdminAction = true THEN 1 ELSE 0 END), 0) AS needsAdminCount,
+                                   AND r.requiresOwnerAction = true THEN 1 ELSE 0 END), 0) AS needsOwnerActionCount,
                COALESCE(SUM(r.amount), 0) AS totalAmount,
                COALESCE(SUM(CASE WHEN r.status = com.thang.chargeops.refund.model.RefundStatus.PENDING
                                   THEN r.amount ELSE 0 END), 0) AS pendingAmount

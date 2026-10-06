@@ -77,7 +77,7 @@ public class Refund extends AuditableEntity {
     private RefundExecutionPolicy executionPolicy;
 
     @Column(name = "requires_admin_action", nullable = false)
-    private boolean requiresAdminAction;
+    private boolean requiresOwnerAction;
 
     @Column(name = "decision_at", nullable = false, updatable = false)
     private Instant decisionAt;
@@ -135,7 +135,7 @@ public class Refund extends AuditableEntity {
         // The business decision has already been made by the Owner or a binding
         // dispute ruling. Execution is a simulator outcome, not an Admin approval.
         refund.executionPolicy = RefundExecutionPolicy.AUTO_FIRST_ATTEMPT;
-        refund.requiresAdminAction = false;
+        refund.requiresOwnerAction = false;
         refund.decisionAt = spec.decisionAt();
         refund.decidedBy = spec.decidedBy();
         return refund;
@@ -156,12 +156,12 @@ public class Refund extends AuditableEntity {
         this.successfulAttempt = attempt;
         this.completedAt = completedAt;
         this.status = RefundStatus.SUCCEEDED;
-        this.requiresAdminAction = false;
+        this.requiresOwnerAction = false;
     }
 
-    public void requireAdminAction() {
+    public void requireOwnerAction() {
         if (status == RefundStatus.PENDING) {
-            this.requiresAdminAction = true;
+            this.requiresOwnerAction = true;
         }
     }
 

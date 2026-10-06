@@ -57,7 +57,7 @@ class OwnerRefundServiceImplTest {
         when(refundRepository.summarizeOwnerSimulatorRefunds(ownerId)).thenReturn(totals);
         when(totals.getPendingCount()).thenReturn(2L);
         when(totals.getSucceededCount()).thenReturn(3L);
-        when(totals.getNeedsAdminCount()).thenReturn(1L);
+        when(totals.getNeedsOwnerActionCount()).thenReturn(1L);
         when(totals.getTotalAmount()).thenReturn(BigDecimal.valueOf(5000));
         when(totals.getPendingAmount()).thenReturn(BigDecimal.valueOf(2000));
         when(attemptRepository.countOwnerFailedSimulatorAttempts(ownerId)).thenReturn(4L);

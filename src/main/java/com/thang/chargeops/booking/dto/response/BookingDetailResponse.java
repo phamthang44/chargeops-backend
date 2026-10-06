@@ -95,7 +95,8 @@ public record BookingDetailResponse(
             RefundReason reason,
             RefundState status,
             com.thang.chargeops.refund.model.RefundExecutionPolicy executionPolicy,
-            boolean requiresAdminAction,
+            @Deprecated boolean requiresAdminAction,
+            boolean requiresOwnerAction,
             boolean needsReconciliation
     ) {
     }

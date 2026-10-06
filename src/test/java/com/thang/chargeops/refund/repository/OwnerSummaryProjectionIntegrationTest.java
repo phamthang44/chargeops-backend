@@ -25,7 +25,7 @@ class OwnerSummaryProjectionIntegrationTest {
         assertThat(summary.getTotalCount()).isZero();
         assertThat(summary.getPendingCount()).isZero();
         assertThat(summary.getSucceededCount()).isZero();
-        assertThat(summary.getNeedsAdminCount()).isZero();
+        assertThat(summary.getNeedsOwnerActionCount()).isZero();
         assertThat(summary.getTotalAmount()).isEqualByComparingTo(BigDecimal.ZERO);
         assertThat(summary.getPendingAmount()).isEqualByComparingTo(BigDecimal.ZERO);
     }

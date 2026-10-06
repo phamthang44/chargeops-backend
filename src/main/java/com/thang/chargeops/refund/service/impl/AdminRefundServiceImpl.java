@@ -196,7 +196,7 @@ public class AdminRefundServiceImpl implements AdminRefundService {
                 REFUND_ID_LABEL + refundId + ", attemptId=" + attempt.getId()
                         + ", executionMode=" + request.executionMode() + ", outcome=" + result.outcome()
                         + ", refundStatus=" + refund.getStatus()
-                        + ", adminActionRequired=" + refund.isRequiresAdminAction());
+                        + ", ownerActionRequired=" + refund.isRequiresOwnerAction());
 
         return assembleDetail(refund);
     }

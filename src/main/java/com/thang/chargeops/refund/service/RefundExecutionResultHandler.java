@@ -39,7 +39,7 @@ public class RefundExecutionResultHandler {
         } else {
             attempt.completeFailed(result.failureCode(), result.note(), result.performedAt(), completedAt);
             attemptRepository.saveAndFlush(attempt);
-            refund.requireAdminAction();
+            refund.requireOwnerAction();
         }
         refundRepository.flush();
     }

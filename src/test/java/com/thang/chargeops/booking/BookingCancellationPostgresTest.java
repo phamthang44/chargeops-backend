@@ -192,7 +192,7 @@ class BookingCancellationPostgresTest {
                     assertThat(refund.getAmount()).isEqualByComparingTo(AMOUNT);
                     assertThat(refund.getStatus()).isEqualTo(RefundStatus.PENDING);
                     assertThat(refund.getExecutionPolicy()).isEqualTo(RefundExecutionPolicy.AUTO_FIRST_ATTEMPT);
-                    assertThat(refund.isRequiresAdminAction()).isFalse();
+                    assertThat(refund.isRequiresOwnerAction()).isFalse();
                     assertThat(autoDispatchRepository.findRefundIdsByStatus(
                             RefundAutoDispatchStatus.PENDING,
                             org.springframework.data.domain.PageRequest.of(0, 10)
@@ -227,7 +227,7 @@ class BookingCancellationPostgresTest {
         assertThat(replayed).isFalse();
         assertThat(refundRepository.findById(refundId)).get().satisfies(refund -> {
             assertThat(refund.getStatus()).isEqualTo(RefundStatus.SUCCEEDED);
-            assertThat(refund.isRequiresAdminAction()).isFalse();
+            assertThat(refund.isRequiresOwnerAction()).isFalse();
         });
         assertThat(paymentRepository.findByBookingId(bookingId)).get()
                 .extracting(com.thang.chargeops.payment.entity.Payment::getStatus)
@@ -283,7 +283,7 @@ class BookingCancellationPostgresTest {
         assertThat(replayed).isFalse();
         assertThat(refundRepository.findById(refundId)).get().satisfies(refund -> {
             assertThat(refund.getStatus()).isEqualTo(RefundStatus.PENDING);
-            assertThat(refund.isRequiresAdminAction()).isTrue();
+            assertThat(refund.isRequiresOwnerAction()).isTrue();
         });
         assertThat(refundAttemptRepository.findByRefundIdOrderBySequenceNoAsc(refundId))
                 .singleElement()

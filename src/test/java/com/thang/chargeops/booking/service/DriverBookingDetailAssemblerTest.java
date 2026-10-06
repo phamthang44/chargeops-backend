@@ -130,6 +130,7 @@ class DriverBookingDetailAssemblerTest {
                 BookingDetailResponse.RefundState.PENDING,
                 RefundExecutionPolicy.AUTO_FIRST_ATTEMPT,
                 false,
+                false,
                 false
         ));
     }
@@ -156,6 +157,7 @@ class DriverBookingDetailAssemblerTest {
                 BookingDetailResponse.RefundReason.VOLUNTARY_GRACE,
                 BookingDetailResponse.RefundState.SUCCEEDED,
                 RefundExecutionPolicy.AUTO_FIRST_ATTEMPT,
+                false,
                 false,
                 false
         ));

@@ -87,7 +87,7 @@ public class AutomaticRefundExecutionServiceImpl implements AutomaticRefundExecu
         Instant executionAt = applicationClock.instant();
 
         if (payment.getEnvironment() != PaymentEnvironment.SIMULATOR) {
-            refund.requireAdminAction();
+            refund.requireOwnerAction();
             dispatch.markProcessed(executionAt);
             log.warn(LogConstant.SERVICE_LOG_FORMAT, LogConstant.ACTION_FAILED, "processFirstAttempt", "SYSTEM",
                     "refundId=" + refundId + ", processed=false, reason=non_simulator_payment");
@@ -104,11 +104,11 @@ public class AutomaticRefundExecutionServiceImpl implements AutomaticRefundExecu
             return false;
         }
         if (refundAttemptRepository.countByRefundId(refundId) > 0) {
-            refund.requireAdminAction();
+            refund.requireOwnerAction();
             dispatch.markProcessed(executionAt);
             log.warn(LogConstant.SERVICE_LOG_FORMAT, LogConstant.ACTION_FAILED, "processFirstAttempt", "SYSTEM",
                     "refundId=" + refundId
-                            + ", processed=false, reason=attempt_already_exists, adminActionRequired=true");
+                            + ", processed=false, reason=attempt_already_exists, ownerActionRequired=true");
             return false;
         }
 
@@ -137,7 +137,7 @@ public class AutomaticRefundExecutionServiceImpl implements AutomaticRefundExecu
         log.info(LogConstant.SERVICE_LOG_FORMAT, LogConstant.ACTION_SUCCESS, "processFirstAttempt", "SYSTEM",
                 "refundId=" + refundId + ", attemptId=" + attempt.getId() + ", outcome=" + result.outcome()
                         + ", refundStatus=" + refund.getStatus()
-                        + ", adminActionRequired=" + refund.isRequiresAdminAction());
+                        + ", ownerActionRequired=" + refund.isRequiresOwnerAction());
         return true;
     }
 }

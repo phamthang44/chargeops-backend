@@ -557,7 +557,7 @@ public class BookingServiceFailureService {
                 refund.getAmount().longValueExact(),
                 refund.getCurrency(),
                 refund.getStatus(),
-                refund.isRequiresAdminAction()
+                refund.isRequiresOwnerAction()
         );
     }
 

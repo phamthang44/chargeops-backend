@@ -56,7 +56,7 @@ public class BookingFinancialReadAssembler {
         return new BookingDetailResponse.RefundSummary(refund.getId(), refund.getAmount().longValueExact(),
                 BookingDetailResponse.RefundReason.valueOf(refund.getReason().name()),
                 BookingDetailResponse.RefundState.valueOf(refund.getStatus().name()),
-                refund.getExecutionPolicy(), refund.isRequiresAdminAction(), reconcile);
+                refund.getExecutionPolicy(), refund.isRequiresOwnerAction(), refund.isRequiresOwnerAction(), reconcile);
     }
 
     private long sum(List<PaymentTransaction> receipts, PaymentApplicationClassification classification) {

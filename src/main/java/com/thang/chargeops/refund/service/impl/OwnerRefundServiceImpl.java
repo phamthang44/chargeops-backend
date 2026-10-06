@@ -73,7 +73,7 @@ public class OwnerRefundServiceImpl implements OwnerRefundService {
         return new OwnerRefundsSummaryResponse(
                 totals.getPendingCount(), totals.getSucceededCount(),
                 attemptRepository.countOwnerFailedSimulatorAttempts(ownerId),
-                totals.getNeedsAdminCount(),
+                totals.getNeedsOwnerActionCount(),
                 totals.getTotalAmount().longValueExact(),
                 totals.getPendingAmount().longValueExact());
     }
@@ -145,7 +145,7 @@ public class OwnerRefundServiceImpl implements OwnerRefundService {
         if (!Objects.equals(refund.getVersion(), expectedVersion)) {
             throw new AppException(RefundErrorCode.VERSION_CONFLICT);
         }
-        if (refund.getStatus() != RefundStatus.PENDING || !refund.isRequiresAdminAction()) {
+        if (refund.getStatus() != RefundStatus.PENDING || !refund.isRequiresOwnerAction()) {
             throw new AppException(RefundErrorCode.EXECUTION_CONFLICT,
                     "Only a failed Simulator refund may be retried by its Owner");
         }
@@ -181,7 +181,7 @@ public class OwnerRefundServiceImpl implements OwnerRefundService {
         return new OwnerRefundResponse(base.refundId(), base.bookingId(), base.bookingCode(),
                 refund.getBooking().getConnector().getChargePoint().getStation().getId(),
                 base.amount(), base.currency(), base.reason(), base.status(),
-                base.requiresAdminAction(), base.version(), base.decisionAt(),
+                base.requiresOwnerAction(), base.version(), base.decisionAt(),
                 base.completedAt(), base.attempts());
     }
 

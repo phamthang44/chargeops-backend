@@ -6,7 +6,7 @@ public interface OwnerRefundTotalsProjection {
     long getTotalCount();
     long getPendingCount();
     long getSucceededCount();
-    long getNeedsAdminCount();
+    long getNeedsOwnerActionCount();
     BigDecimal getTotalAmount();
     BigDecimal getPendingAmount();
 }
