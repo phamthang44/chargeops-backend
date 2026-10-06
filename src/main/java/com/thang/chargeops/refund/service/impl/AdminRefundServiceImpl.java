@@ -230,11 +230,12 @@ public class AdminRefundServiceImpl implements AdminRefundService {
                     cb.equal(root.get(BOOKING_FIELD).get("driver").get("id"), id)
             );
         } catch (IllegalArgumentException ignored) {
-            String pattern = "%" + search.toLowerCase() + "%";
+            String escaped = escapeLikePattern(search.toLowerCase());
+            String pattern = "%" + escaped + "%";
             return (root, query, cb) -> cb.or(
-                    cb.like(cb.lower(root.get(BOOKING_FIELD).get("bookingCode")), pattern),
-                    cb.like(cb.lower(root.get(BOOKING_FIELD).get("driver").get("displayName")), pattern),
-                    cb.like(cb.lower(root.get(BOOKING_FIELD).get("stationNameSnapshot")), pattern)
+                    cb.like(cb.lower(root.get(BOOKING_FIELD).get("bookingCode")), pattern, '\\'),
+                    cb.like(cb.lower(root.get(BOOKING_FIELD).get("driver").get("displayName")), pattern, '\\'),
+                    cb.like(cb.lower(root.get(BOOKING_FIELD).get("stationNameSnapshot")), pattern, '\\')
             );
         }
     }
@@ -245,6 +246,13 @@ public class AdminRefundServiceImpl implements AdminRefundService {
         }
         String normalized = value.trim();
         return normalized.isEmpty() ? null : normalized;
+    }
+
+    private static String escapeLikePattern(String value) {
+        return value
+                .replace("\\", "\\\\")
+                .replace("%", "\\%")
+                .replace("_", "\\_");
     }
 }
 
