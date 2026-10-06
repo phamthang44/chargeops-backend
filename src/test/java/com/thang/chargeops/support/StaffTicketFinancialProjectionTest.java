@@ -51,7 +51,8 @@ class StaffTicketFinancialProjectionTest {
                 mock(SupportTicketRepository.class), events, new TicketResponseMapper(),
                 mock(TicketEscalationService.class),
                 mock(com.thang.chargeops.booking.service.ServiceFailureDecisionReader.class),
-                mock(com.thang.chargeops.profile.support.CurrentProfileProvider.class), access);
+                mock(com.thang.chargeops.profile.support.CurrentProfileProvider.class), access,
+                mock(com.thang.chargeops.support.service.AdminFinanceAccessAudit.class));
 
         when(access.hasRole("STAFF")).thenReturn(true);
         assertThat(service.toResponse(ticket).refundIds()).isEmpty();

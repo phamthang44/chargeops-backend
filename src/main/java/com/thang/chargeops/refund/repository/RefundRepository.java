@@ -29,7 +29,7 @@ public interface RefundRepository extends JpaRepository<Refund, UUID>, JpaSpecif
         SELECT COALESCE(SUM(CASE WHEN r.status = com.thang.chargeops.refund.model.RefundStatus.PENDING
                                   THEN r.amount ELSE 0 END), 0)
         FROM Refund r
-        WHERE r.booking.connector.chargePoint.station.owner.id = :ownerId
+        WHERE r.booking.financialOwnerId = :ownerId
           AND r.payment.environment = com.thang.chargeops.common.enums.PaymentEnvironment.SIMULATOR
     """)
     java.math.BigDecimal sumOwnerPendingSimulatorRefunds(@Param("ownerId") UUID ownerId);
@@ -44,7 +44,7 @@ public interface RefundRepository extends JpaRepository<Refund, UUID>, JpaSpecif
                COALESCE(SUM(CASE WHEN r.status = com.thang.chargeops.refund.model.RefundStatus.PENDING
                                   THEN r.amount ELSE 0 END), 0) AS pendingAmount
         FROM Refund r
-        WHERE r.booking.connector.chargePoint.station.owner.id = :ownerId
+        WHERE r.booking.financialOwnerId = :ownerId
           AND r.payment.environment = com.thang.chargeops.common.enums.PaymentEnvironment.SIMULATOR
     """)
     OwnerRefundTotalsProjection summarizeOwnerSimulatorRefunds(@Param("ownerId") UUID ownerId);

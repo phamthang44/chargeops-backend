@@ -165,8 +165,8 @@ class RefundJpaMappingTest {
 
         assertThat(jdbcTemplate.queryForList("""
                 SELECT column_name FROM information_schema.columns
-                 WHERE table_name = 'refunds' AND column_name = 'requires_admin_action'
-                """, String.class)).containsExactly("requires_admin_action");
+                 WHERE table_name = 'refunds' AND column_name = 'requires_owner_action'
+                """, String.class)).containsExactly("requires_owner_action");
 
         UUID pendingBasis = UUID.randomUUID();
         insertLegacyRefund(booking, payment, source, actor, pendingBasis, true);
@@ -251,7 +251,7 @@ class RefundJpaMappingTest {
         assertThat(legacyPending.getAmount()).isEqualByComparingTo("120000.00");
         assertThat(legacyPending.getVersion()).isZero();
         assertThat(jdbcTemplate.queryForObject(
-                "SELECT requires_admin_action FROM refunds WHERE id = ?", Boolean.class, pendingRefundId))
+                "SELECT requires_owner_action FROM refunds WHERE id = ?", Boolean.class, pendingRefundId))
                 .isTrue();
 
         Refund legacySucceeded = refundRepository.findById(succeededRefundId).orElseThrow();
@@ -292,7 +292,7 @@ class RefundJpaMappingTest {
                 INSERT INTO refunds(
                     booking_id, payment_id, source_payment_transaction_id, amount, currency,
                     reason, basis_type, basis_id, status, decision_at, decided_by, version,
-                    execution_policy, requires_admin_action
+                    execution_policy, requires_owner_action
                 ) VALUES (?, ?, ?, 120000, 'VND', 'VOLUNTARY_GRACE', 'BOOKING_CANCELLATION',
                           ?, 'PENDING', now(), ?, 0, 'AUTO_FIRST_ATTEMPT', ?)
                 """,

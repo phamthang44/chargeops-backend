@@ -44,6 +44,19 @@ public class TicketEvent extends BaseEntity {
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 
+    public static TicketEvent financialAccess(SupportTicket ticket, UUID adminId, UUID escalationId,
+                                              String eventType, Instant at) {
+        TicketEvent event = new TicketEvent();
+        event.ticketId = ticket.getId();
+        event.actorId = adminId;
+        event.actorKind = "ADMIN";
+        event.eventType = eventType;
+        event.resolutionCycle = ticket.getResolutionCycle();
+        event.reason = "bookingId=" + ticket.getBooking().getId() + ";escalationId=" + escalationId;
+        event.createdAt = at;
+        return event;
+    }
+
     public static TicketEvent create(SupportTicket ticket, EventActor actor, String eventType,
                                      TicketStatus before, UUID previousHandlerId, String reason, Instant at) {
         TicketEvent event = new TicketEvent();

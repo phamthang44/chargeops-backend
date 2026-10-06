@@ -441,7 +441,7 @@ class AdminRefundExecutionPostgresTest {
         jdbc.update("""
                 INSERT INTO refunds(booking_id, payment_id, source_payment_transaction_id,
                     basis_type, basis_id, amount, currency, reason, status,
-                    execution_policy, requires_admin_action, decided_by, decision_at, version)
+                    execution_policy, requires_owner_action, decided_by, decision_at, version)
                 VALUES (?, ?, ?, 'BOOKING_CANCELLATION', ?, 120000, 'VND', 'VOLUNTARY_GRACE', 'PENDING',
                     'AUTO_FIRST_ATTEMPT', false, ?, ?, 0)
                 """, bookingId, paymentId, sourceTxId, basisId, adminId, Timestamp.from(NOW.minusSeconds(300)));

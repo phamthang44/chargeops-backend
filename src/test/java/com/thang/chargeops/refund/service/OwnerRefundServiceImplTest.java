@@ -112,15 +112,16 @@ class OwnerRefundServiceImplTest {
 
     private Booking bookingOwnedBy(UUID ownerId) {
         Booking booking = mock(Booking.class);
+        when(booking.getFinancialOwnerId()).thenReturn(ownerId);
         Connector connector = mock(Connector.class);
         ChargePoint chargePoint = mock(ChargePoint.class);
         Station station = mock(Station.class);
         UserProfile owner = mock(UserProfile.class);
-        when(booking.getConnector()).thenReturn(connector);
-        when(connector.getChargePoint()).thenReturn(chargePoint);
-        when(chargePoint.getStation()).thenReturn(station);
-        when(station.getOwner()).thenReturn(owner);
-        when(owner.getId()).thenReturn(ownerId);
+        lenient().when(booking.getConnector()).thenReturn(connector);
+        lenient().when(connector.getChargePoint()).thenReturn(chargePoint);
+        lenient().when(chargePoint.getStation()).thenReturn(station);
+        lenient().when(station.getOwner()).thenReturn(owner);
+        lenient().when(owner.getId()).thenReturn(ownerId);
         return booking;
     }
 }

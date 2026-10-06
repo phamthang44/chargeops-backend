@@ -34,6 +34,7 @@ import com.thang.chargeops.refund.service.RefundExecutionPayloadHasher;
 import com.thang.chargeops.refund.service.RefundExecutionResultHandler;
 import com.thang.chargeops.station.repository.ConnectorRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
@@ -49,6 +50,7 @@ import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class OwnerRefundServiceImpl implements OwnerRefundService {
     private static final String RETRY_NOTE = "Owner requested Simulator refund retry";
 
@@ -83,8 +85,7 @@ public class OwnerRefundServiceImpl implements OwnerRefundService {
     public Page<OwnerRefundResponse> list(RefundStatus status, int pageNo, int pageSize) {
         UUID ownerId = currentProfileProvider.requireProfileId();
         Specification<Refund> scope = (root, query, cb) -> cb.and(
-                cb.equal(root.get("booking").get("connector").get("chargePoint")
-                        .get("station").get("owner").get("id"), ownerId),
+                cb.equal(root.get("booking").get("financialOwnerId"), ownerId),
                 cb.equal(root.get("payment").get("environment"), PaymentEnvironment.SIMULATOR));
         if (status != null) {
             scope = scope.and((root, query, cb) -> cb.equal(root.get("status"), status));
@@ -117,7 +118,13 @@ public class OwnerRefundServiceImpl implements OwnerRefundService {
                 .orElseThrow(OwnerRefundServiceImpl::notFound);
         Booking booking = bookingRepository.findByIdWithLock(route.getBookingId())
                 .orElseThrow(OwnerRefundServiceImpl::notFound);
-        if (!ownerId(booking).equals(lockedOwner.getId())) {
+        UUID stationOwnerId = booking.getConnector().getChargePoint().getStation().getOwner().getId();
+        if (!Objects.equals(booking.getFinancialOwnerId(), stationOwnerId)) {
+            log.warn("Refund retry blocked: booking {} has inconsistent financial Owner and station Owner",
+                    booking.getId());
+            throw notFound();
+        }
+        if (!Objects.equals(stationOwnerId, lockedOwner.getId())) {
             throw notFound();
         }
         Payment payment = paymentRepository.findByIdWithLock(route.getPaymentId())
@@ -165,7 +172,7 @@ public class OwnerRefundServiceImpl implements OwnerRefundService {
 
     private Refund requireOwnedRefund(UUID refundId, UUID ownerId) {
         Refund refund = refundRepository.findById(refundId).orElseThrow(OwnerRefundServiceImpl::notFound);
-        if (!ownerId(refund.getBooking()).equals(ownerId)
+        if (!Objects.equals(ownerId(refund.getBooking()), ownerId)
                 || refund.getPayment().getEnvironment() != PaymentEnvironment.SIMULATOR) {
             throw notFound();
         }
@@ -186,7 +193,7 @@ public class OwnerRefundServiceImpl implements OwnerRefundService {
     }
 
     private UUID ownerId(Booking booking) {
-        return booking.getConnector().getChargePoint().getStation().getOwner().getId();
+        return booking.getFinancialOwnerId();
     }
 
     private static AppException notFound() {

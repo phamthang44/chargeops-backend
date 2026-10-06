@@ -76,7 +76,7 @@ public class Refund extends AuditableEntity {
     @Column(name = "execution_policy", nullable = false, length = 30)
     private RefundExecutionPolicy executionPolicy;
 
-    @Column(name = "requires_admin_action", nullable = false)
+    @Column(name = "requires_owner_action", nullable = false)
     private boolean requiresOwnerAction;
 
     @Column(name = "decision_at", nullable = false, updatable = false)

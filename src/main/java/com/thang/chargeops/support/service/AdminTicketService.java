@@ -72,17 +72,17 @@ public class AdminTicketService {
         return new PageImpl<>(responses.toResponses(result.getContent()), pageable, result.getTotalElements());
     }
 
-    @Transactional(readOnly = true)
+    @Transactional
     public Page<TicketResponse> platformQueue(TicketStatus status, int page, int size) {
         return list(false, null, status, page, size);
     }
 
-    @Transactional(readOnly = true)
+    @Transactional
     public Page<TicketResponse> stationAudit(UUID stationId, TicketStatus status, int page, int size) {
         return list(true, stationId, status, page, size);
     }
 
-    @Transactional(readOnly = true)
+    @Transactional
     public TicketResponse get(UUID ticketId) {
         requireAdmin();
         var ticket = tickets.findById(ticketId)
@@ -92,7 +92,7 @@ public class AdminTicketService {
         return responses.toResponse(ticket);
     }
 
-    @Transactional(readOnly = true)
+    @Transactional
     public TicketDetailResponse getDetail(UUID ticketId) {
         requireAdmin();
         var ticket = tickets.findById(ticketId)

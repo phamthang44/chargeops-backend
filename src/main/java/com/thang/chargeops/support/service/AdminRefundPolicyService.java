@@ -9,11 +9,13 @@ import com.thang.chargeops.booking.command.BookingCommandRegistry;
 import com.thang.chargeops.booking.command.BookingCommandRepository;
 import com.thang.chargeops.booking.decision.BookingServiceFailureDecision;
 import com.thang.chargeops.booking.decision.BookingServiceFailureDecisionRepository;
+import com.thang.chargeops.booking.dto.BookingPolicySnapshot;
 import com.thang.chargeops.booking.dto.response.BookingCancellationReason;
 import com.thang.chargeops.booking.dto.response.ServiceFailureCommandResponse;
 import com.thang.chargeops.booking.dto.response.ServiceFailureContextResponse;
 import com.thang.chargeops.booking.dto.response.ServiceFailureDecisionResponse;
 import com.thang.chargeops.booking.entity.Booking;
+import com.thang.chargeops.booking.entity.BookingPriceLine;
 import com.thang.chargeops.booking.history.BookingStatusActorType;
 import com.thang.chargeops.booking.history.BookingStatusHistoryRecorder;
 import com.thang.chargeops.booking.history.BookingStatusReason;
@@ -61,7 +63,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -97,6 +101,7 @@ public class AdminRefundPolicyService {
     private final BookingNoShowServiceImpl noShow;
     private final RefundObligationService obligations;
     private final Clock clock;
+    private final AdminFinanceAccessAudit accessAudit;
 
     @Transactional
     public ServiceFailureCommandResponse review(UUID ticketId, UUID escalationId, UUID key,
@@ -148,9 +153,9 @@ public class AdminRefundPolicyService {
         return response(booking, decision, refund);
     }
 
-    @Transactional(readOnly = true)
+    @Transactional
     public RefundPolicyContextResponse context(UUID ticketId, UUID escalationId) {
-        requireActive(currentProfile.requireProfile());
+        UserProfile admin = requireActive(currentProfile.requireProfile());
         var route = requireRoute(ticketId, escalationId);
         Booking booking = bookings.findById(route.getBookingId()).orElseThrow(AdminRefundPolicyService::notFound);
         SupportTicket ticket = tickets.findById(ticketId).orElseThrow(AdminRefundPolicyService::notFound);
@@ -178,8 +183,56 @@ public class AdminRefundPolicyService {
                 financial.decisionVersion(), state.effectiveStatus(), booking.getStatus(),
                 state.stateReconciliationPending(), now, grantError == null ? payment.getAmount().longValueExact() : null,
                 "VND", financial.serviceFailureDecisions(), financial.refund(), ownerAction, ownerAction);
+        accessAudit.appendAccessEvent(ticket, admin, escalationId, "REFUND_POLICY_CONTEXT");
         return new RefundPolicyContextResponse(ticketId, escalationId, ticket.getVersion(), caseError == null,
-                bookingContext, availability(grantError), availability(insufficientError));
+                bookingContext, availability(grantError), availability(insufficientError),
+                booking.getBookingCode(), booking.getTotalAmount().longValueExact(),
+                dossier(booking, payment, source));
+    }
+
+    /** Read-only booking facts for the assigned case; already loaded by the scoped route. */
+    private static RefundPolicyContextResponse.Dossier dossier(Booking booking, Payment payment,
+                                                               PaymentTransaction source) {
+        BookingPolicySnapshot policy = booking.getPolicySnapshot();
+        return new RefundPolicyContextResponse.Dossier(
+                payment != null && payment.getCurrency() != null ? payment.getCurrency() : "VND",
+                window(booking),
+                new RefundPolicyContextResponse.Dossier.Snapshot(
+                        booking.getStationNameSnapshot(), booking.getStationAddressSnapshot(),
+                        booking.getChargePointCodeSnapshot(), booking.getConnectorCodeSnapshot()),
+                new RefundPolicyContextResponse.Dossier.Policy(
+                        booking.getPolicyVersion(),
+                        policy == null ? null : policy.cancellationGraceMin(),
+                        policy == null ? null : policy.checkInCloseBeforeEndMin(),
+                        policy == null ? null : policy.verifiedStationFailureRefundPercent(),
+                        policy == null ? null : policy.voluntaryRefundAfterGracePercent()),
+                new RefundPolicyContextResponse.Dossier.Timeline(
+                        booking.getExpiresAt(), booking.getPaymentConfirmedAt(), booking.getFreeCancellationDeadline(),
+                        booking.getCheckInDeadline(), booking.getCheckedInAt(), booking.getChargingStartedAt(),
+                        booking.getCompletedAt(), booking.getCancelledAt(), booking.getCancellationReason()),
+                payment == null ? null : new RefundPolicyContextResponse.Dossier.Payment(
+                        payment.getStatus(), payment.getAmount().longValueExact(), payment.getPaidAt(),
+                        payment.getEnvironment(), payment.isNeedsReconciliation()),
+                source == null ? null : new RefundPolicyContextResponse.Dossier.Receipt(
+                        source.getId(), source.getTransactionRef(), source.getAmount().longValueExact(),
+                        source.getCurrency(), source.getReceivedAt(), source.getApplicationClassification()),
+                priceLines(booking));
+    }
+
+    private static RefundPolicyContextResponse.Dossier.Window window(Booking booking) {
+        Instant start = booking.getStartAt();
+        Instant end = booking.getEndAt();
+        int durationMin = start == null || end == null ? 0 : (int) Duration.between(start, end).toMinutes();
+        return new RefundPolicyContextResponse.Dossier.Window(start, end, durationMin);
+    }
+
+    private static List<RefundPolicyContextResponse.Dossier.PriceLine> priceLines(Booking booking) {
+        return booking.getPriceLines().stream()
+                .sorted(Comparator.comparing(BookingPriceLine::getSequence))
+                .map(line -> new RefundPolicyContextResponse.Dossier.PriceLine(
+                        line.getLabel(), line.getPeriodCode(), line.getDurationMinutes(),
+                        line.getAmount().longValueExact()))
+                .toList();
     }
 
     private SupportTicketRepository.RefundPolicyRoute requireRoute(UUID ticketId, UUID escalationId) {
