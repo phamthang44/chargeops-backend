@@ -8,8 +8,9 @@ import com.thang.chargeops.support.model.TicketEscalationResolutionType;
 public record TicketEscalationResponse(UUID ticketId, UUID requestedBy, Instant requestedAt, String reason,
                                        Instant resolvedAt, UUID resolvedBy,
                                        TicketEscalationResolutionType resolutionType,
-                                       String resolutionNote, TicketEscalationClosureReason closureReason) {
+                                       String resolutionNote, TicketEscalationClosureReason closureReason,
+                                       UUID escalationId) {
     public TicketEscalationResponse(UUID ticketId, UUID requestedBy, Instant requestedAt, String reason) {
-        this(ticketId, requestedBy, requestedAt, reason, null, null, null, null, null);
+        this(ticketId, requestedBy, requestedAt, reason, null, null, null, null, null, null);
     }
 }

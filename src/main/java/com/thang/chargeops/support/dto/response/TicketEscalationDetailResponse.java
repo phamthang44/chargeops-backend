@@ -14,11 +14,12 @@ public record TicketEscalationDetailResponse(
         UUID resolvedBy,
         String resolutionType,
         String resolutionNote,
-        String closureReason
+        String closureReason,
+        UUID escalationId
 ) {
     public TicketEscalationDetailResponse(UUID ticketId, UUID requestedBy, Instant requestedAt,
                                           String reason, String requestedByRole) {
-        this(ticketId, requestedBy, requestedAt, reason, requestedByRole, null, null, null, null, null);
+        this(ticketId, requestedBy, requestedAt, reason, requestedByRole, null, null, null, null, null, null);
     }
     public static TicketEscalationDetailResponse from(TicketEscalationResponse escalation,
                                                        UUID ownerId, UUID reporterId) {
@@ -31,6 +32,7 @@ public record TicketEscalationDetailResponse(
         return new TicketEscalationDetailResponse(escalation.ticketId(), escalation.requestedBy(),
                 escalation.requestedAt(), escalation.reason(), role, escalation.resolvedAt(),
                 escalation.resolvedBy(), escalation.resolutionType() == null ? null : escalation.resolutionType().name(),
-                escalation.resolutionNote(), escalation.closureReason() == null ? null : escalation.closureReason().name());
+                escalation.resolutionNote(), escalation.closureReason() == null ? null : escalation.closureReason().name(),
+                escalation.escalationId());
     }
 }

@@ -135,7 +135,7 @@ public class SupportTicketServiceImpl implements SupportTicketService {
     }
 
     @Override
-    @Transactional(readOnly = true)
+    @Transactional
     public Page<TicketResponse> getTickets(TicketStatus status, UUID stationId, int page, int size,
                                            TicketListScope scope) {
         UserProfile profile = currentProfileProvider.requireProfile();
@@ -182,13 +182,13 @@ public class SupportTicketServiceImpl implements SupportTicketService {
     }
 
     @Override
-    @Transactional(readOnly = true)
+    @Transactional
     public TicketResponse getTicket(UUID ticketId) {
         return ticketResponseAssembler.toResponse(requireReadableTicket(ticketId));
     }
 
     @Override
-    @Transactional(readOnly = true)
+    @Transactional
     public TicketDetailResponse getTicketDetail(UUID ticketId, TicketListScope scope) {
         return ticketResponseAssembler.toDetail(requireReadableTicket(ticketId, scope));
     }

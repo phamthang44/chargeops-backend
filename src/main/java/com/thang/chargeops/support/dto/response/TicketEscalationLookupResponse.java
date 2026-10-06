@@ -13,8 +13,7 @@ public record TicketEscalationLookupResponse(
 
     public static TicketEscalationLookupResponse of(TicketEscalationResponse escalation) {
         return new TicketEscalationLookupResponse(
-                escalation == null ? null : new TicketEscalationDetailResponse(
-                        escalation.ticketId(), escalation.requestedBy(), escalation.requestedAt(), escalation.reason(), null),
+                TicketEscalationDetailResponse.from(escalation, null, null),
                 ApiResult.Meta.builder().build());
     }
 }

@@ -7,6 +7,10 @@ import com.thang.chargeops.support.dto.response.TicketMessageResponse;
 import com.thang.chargeops.support.dto.response.TicketResponse;
 import com.thang.chargeops.support.dto.response.TicketDetailResponse;
 import com.thang.chargeops.support.service.TicketEscalationService;
+import com.thang.chargeops.support.service.AdminFinanceAccessAudit;
+import com.thang.chargeops.support.service.TicketAccessPolicy;
+import com.thang.chargeops.booking.service.ServiceFailureDecisionReader;
+import com.thang.chargeops.profile.support.CurrentProfileProvider;
 import com.thang.chargeops.support.entity.SupportTicket;
 import com.thang.chargeops.support.entity.TicketFinding;
 import com.thang.chargeops.support.entity.TicketMessage;
@@ -18,7 +22,13 @@ import com.thang.chargeops.support.repository.SupportTicketRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
-import java.util.*;
+import java.time.Instant;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.UUID;
 import java.util.stream.Collectors;
 
 @Service
@@ -32,9 +42,10 @@ public class TicketResponseService {
     private final TicketEventRepository eventRepository;
     private final TicketResponseMapper mapper;
     private final TicketEscalationService escalationService;
-    private final com.thang.chargeops.booking.service.ServiceFailureDecisionReader decisionReader;
-    private final com.thang.chargeops.profile.support.CurrentProfileProvider currentProfile;
-    private final com.thang.chargeops.support.service.TicketAccessPolicy access;
+    private final ServiceFailureDecisionReader decisionReader;
+    private final CurrentProfileProvider currentProfile;
+    private final TicketAccessPolicy access;
+    private final AdminFinanceAccessAudit accessAudit;
 
     public TicketResponse toResponse(SupportTicket ticket) {
         if (ticket == null) {
@@ -54,8 +65,10 @@ public class TicketResponseService {
         boolean owner = access.isOwner(ticket, actor.getId());
         boolean reporter = access.hasRole("DRIVER") && ticket.getReporter().getId().equals(actor.getId());
         boolean admin = access.hasRole("ADMIN") && access.canRead(ticket, actor);
-        return owner || reporter || admin ? detail.withFinancialResolution(
-                decisionReader.forTicket(ticket.getBooking().getId(), ticket.getId(), owner)) : detail;
+        if (!owner && !reporter && !admin) return detail;
+        var financial = decisionReader.forTicket(ticket.getBooking().getId(), ticket.getId(), owner);
+        if (admin) accessAudit.appendAccessEvent(ticket, actor, null, "TICKET_FINANCIAL_RESOLUTION");
+        return detail.withFinancialResolution(financial);
     }
 
     public List<TicketResponse> toResponses(List<SupportTicket> tickets) {
@@ -109,7 +122,7 @@ public class TicketResponseService {
         }
 
         Map<UUID, String> resolutionReasons = new HashMap<>();
-        Map<UUID, java.time.Instant> closedTimes = new HashMap<>();
+        Map<UUID, Instant> closedTimes = new HashMap<>();
         for (TicketEvent event : eventRepository.findWorkflowFacts(ticketIds,
                 List.of("RESOLVED", "REPORTER_CONFIRMED", "AUTO_CLOSED_NO_RESPONSE", "CLOSE_SUPPORT_CASE"))) {
             if ("RESOLVED".equals(event.getEventType())) {
@@ -126,6 +139,9 @@ public class TicketResponseService {
             List<TicketFindingResponse> findings = findingsByTicket.getOrDefault(ticketId, Collections.emptyList());
             List<UUID> refundIds = bookingId == null ? Collections.emptyList()
                     : refundIdsByBooking.getOrDefault(bookingId, Collections.emptyList());
+            if (access.hasRole("ADMIN") && !refundIds.isEmpty()) {
+                accessAudit.appendAccessEvent(ticket, currentProfile.requireProfile(), null, "TICKET_REFUND_REFERENCES");
+            }
             return mapper.map(ticket, messages, findings, refundIds,
                     closedTimes.get(ticketId), resolutionReasons.get(ticketId));
         }).toList();

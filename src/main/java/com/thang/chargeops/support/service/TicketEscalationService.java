@@ -227,6 +227,7 @@ public class TicketEscalationService {
         return new TicketEscalationResponse(escalation.getTicket().getId(),
                 escalation.getRequestedBy().getId(), escalation.getRequestedAt(), escalation.getReason(),
                 escalation.getResolvedAt(), escalation.getResolvedBy() == null ? null : escalation.getResolvedBy().getId(),
-                escalation.getResolutionType(), escalation.getResolutionNote(), escalation.getClosureReason());
+                escalation.getResolutionType(), escalation.getResolutionNote(), escalation.getClosureReason(),
+                escalation.getId());
     }
 }

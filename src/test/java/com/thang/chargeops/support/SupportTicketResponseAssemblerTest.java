@@ -72,7 +72,8 @@ class SupportTicketResponseAssemblerTest {
                 new TicketResponseMapper(), mock(TicketEscalationService.class),
                 mock(com.thang.chargeops.booking.service.ServiceFailureDecisionReader.class),
                 mock(com.thang.chargeops.profile.support.CurrentProfileProvider.class),
-                mock(com.thang.chargeops.support.service.TicketAccessPolicy.class)).toResponse(ticket);
+                mock(com.thang.chargeops.support.service.TicketAccessPolicy.class),
+                mock(com.thang.chargeops.support.service.AdminFinanceAccessAudit.class)).toResponse(ticket);
         assertThat(response.description()).isEqualTo("Charged twice");
         assertThat(response.reporterName()).isEqualTo("Driver");
         assertThat(response.assignedHandlerName()).isEqualTo("Driver");
