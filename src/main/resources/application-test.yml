@@ -14,3 +14,7 @@ spring:
   jpa:
     hibernate:
       ddl-auto: none
+
+app:
+  search:
+    enabled: false

@@ -57,6 +57,26 @@ services:
       timeout: 3s
       retries: 5
 
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:9.4.2
+    restart: unless-stopped
+    environment:
+      discovery.type: single-node
+      xpack.security.enabled: "false"
+      ES_JAVA_OPTS: -Xms512m -Xmx512m
+    labels:
+      org.springframework.boot.ignore: "true" # Use the explicit ELASTICSEARCH_URL setting.
+    ports:
+      - "127.0.0.1:9200:9200"
+    volumes:
+      - chargeops_search_demo:/usr/share/elasticsearch/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:9200/_cluster/health >/dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+
   keycloak:
     build:
       context: ../../chargeops-frontend/chargeops-keycloak/account-console
@@ -170,6 +190,7 @@ services:
       - prometheus
       - keycloak
 volumes:
+  chargeops_search_demo:
   chargeops_postgres_data:
   chargeops_loki_data:
   chargeops_alloy_data:

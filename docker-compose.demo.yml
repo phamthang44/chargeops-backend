@@ -66,6 +66,24 @@ services:
       timeout: 3s
       retries: 5
 
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:9.4.2
+    restart: unless-stopped
+    environment:
+      discovery.type: single-node
+      xpack.security.enabled: "false"
+      ES_JAVA_OPTS: -Xms512m -Xmx512m
+    ports:
+      - "127.0.0.1:9200:9200"
+    volumes:
+      - chargeops_search_demo:/usr/share/elasticsearch/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:9200/_cluster/health >/dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+
   # 3. Keycloak IAM Server (Xác thực người dùng, Google OAuth, Token JWT)
   keycloak:
     build:
@@ -110,6 +128,10 @@ services:
     restart: unless-stopped
     environment:
       - SPRING_PROFILES_ACTIVE=dev
+      - SPRING_DOCKER_COMPOSE_ENABLED=false
+      - ELASTICSEARCH_URL=http://elasticsearch:9200
+      - ELASTICSEARCH_ENABLED=${ELASTICSEARCH_ENABLED:-true}
+      - ELASTICSEARCH_REINDEX_ON_STARTUP=${ELASTICSEARCH_REINDEX_ON_STARTUP:-true}
       - DATABASE_URL=jdbc:postgresql://postgres:5432/${POSTGRES_DB:-chargeops}
       - POSTGRES_USER=${POSTGRES_USER:-chargeops}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-chargeops}
@@ -141,6 +163,8 @@ services:
       postgres:
         condition: service_healthy
       keycloak:
+        condition: service_healthy
+      elasticsearch:
         condition: service_healthy
 
   # 5. Frontend Web Portal (Admin / Owner / Staff Console chạy bằng Nginx)
@@ -247,6 +271,7 @@ services:
       - prometheus
 
 volumes:
+  chargeops_search_demo:
   # Dùng chung named volume để giữ trọn vẹn dữ liệu trạm/user đã tạo lúc Dev
   chargeops_postgres_data:
   chargeops_loki_data:

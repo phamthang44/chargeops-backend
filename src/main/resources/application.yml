@@ -13,7 +13,13 @@ spring:
     active: ${SPRING_PROFILES_ACTIVE:dev}
 
   config:
-    import: optional:file.env[.properties]
+    # Load the root .env as properties for IDE/Maven runs. OS/CLI overrides still apply.
+    import: optional:file:./.env[.properties]
+
+  elasticsearch:
+    uris: ${ELASTICSEARCH_URL:http://localhost:9200}
+    connection-timeout: 3s
+    socket-timeout: 10s
 
   jackson:
     time-zone: UTC
@@ -83,6 +89,9 @@ server:
 # /actuator/** is permitted by Spring Security, but production ingress must only
 # expose these endpoints to the internal monitoring network.
 management:
+  health:
+    elasticsearch:
+      enabled: ${app.search.enabled:true}
   endpoints:
     web:
       exposure:
@@ -106,6 +115,9 @@ management:
         http.server.requests: 10s
 
 app:
+  search:
+    enabled: ${ELASTICSEARCH_ENABLED:true}
+    reindex-on-startup: ${ELASTICSEARCH_REINDEX_ON_STARTUP:true}
   name: ChargeOps
   base-url: ${BACKEND_BASE_URL:http://localhost:8081}
   frontend-url: ${FRONTEND_BASE_URL:http://localhost:5173}

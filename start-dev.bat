@@ -1,4 +1,5 @@
 @echo off
+cd /d "%~dp0"
 title ChargeOps Dev Environment Launcher
 echo =====================================================================
 echo                CHARGEOPS - KHOI DONG MOI TRUONG DEV
@@ -12,9 +13,9 @@ if not exist "logs" mkdir logs
 
 echo.
 echo [2/3] Khoi dong cac container ha tang DEV va Observability...
-echo       - Core DB ^& IAM: Postgres, Redis, Keycloak, Mailpit
+echo       - Core DB ^& IAM ^& Search: Postgres, Redis, Elasticsearch, Keycloak, Mailpit
 echo       - Observability:  Loki, Alloy, Prometheus, Grafana
-docker compose -f docker-compose.yml up -d
+docker compose -f docker-compose.yml up -d --wait --wait-timeout 240
 
 if %ERRORLEVEL% NEQ 0 (
     echo [LOI] Khong the khoi chay Docker Compose DEV! Vui long kiem tra Docker Desktop.
@@ -33,6 +34,7 @@ echo =====================================================================
 echo [CORE SERVICES]
 echo * PostgreSQL + PostGIS:     localhost:5432 (du lieu giu nguyen)
 echo * Redis Cache:              localhost:6379
+echo * Elasticsearch Search:     http://localhost:9200
 echo * Keycloak IAM:             http://localhost:8080
 echo * Mailpit Web Mailbox:      http://localhost:8025
 echo.

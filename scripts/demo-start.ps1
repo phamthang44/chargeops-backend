@@ -26,7 +26,23 @@ try {
   Assert-Command tailscale
 
   Write-Step "Starting Docker services"
-  docker compose up -d postgres redis keycloak mailpit
+  docker compose up -d postgres redis elasticsearch keycloak mailpit
+  if ($LASTEXITCODE -ne 0) { throw "Docker services could not start" }
+
+  Write-Step "Waiting for Elasticsearch on localhost:9200"
+  $searchReady = $false
+  for ($i = 1; $i -le 90; $i++) {
+    try {
+      $searchResponse = Invoke-WebRequest -UseBasicParsing -Uri "http://localhost:9200/_cluster/health" -TimeoutSec 3
+      if ($searchResponse.StatusCode -eq 200) {
+        $searchReady = $true
+        break
+      }
+    } catch {
+      Start-Sleep -Seconds 2
+    }
+  }
+  if (-not $searchReady) { throw "Elasticsearch did not become ready on localhost:9200" }
 
   Write-Step "Waiting for Keycloak on localhost:$KeycloakPort"
   $ready = $false
@@ -54,6 +70,7 @@ try {
   Write-Host "OIDC discovery:      $PublicBaseUrl/realms/$Realm/.well-known/openid-configuration" -ForegroundColor Green
   Write-Host "Keycloak admin:      $PublicBaseUrl/admin" -ForegroundColor Green
   Write-Host "Mailpit local only:  http://localhost:8025" -ForegroundColor Green
+  Write-Host "Elasticsearch local: http://localhost:9200" -ForegroundColor Green
 
   Write-Host ""
   Write-Host "When the demo is done, run:" -ForegroundColor Yellow

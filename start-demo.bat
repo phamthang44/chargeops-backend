@@ -1,6 +1,7 @@
 @echo off
 title ChargeOps 1-Click Full-Stack Demo Launcher
 set "ROOT_DIR=%~dp0"
+cd /d "%ROOT_DIR%"
 set "FRONTEND_DIR=%ROOT_DIR%..\..\chargeops-frontend"
 
 echo =====================================================================
@@ -10,13 +11,14 @@ echo.
 echo [1/4] Dang build va khoi chay cac Docker container (Demo Full-Stack)...
 echo       - PostgreSQL + PostGIS (port 5432)
 echo       - Redis (port 6379)
+echo       - Elasticsearch (port 9200, local only)
 echo       - Keycloak IAM (port 8080)
 echo       - Backend Spring Boot API (port 8081)
 echo       - Web Portal Nginx (port 5173)
 echo       - Mailpit (port 1025 / 8025)
 echo.
 
-docker compose -f docker-compose.demo.yml --env-file .env up --build -d
+docker compose -f docker-compose.demo.yml --env-file .env up --build -d --wait --wait-timeout 240
 
 if %ERRORLEVEL% NEQ 0 (
     echo [LOI] Khong the khoi chay Docker Compose! Vui long kiem tra Docker Desktop da bat chua.
@@ -58,6 +60,7 @@ echo * Grafana Dashboard:        https://thang.tail704409.ts.net/grafana/
 echo * Backend Swagger:          http://localhost:8081/swagger-ui.html
 echo * SePay Webhook Endpoint:   https://thang.tail704409.ts.net/api/v1/webhooks/sepay
 echo * Mailpit Web Mailbox:      http://localhost:8025/
+echo * Elasticsearch (local):    http://localhost:9200/
 echo =====================================================================
 echo.
 echo Meo xem log:
