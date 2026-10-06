@@ -16,6 +16,10 @@ import java.util.UUID;
 
 public interface PaymentTransactionRepository extends JpaRepository<PaymentTransaction, UUID> {
 
+    /** Transaction-scoped transport identity lock, including receipts without a Payment. */
+    @Query(value = "SELECT 1 FROM pg_advisory_xact_lock(hashtextextended(:identity, 0))", nativeQuery = true)
+    int lockReceiptIdentity(@Param("identity") String identity);
+
     /** Acquire after Actor/Profile -> Connector -> Booking -> Payment, before Refund. */
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("SELECT pt FROM PaymentTransaction pt WHERE pt.id = :id")

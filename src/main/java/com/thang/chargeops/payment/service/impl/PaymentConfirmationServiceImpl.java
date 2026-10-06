@@ -61,9 +61,17 @@ public class PaymentConfirmationServiceImpl implements PaymentConfirmationServic
         if (duplicate.isPresent()) return PaymentReceiptResult.duplicate(duplicate.get());
 
         PaymentMatch match = matchExactOrder(receipt);
-        if (!match.matched()) return saveUnmatched(receipt, match.reason());
+        if (!match.matched()) {
+            lockReceiptIdentity(receipt);
+            duplicate = findDuplicate(receipt);
+            return duplicate.isPresent() ? PaymentReceiptResult.duplicate(duplicate.get())
+                    : saveUnmatched(receipt, match.reason());
+        }
 
         LockedPaymentContext context = lockPaymentContext(match.projection());
+        // Simulator callers may already hold these business locks. Never take the
+        // transport lock before Connector -> Booking -> Payment on the matched path.
+        lockReceiptIdentity(receipt);
 
         // A concurrent webhook for the same Payment waits on the locks above.
         // Check again after the wait so it sees the transaction committed by the first request.
@@ -88,7 +96,17 @@ public class PaymentConfirmationServiceImpl implements PaymentConfirmationServic
 
     private Optional<PaymentTransaction> findDuplicate(NormalizedReceipt receipt) {
         return paymentTransactionRepository.findByProviderAndReceivingAccountRefAndTransactionRef(
-                receipt.provider(), receipt.receivingAccountRef(), receipt.transactionRef());
+                receipt.provider().trim(), receipt.receivingAccountRef().trim(), receipt.transactionRef().trim());
+    }
+
+    private void lockReceiptIdentity(NormalizedReceipt receipt) {
+        String provider = receipt.provider().trim();
+        String account = receipt.receivingAccountRef().trim();
+        String reference = receipt.transactionRef().trim();
+        // Length prefixes keep identities distinct even when provider values contain separators.
+        String identity = "chargeops:receipt:" + provider.length() + ":" + provider
+                + account.length() + ":" + account + reference.length() + ":" + reference;
+        paymentTransactionRepository.lockReceiptIdentity(identity);
     }
 
     /** Both order code and VA must identify the same Payment without loading entities before the lock. */
@@ -176,11 +194,10 @@ public class PaymentConfirmationServiceImpl implements PaymentConfirmationServic
     }
 
     private PaymentReceiptResult saveUnmatched(NormalizedReceipt receipt, PaymentApplicationReason reason) {
-        log.warn("Unmatched receipt: provider={}, account={}, txRef={}, reason={}",
-                receipt.provider(), receipt.receivingAccountRef(), receipt.transactionRef(), reason);
         PaymentTransaction transaction = PaymentTransaction.create(null, receipt);
         transaction.noteUnapplied(reason.name());
-        paymentTransactionRepository.save(transaction);
+        transaction = paymentTransactionRepository.save(transaction);
+        log.warn("Unmatched receipt retained: receiptId={}, reason={}", transaction.getId(), reason);
         return PaymentReceiptResult.unmatched(transaction);
     }
 
@@ -189,7 +206,7 @@ public class PaymentConfirmationServiceImpl implements PaymentConfirmationServic
                 payment.getId(), receipt.transactionRef(), reason);
         PaymentTransaction transaction = PaymentTransaction.create(payment, receipt);
         transaction.noteUnapplied(reason.name());
-        paymentTransactionRepository.save(transaction);
+        transaction = paymentTransactionRepository.save(transaction);
         return PaymentReceiptResult.unapplied(transaction, reason.name());
     }
 
@@ -197,7 +214,7 @@ public class PaymentConfirmationServiceImpl implements PaymentConfirmationServic
             LockedPaymentContext context, NormalizedReceipt receipt, Instant acceptedAt) {
         PaymentTransaction transaction = PaymentTransaction.create(context.payment(), receipt);
         context.payment().acceptReceipt(transaction, acceptedAt);
-        paymentTransactionRepository.save(transaction);
+        transaction = paymentTransactionRepository.save(transaction);
 
         Instant graceDeadline = acceptedAt.plus(
                 Duration.ofMinutes(bookingPolicyConfig.getCancellationGraceMinutes()));

@@ -7,11 +7,16 @@ import com.thang.chargeops.booking.repository.BookingRepository;
 import com.thang.chargeops.booking.service.impl.BookingExpirationServiceImpl;
 import com.thang.chargeops.common.enums.BookingStatus;
 import com.thang.chargeops.common.enums.PaymentStatus;
+import com.thang.chargeops.exception.AppException;
+import com.thang.chargeops.exception.errorcode.CommonErrorCode;
 import com.thang.chargeops.payment.model.NormalizedReceipt;
 import com.thang.chargeops.payment.model.PaymentReceiptResult;
 import com.thang.chargeops.payment.repository.PaymentRepository;
 import com.thang.chargeops.payment.repository.PaymentTransactionRepository;
 import com.thang.chargeops.payment.service.impl.PaymentConfirmationServiceImpl;
+import com.thang.chargeops.payment.service.impl.OwnerFinanceServiceImpl;
+import com.thang.chargeops.profile.support.CurrentProfileProvider;
+import com.thang.chargeops.refund.repository.RefundRepository;
 import com.thang.chargeops.station.repository.ConnectorRepository;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -20,6 +25,7 @@ import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabas
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.context.annotation.Import;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.annotation.Propagation;
@@ -42,12 +48,18 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Supplier;
+import tools.jackson.databind.ObjectMapper;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 import static org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase.Replace.NONE;
 
-@Testcontainers(disabledWithoutDocker = true)
+@Testcontainers
 @DataJpaTest(properties = {
         "spring.jpa.hibernate.ddl-auto=validate",
         "spring.flyway.enabled=true",
@@ -74,7 +86,7 @@ class PaymentConfirmationConcurrencyIntegrationTest {
     private BookingRepository bookingRepository;
     @Autowired
     private PaymentRepository paymentRepository;
-    @Autowired
+    @MockitoSpyBean
     private PaymentTransactionRepository transactionRepository;
     @Autowired
     private BookingStatusHistoryRepository historyRepository;
@@ -84,6 +96,181 @@ class PaymentConfirmationConcurrencyIntegrationTest {
     private JdbcTemplate jdbcTemplate;
     @Autowired
     private PlatformTransactionManager transactionManager;
+
+    @Autowired
+    private RefundRepository refundRepository;
+
+    @Test
+    void concurrentUnmatchedCallbacksRetainOneReceiptAndReplayTheSameEvidence() throws Exception {
+        NormalizedReceipt receipt = new NormalizedReceipt("SIMULATOR", "UNKNOWN-ACCOUNT",
+                "UNMATCHED-" + UUID.randomUUID(), AMOUNT, "VND", ACCEPTED_AT, ACCEPTED_AT,
+                null, null, "technical exception", "{\"secret\":\"private\"}");
+        PaymentConfirmationServiceImpl service = serviceAt(ACCEPTED_AT);
+        CountDownLatch ready = new CountDownLatch(2);
+        CountDownLatch start = new CountDownLatch(1);
+        CountDownLatch initialLookups = new CountDownLatch(2);
+        var lookupCount = new AtomicInteger();
+        // Force both requests to observe no receipt before either tries to insert.
+        doAnswer(invocation -> {
+            List<UUID> ids = jdbcTemplate.queryForList("""
+                    SELECT id FROM payment_transactions
+                    WHERE provider = ? AND receiving_account_ref = ? AND transaction_ref = ?
+                    """, UUID.class, receipt.provider(), receipt.receivingAccountRef(), receipt.transactionRef());
+            var result = ids.isEmpty() ? java.util.Optional.empty() : transactionRepository.findById(ids.getFirst());
+            if (lookupCount.incrementAndGet() <= 2) {
+                assertThat(ids).isEmpty();
+                initialLookups.countDown();
+                assertThat(initialLookups.await(5, TimeUnit.SECONDS)).isTrue();
+            }
+            return result;
+        }).when(transactionRepository).findByProviderAndReceivingAccountRefAndTransactionRef(
+                receipt.provider(), receipt.receivingAccountRef(), receipt.transactionRef());
+        try (var executor = Executors.newFixedThreadPool(2)) {
+            Future<PaymentReceiptResult> first = executor.submit(() -> processAfterBarrier(service, receipt, ready, start));
+            Future<PaymentReceiptResult> second = executor.submit(() -> processAfterBarrier(service, receipt, ready, start));
+            assertThat(ready.await(5, TimeUnit.SECONDS)).isTrue();
+            start.countDown();
+            var results = List.of(first.get(10, TimeUnit.SECONDS), second.get(10, TimeUnit.SECONDS));
+            assertThat(results).extracting(PaymentReceiptResult::status).containsExactlyInAnyOrder(
+                    PaymentReceiptResult.Status.UNMATCHED, PaymentReceiptResult.Status.DUPLICATE);
+            assertThat(results).extracting(PaymentReceiptResult::transactionId).doesNotContainNull().containsOnly(results.getFirst().transactionId());
+        }
+        assertThat(jdbcTemplate.queryForObject("SELECT count(*) FROM payment_transactions WHERE transaction_ref = ?",
+                Long.class, receipt.transactionRef())).isOne();
+        var stored = transactionRepository.findByProviderAndReceivingAccountRefAndTransactionRef(
+                receipt.provider(), receipt.receivingAccountRef(), receipt.transactionRef()).orElseThrow();
+        assertThat(stored.getPayment()).isNull();
+        assertThat(stored.getApplicationClassification().name()).isEqualTo("UNAPPLIED");
+        assertThat(stored.getRawPayload()).contains("private");
+    }
+
+    @Test
+    void replayWithPaddedIdentityUsesThePersistedCanonicalReceipt() {
+        Fixture fixture = createFixture(ACCEPTED_AT.plusSeconds(300));
+        NormalizedReceipt clean = receipt(fixture, "PADDED-" + UUID.randomUUID(), ACCEPTED_AT);
+        var first = inNewTransaction(() -> serviceAt(ACCEPTED_AT).processReceipt(clean));
+        NormalizedReceipt padded = new NormalizedReceipt(" SIMULATOR ", " " + fixture.accountRef() + " ",
+                " " + clean.transactionRef() + " ", AMOUNT, "VND", ACCEPTED_AT, ACCEPTED_AT,
+                fixture.vaNumber(), fixture.paymentCode(), "replay", "{}");
+        var replay = inNewTransaction(() -> serviceAt(ACCEPTED_AT).processReceipt(padded));
+        assertThat(first.status()).isEqualTo(PaymentReceiptResult.Status.APPLIED);
+        assertThat(replay.status()).isEqualTo(PaymentReceiptResult.Status.DUPLICATE);
+        assertThat(first.transactionId()).isNotNull().isEqualTo(replay.transactionId());
+        assertThat(jdbcTemplate.queryForObject("SELECT count(*) FROM payment_transactions WHERE payment_id = ?",
+                Long.class, fixture.paymentId())).isOne();
+    }
+
+    @Test
+    void underAndOverReceiptsStayOutsideThePackageLedgerAndNeverCreateRefunds() {
+        for (String amount : List.of("119999", "120001")) {
+            Fixture fixture = createFixture(ACCEPTED_AT.plusSeconds(300));
+            NormalizedReceipt exception = new NormalizedReceipt("SIMULATOR", fixture.accountRef(),
+                    "AMOUNT-" + UUID.randomUUID(), new BigDecimal(amount), "VND", ACCEPTED_AT, ACCEPTED_AT,
+                    fixture.vaNumber(), fixture.paymentCode(), "amount exception", "{}");
+            var result = inNewTransaction(() -> serviceAt(ACCEPTED_AT).processReceipt(exception));
+            assertThat(result.status()).isEqualTo(PaymentReceiptResult.Status.UNAPPLIED);
+            assertThat(result.transactionId()).isNotNull();
+            assertThat(result.reason()).isEqualTo(amount.equals("119999") ? "UNDERPAYMENT" : "OVERPAYMENT");
+            assertThat(paymentRepository.findById(fixture.paymentId()).orElseThrow().getStatus()).isEqualTo(PaymentStatus.PENDING);
+            UUID ownerId = ownerOf(fixture);
+            var totals = paymentRepository.summarizeOwnerSimulatorLedger(ownerId);
+            assertThat(totals.getGrossAmount()).isZero();
+            assertThat(refundRepository.findByBookingIdOrderByCreatedAtAscIdAsc(fixture.bookingId())).isEmpty();
+        }
+    }
+
+    @Test
+    void differentReceiptReferencesRetainExcessWithoutCountingThePackageTwice() throws Exception {
+        Fixture fixture = createFixture(ACCEPTED_AT.plusSeconds(300));
+        var firstReceipt = receipt(fixture, "FIRST-" + UUID.randomUUID(), ACCEPTED_AT);
+        var secondReceipt = receipt(fixture, "EXCESS-" + UUID.randomUUID(), ACCEPTED_AT);
+        var service = serviceAt(ACCEPTED_AT);
+        CountDownLatch ready = new CountDownLatch(2);
+        CountDownLatch start = new CountDownLatch(1);
+        try (var executor = Executors.newFixedThreadPool(2)) {
+            var first = executor.submit(() -> processAfterBarrier(service, firstReceipt, ready, start));
+            var second = executor.submit(() -> processAfterBarrier(service, secondReceipt, ready, start));
+            assertThat(ready.await(5, TimeUnit.SECONDS)).isTrue();
+            start.countDown();
+            assertThat(List.of(first.get(10, TimeUnit.SECONDS), second.get(10, TimeUnit.SECONDS)))
+                    .extracting(PaymentReceiptResult::status).containsExactlyInAnyOrder(
+                            PaymentReceiptResult.Status.APPLIED, PaymentReceiptResult.Status.UNAPPLIED);
+        }
+        var evidence = transactionRepository.findByPaymentIdOrderByReceivedAtAscIdAsc(fixture.paymentId());
+        assertThat(evidence).hasSize(2);
+        assertThat(evidence).filteredOn(tx -> tx.getApplicationClassification().name().equals("UNAPPLIED"))
+                .singleElement().satisfies(tx -> assertThat(tx.getApplicationReason()).isEqualTo("ALREADY_PAID"));
+        assertThat(paymentRepository.summarizeOwnerSimulatorLedger(ownerOf(fixture)).getGrossAmount()).isEqualByComparingTo(AMOUNT);
+        assertThat(refundRepository.findByBookingIdOrderByCreatedAtAscIdAsc(fixture.bookingId())).isEmpty();
+    }
+
+    @Test
+    void ownerReadsOnlyOwnSimulatorAppliedReceiptsAndNeverSerializesPrivateEvidence() {
+        Fixture fixture = createFixture(ACCEPTED_AT.plusSeconds(300));
+        inNewTransaction(() -> serviceAt(ACCEPTED_AT).processReceipt(receipt(fixture, "OWNER-" + UUID.randomUUID(), ACCEPTED_AT)));
+        // A second monetary receipt is evidence, not an additional package collection.
+        inNewTransaction(() -> serviceAt(ACCEPTED_AT).processReceipt(receipt(fixture, "EXTRA-" + UUID.randomUUID(), ACCEPTED_AT)));
+        var profile = mock(CurrentProfileProvider.class);
+        UUID ownerId = ownerOf(fixture);
+        when(profile.requireProfileId()).thenReturn(ownerId);
+        var finance = new OwnerFinanceServiceImpl(
+                profile, paymentRepository, transactionRepository, refundRepository);
+        inNewTransaction(() -> {
+            var detail = finance.get(fixture.bookingId());
+            assertThat(detail.collectedAmount()).isEqualTo(120000);
+            assertThat(detail.receipts()).hasSize(1);
+            String json = new ObjectMapper().writeValueAsString(detail);
+            assertThat(json).doesNotContain("rawPayload", "raw_payload", "receivingAccountRef", "receiving_account_ref", fixture.accountRef());
+            assertThat(finance.list(1, 20).getTotalElements()).isOne();
+            return null;
+        });
+        when(profile.requireProfileId()).thenReturn(UUID.randomUUID());
+        inNewTransaction(() -> {
+            assertThat(finance.list(1, 20)).isEmpty();
+            assertThatThrownBy(() -> finance.get(fixture.bookingId()))
+                    .isInstanceOfSatisfying(AppException.class,
+                            error -> assertThat(error.getErrorCode()).isEqualTo(CommonErrorCode.RESOURCE_NOT_FOUND));
+            return null;
+        });
+        when(profile.requireProfileId()).thenReturn(ownerId);
+        for (String environment : List.of("TEST", "LIVE", "LEGACY")) {
+            inNewTransaction(() -> {
+                jdbcTemplate.update("UPDATE payments SET environment = ? WHERE id = ?", environment, fixture.paymentId());
+                return null;
+            });
+            inNewTransaction(() -> {
+                assertThat(finance.summary().grossVnd()).isZero();
+                assertThat(finance.list(1, 20)).isEmpty();
+                assertThatThrownBy(() -> finance.get(fixture.bookingId()))
+                        .isInstanceOfSatisfying(AppException.class,
+                                error -> assertThat(error.getErrorCode()).isEqualTo(CommonErrorCode.RESOURCE_NOT_FOUND));
+                return null;
+            });
+        }
+    }
+
+    @Test
+    void additionalReceiptAfterPackageRefundCannotChangeRefundOrReviveBooking() {
+        Fixture fixture = createFixture(ACCEPTED_AT.plusSeconds(300));
+        inNewTransaction(() -> serviceAt(ACCEPTED_AT).processReceipt(receipt(fixture, "PAID-" + UUID.randomUUID(), ACCEPTED_AT)));
+        inNewTransaction(() -> {
+            paymentRepository.findByIdWithLock(fixture.paymentId()).orElseThrow().recordFullRefund(AMOUNT);
+            return null;
+        });
+        var extra = inNewTransaction(() -> serviceAt(ACCEPTED_AT).processReceipt(receipt(fixture, "AFTER-REFUND-" + UUID.randomUUID(), ACCEPTED_AT)));
+        assertThat(extra.status()).isEqualTo(PaymentReceiptResult.Status.UNAPPLIED);
+        var payment = paymentRepository.findById(fixture.paymentId()).orElseThrow();
+        assertThat(payment.getStatus()).isEqualTo(PaymentStatus.REFUNDED);
+        assertThat(payment.getRefundAmount()).isEqualByComparingTo(AMOUNT);
+        assertThat(bookingRepository.findById(fixture.bookingId()).orElseThrow().getStatus()).isEqualTo(BookingStatus.CONFIRMED);
+    }
+
+    private UUID ownerOf(Fixture fixture) {
+        return jdbcTemplate.queryForObject("""
+                SELECT s.owner_id FROM stations s JOIN charge_points cp ON cp.station_id = s.id
+                JOIN connectors c ON c.charge_point_id = cp.id WHERE c.id = ?
+                """, UUID.class, fixture.connectorId());
+    }
 
     @Test
     void concurrentCallbacksWithSameReferenceCreateExactlyOneReceipt() throws Exception {
@@ -424,11 +611,11 @@ class PaymentConfirmationConcurrencyIntegrationTest {
                     AMOUNT,
                     Timestamp.from(holdExpiry));
             jdbcTemplate.update("""
-                    INSERT INTO payments(id, booking_id, amount, status, method, refund_amount,
+                    INSERT INTO payments(id, booking_id, amount, status, method, environment, refund_amount,
                                          provider, receiving_account_ref, currency, version,
                                          needs_reconciliation, payment_code, provider_order_ref,
                                          va_number, provider_expires_at)
-                    VALUES (?, ?, ?, 'PENDING', 'SIMULATOR', 0, 'SIMULATOR', ?, 'VND', 0,
+                    VALUES (?, ?, ?, 'PENDING', 'SIMULATOR', 'SIMULATOR', 0, 'SIMULATOR', ?, 'VND', 0,
                             false, ?, ?, ?, ?)
                     """,
                     paymentId,
