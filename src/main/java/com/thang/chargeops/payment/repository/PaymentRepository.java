@@ -32,6 +32,47 @@ public interface PaymentRepository extends JpaRepository<Payment, UUID> {
     """)
     OwnerFinanceTotalsProjection summarizeOwnerSimulatorLedger(@Param("ownerId") UUID ownerId);
 
+    @Query("""
+        SELECT COUNT(p)
+        FROM Payment p
+        WHERE p.booking.financialOwnerId = :ownerId
+          AND p.environment = com.thang.chargeops.common.enums.PaymentEnvironment.SIMULATOR
+          AND (
+              (
+                  p.status IN (com.thang.chargeops.common.enums.PaymentStatus.PAID,
+                               com.thang.chargeops.common.enums.PaymentStatus.REFUNDED)
+                  AND (
+                      p.paidAt IS NULL
+                      OR
+                      COALESCE(p.amount, 0) != (
+                          SELECT COALESCE(SUM(pt.amount), 0)
+                          FROM PaymentTransaction pt
+                          WHERE pt.payment = p
+                            AND pt.applicationClassification = com.thang.chargeops.common.enums.PaymentApplicationClassification.APPLIED
+                      )
+                      OR
+                      COALESCE(p.refundAmount, 0) != (
+                          SELECT COALESCE(SUM(rf.amount), 0)
+                          FROM Refund rf
+                          WHERE rf.booking = p.booking
+                            AND rf.status = com.thang.chargeops.refund.model.RefundStatus.SUCCEEDED
+                      )
+                  )
+              )
+              OR
+              (
+                  p.status NOT IN (com.thang.chargeops.common.enums.PaymentStatus.PAID,
+                                   com.thang.chargeops.common.enums.PaymentStatus.REFUNDED)
+                  AND EXISTS (
+                      SELECT 1 FROM PaymentTransaction pt
+                      WHERE pt.payment = p
+                        AND pt.applicationClassification = com.thang.chargeops.common.enums.PaymentApplicationClassification.APPLIED
+                  )
+              )
+          )
+    """)
+    long countOwnerSimulatorDriftedPayments(@Param("ownerId") UUID ownerId);
+
     @EntityGraph(attributePaths = {"booking", "booking.connector", "booking.connector.chargePoint",
             "booking.connector.chargePoint.station"})
     @Query("""

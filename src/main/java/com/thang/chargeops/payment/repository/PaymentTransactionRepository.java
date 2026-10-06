@@ -10,6 +10,8 @@ import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.math.BigDecimal;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -51,4 +53,27 @@ public interface PaymentTransactionRepository extends JpaRepository<PaymentTrans
         ORDER BY pt.receivedAt ASC, pt.id ASC
     """)
     List<UUID> findAppliedReceiptIdsByPaymentId(@Param("paymentId") UUID paymentId);
+
+    @Query("""
+        SELECT COALESCE(SUM(pt.amount), 0)
+        FROM PaymentTransaction pt
+        JOIN pt.payment p
+        WHERE p.booking.financialOwnerId = :ownerId
+          AND p.environment = com.thang.chargeops.common.enums.PaymentEnvironment.SIMULATOR
+          AND p.status IN (com.thang.chargeops.common.enums.PaymentStatus.PAID,
+                           com.thang.chargeops.common.enums.PaymentStatus.REFUNDED)
+          AND pt.applicationClassification = com.thang.chargeops.common.enums.PaymentApplicationClassification.APPLIED
+    """)
+    BigDecimal sumOwnerAppliedSimulatorReceipts(@Param("ownerId") UUID ownerId);
+
+    @Query("""
+        SELECT pt FROM PaymentTransaction pt
+        WHERE pt.payment.id IN :paymentIds
+          AND pt.applicationClassification = :classification
+        ORDER BY pt.receivedAt ASC, pt.id ASC
+    """)
+    List<PaymentTransaction> findByPaymentIdInAndApplicationClassification(
+            @Param("paymentIds") Collection<UUID> paymentIds,
+            @Param("classification") PaymentApplicationClassification classification
+    );
 }

@@ -3,6 +3,7 @@ package com.thang.chargeops.payment.service.impl;
 import com.thang.chargeops.common.enums.PaymentApplicationClassification;
 import com.thang.chargeops.exception.AppException;
 import com.thang.chargeops.exception.errorcode.CommonErrorCode;
+import com.thang.chargeops.exception.errorcode.PaymentErrorCode;
 import com.thang.chargeops.payment.dto.response.OwnerFinanceBookingResponse;
 import com.thang.chargeops.payment.entity.Payment;
 import com.thang.chargeops.payment.dto.response.OwnerFinanceSummaryResponse;
@@ -19,6 +20,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
@@ -36,19 +38,28 @@ public class OwnerFinanceServiceImpl implements OwnerFinanceService {
     private final RefundRepository refundRepository;
 
     @Override
-    @Transactional(readOnly = true)
+    @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
     public OwnerFinanceSummaryResponse summary() {
         UUID ownerId = currentProfileProvider.requireProfileId();
+        long driftedCount = paymentRepository.countOwnerSimulatorDriftedPayments(ownerId);
+        if (driftedCount > 0) {
+            Map<String, Object> details = Map.of(
+                    "ownerId", ownerId,
+                    "driftType", "ITEM_LEVEL_DISCREPANCY",
+                    "driftedPaymentCount", driftedCount
+            );
+            throw AppException.withDetails(PaymentErrorCode.PROJECTION_BOUNDS_VIOLATED, details);
+        }
         var totals = paymentRepository.summarizeOwnerSimulatorLedger(ownerId);
-        long gross = totals.getGrossAmount().longValueExact();
-        long refunded = totals.getRefundedAmount().longValueExact();
+        long gross = transactionRepository.sumOwnerAppliedSimulatorReceipts(ownerId).longValueExact();
+        long refunded = refundRepository.sumOwnerSucceededSimulatorRefunds(ownerId).longValueExact();
+        long pending = refundRepository.sumOwnerPendingSimulatorRefunds(ownerId).longValueExact();
         return new OwnerFinanceSummaryResponse(gross, refunded, gross - refunded,
-                refundRepository.sumOwnerPendingSimulatorRefunds(ownerId).longValueExact(),
-                totals.getPaymentCount(), totals.getPaidCount());
+                pending, totals.getPaymentCount(), totals.getPaidCount());
     }
 
     @Override
-    @Transactional(readOnly = true)
+    @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
     public Page<OwnerFinanceBookingResponse> list(int pageNo, int pageSize) {
         UUID ownerId = currentProfileProvider.requireProfileId();
         Page<Payment> payments = paymentRepository.findOwnerSimulatorLedger(ownerId,
@@ -56,16 +67,30 @@ public class OwnerFinanceServiceImpl implements OwnerFinanceService {
                         Sort.by(Sort.Order.desc("paidAt"), Sort.Order.desc("id"))));
         List<UUID> bookingIds = payments.getContent().stream()
                 .map(payment -> payment.getBooking().getId()).toList();
+        List<UUID> paymentIds = payments.getContent().stream()
+                .map(Payment::getId).toList();
+
+        Map<UUID, Long> appliedReceiptsByPaymentId = paymentIds.isEmpty() ? Map.of()
+                : transactionRepository.findByPaymentIdInAndApplicationClassification(
+                        paymentIds, PaymentApplicationClassification.APPLIED).stream()
+                .collect(Collectors.groupingBy(
+                        tx -> tx.getPayment().getId(),
+                        Collectors.summingLong(tx -> tx.getAmount().longValueExact())));
+
         Map<UUID, Refund> refunds = bookingIds.isEmpty() ? Map.of()
                 : refundRepository.findByBookingIdInOrderByCreatedAtAscIdAsc(bookingIds).stream()
                 .collect(Collectors.toMap(refund -> refund.getBooking().getId(), Function.identity(),
                         (first, second) -> second));
-        return payments.map(payment -> response(payment,
-                refunds.get(payment.getBooking().getId()), List.of()));
+
+        return payments.map(payment -> {
+            long collected = appliedReceiptsByPaymentId.getOrDefault(payment.getId(), 0L);
+            Refund refund = refunds.get(payment.getBooking().getId());
+            return response(payment, refund, List.of(), collected);
+        });
     }
 
     @Override
-    @Transactional(readOnly = true)
+    @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
     public OwnerFinanceBookingResponse get(UUID bookingId) {
         UUID ownerId = currentProfileProvider.requireProfileId();
         Payment payment = paymentRepository.findOwnerSimulatorBookingPayment(ownerId, bookingId)
@@ -76,20 +101,40 @@ public class OwnerFinanceServiceImpl implements OwnerFinanceService {
                 .findByPaymentIdOrderByReceivedAtAscIdAsc(payment.getId()).stream()
                 .filter(tx -> tx.getApplicationClassification() == PaymentApplicationClassification.APPLIED)
                 .map(this::receipt).toList();
-        return response(payment, refund, receipts);
+        long collected = receipts.stream().mapToLong(OwnerFinanceBookingResponse.Receipt::amount).sum();
+        return response(payment, refund, receipts, collected);
     }
 
     private OwnerFinanceBookingResponse response(Payment payment, Refund refund,
-                                                  List<OwnerFinanceBookingResponse.Receipt> receipts) {
+                                                  List<OwnerFinanceBookingResponse.Receipt> receipts,
+                                                  long collected) {
         var booking = payment.getBooking();
         var station = booking.getConnector().getChargePoint().getStation();
-        long collected = payment.getPaidAt() == null ? 0 : payment.getAmount().longValueExact();
-        long refunded = payment.getRefundAmount() == null ? 0 : payment.getRefundAmount().longValueExact();
-        long pending = refund != null && refund.getStatus() == RefundStatus.PENDING
-                ? refund.getAmount().longValueExact() : 0;
+
+        long mirrorCollected = payment.getAmount() == null ? 0L : payment.getAmount().longValueExact();
+        long mirrorRefunded = payment.getRefundAmount() == null ? 0L : payment.getRefundAmount().longValueExact();
+        long sourceRefunded = (refund != null && refund.getStatus() == RefundStatus.SUCCEEDED)
+                ? refund.getAmount().longValueExact() : 0L;
+
+        if (payment.getPaidAt() == null || collected != mirrorCollected || sourceRefunded != mirrorRefunded) {
+            Map<String, Object> details = Map.of(
+                    "paymentId", payment.getId(),
+                    "bookingId", booking.getId(),
+                    "sourceCollected", collected,
+                    "mirrorCollected", mirrorCollected,
+                    "sourceRefunded", sourceRefunded,
+                    "mirrorRefunded", mirrorRefunded,
+                    "paidAtNull", payment.getPaidAt() == null
+            );
+            throw AppException.withDetails(PaymentErrorCode.PROJECTION_BOUNDS_VIOLATED, details);
+        }
+
+        long pending = (refund != null && refund.getStatus() == RefundStatus.PENDING)
+                ? refund.getAmount().longValueExact() : 0L;
+
         return new OwnerFinanceBookingResponse(booking.getId(), booking.getBookingCode(),
-                station.getId(), station.getName(), payment.getStatus(), collected, refunded,
-                pending, collected - refunded, refund == null ? null : refund.getStatus(),
+                station.getId(), station.getName(), payment.getStatus(), collected, sourceRefunded,
+                pending, collected - sourceRefunded, refund == null ? null : refund.getStatus(),
                 payment.getPaidAt(), receipts);
     }
 
