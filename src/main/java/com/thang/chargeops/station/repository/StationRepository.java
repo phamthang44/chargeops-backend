@@ -24,6 +24,32 @@ import java.util.UUID;
 @Repository
 public interface StationRepository extends JpaRepository<Station, UUID>, JpaSpecificationExecutor<Station> {
 
+    interface OwnerOperationsTotals {
+        long getTotalStations();
+        long getActiveStations();
+        long getVisibleToDrivers();
+        long getPendingApproval();
+    }
+
+    @Query("""
+            SELECT COUNT(s) AS totalStations,
+                   COALESCE(SUM(CASE WHEN s.status = com.thang.chargeops.common.enums.StationStatus.ACTIVE
+                       THEN 1 ELSE 0 END), 0) AS activeStations,
+                   COALESCE(SUM(CASE WHEN s.status = com.thang.chargeops.common.enums.StationStatus.ACTIVE
+                       AND EXISTS (SELECT l.id FROM License l WHERE l.station = s
+                           AND l.status = com.thang.chargeops.common.enums.LicenseStatus.ACTIVE
+                           AND l.startAt <= :at AND l.expiresAt > :at)
+                       AND EXISTS (SELECT c.id FROM Connector c JOIN c.chargePoint cp
+                           WHERE cp.station = s AND cp.provisioningStatus =
+                               com.thang.chargeops.common.enums.ProvisioningStatus.ACTIVE
+                           AND cp.deletedAt IS NULL AND c.deletedAt IS NULL)
+                       THEN 1 ELSE 0 END), 0) AS visibleToDrivers,
+                   COALESCE(SUM(CASE WHEN s.status = com.thang.chargeops.common.enums.StationStatus.PENDING_APPROVAL
+                       THEN 1 ELSE 0 END), 0) AS pendingApproval
+            FROM Station s WHERE s.owner.id = :ownerId AND s.deletedAt IS NULL
+            """)
+    OwnerOperationsTotals summarizeOwnerOperations(@Param("ownerId") UUID ownerId, @Param("at") Instant at);
+
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("SELECT station FROM Station station JOIN FETCH station.owner WHERE station.id = :stationId")
     Optional<Station> findByIdForPricingUpdate(@Param("stationId") UUID stationId);
@@ -37,6 +63,7 @@ public interface StationRepository extends JpaRepository<Station, UUID>, JpaSpec
                            s.stationCode AS stationCode,
                            s.name AS name,
                            s.addressLine AS addressLine,
+                           s.contactPhone AS contactPhone,
                            province.fullName AS provinceName,
                            ward.fullName AS wardName,
                            s.plannedChargePointCount AS plannedChargePointCount,

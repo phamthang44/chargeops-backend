@@ -14,6 +14,22 @@ import java.util.UUID;
 
 public interface ChargePointRepository extends JpaRepository<ChargePoint, UUID> {
 
+    interface OwnerOperationsTotals {
+        long getTotalChargePoints();
+        long getOnlineChargePoints();
+    }
+
+    @Query("""
+            SELECT COUNT(cp) AS totalChargePoints,
+                   COALESCE(SUM(CASE WHEN cp.operationalChargePointStatus =
+                       com.thang.chargeops.common.enums.OperationalChargePointStatus.AVAILABLE
+                       THEN 1 ELSE 0 END), 0) AS onlineChargePoints
+            FROM ChargePoint cp JOIN cp.station s
+            WHERE s.owner.id = :ownerId AND s.deletedAt IS NULL AND cp.deletedAt IS NULL
+                AND cp.provisioningStatus = com.thang.chargeops.common.enums.ProvisioningStatus.ACTIVE
+            """)
+    OwnerOperationsTotals summarizeOwnerOperations(@Param("ownerId") UUID ownerId);
+
     boolean existsByStationIdAndChargePointCode(UUID stationId, String chargePointCode);
 
     long countByStationId(UUID stationId);

@@ -12,6 +12,8 @@ import java.util.UUID;
 
 public interface StationService {
 
+    OwnerOperationsSummaryResponse getOwnerOperationsSummary();
+
     StationCreatedResponse createStationRegistration(RegisterStationRequest request);
 
     StationApprovalDetailResponse getStationApprovalDetail(UUID stationId);

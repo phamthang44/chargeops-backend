@@ -141,7 +141,11 @@ class StationServiceImplTest {
                         stationOperatingScheduleRepository,
                         effectiveStateResolver,
                         operationalStatusPolicy,
-                        operationalStatusEventRepository
+                        operationalStatusEventRepository,
+                        mock(com.thang.chargeops.station.repository.ChargePointRepository.class),
+                        mock(com.thang.chargeops.station.repository.ConnectorRepository.class),
+                        mock(com.thang.chargeops.booking.repository.OwnerBookingReadRepository.class),
+                        java.time.Clock.systemUTC()
                 ),
                 new AdminStationQueryUseCase(
                         stationRepository,
@@ -301,6 +305,7 @@ class StationServiceImplTest {
                 "ST-0001",
                 "Station",
                 "123 Main Street",
+                "0912345678",
                 "Ha Noi",
                 "Cau Giay Ward",
                 3,

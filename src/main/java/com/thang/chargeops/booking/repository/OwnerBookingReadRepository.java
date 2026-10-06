@@ -11,11 +11,33 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import java.util.Optional;
+import java.util.List;
+import java.time.Instant;
 import java.util.UUID;
 
 /** Dedicated Owner read repository; shared BookingRepository query semantics stay untouched. */
 public interface OwnerBookingReadRepository
         extends JpaRepository<Booking, UUID>, JpaSpecificationExecutor<Booking> {
+
+    interface ChargingWindow {
+        Instant getChargingStartedAt();
+        Instant getCompletedAt();
+        Instant getCancelledAt();
+        Instant getEndAt();
+    }
+
+    /** Only scalar timestamps for sessions that started today or overlap today's window. */
+    @Query("""
+            SELECT b.chargingStartedAt AS chargingStartedAt, b.completedAt AS completedAt,
+                   b.cancelledAt AS cancelledAt, b.endAt AS endAt
+            FROM Booking b JOIN b.connector c JOIN c.chargePoint cp JOIN cp.station s
+            WHERE s.owner.id = :ownerId AND s.deletedAt IS NULL AND cp.deletedAt IS NULL AND c.deletedAt IS NULL
+                AND cp.provisioningStatus = com.thang.chargeops.common.enums.ProvisioningStatus.ACTIVE
+                AND b.chargingStartedAt IS NOT NULL AND b.chargingStartedAt < :at
+                AND (b.chargingStartedAt >= :dayStart OR COALESCE(b.completedAt, b.cancelledAt, b.endAt) > :dayStart)
+            """)
+    List<ChargingWindow> findOwnerChargingWindows(@Param("ownerId") UUID ownerId,
+                                                @Param("dayStart") Instant dayStart, @Param("at") Instant at);
 
     @Override
     @EntityGraph(attributePaths = {"connector", "connector.chargePoint", "connector.chargePoint.station", "driver"})

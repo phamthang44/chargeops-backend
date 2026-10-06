@@ -17,6 +17,8 @@ public interface OwnerStationSummaryProjection {
 
     String getAddressLine();
 
+    String getContactPhone();
+
     String getProvinceName();
 
     String getWardName();

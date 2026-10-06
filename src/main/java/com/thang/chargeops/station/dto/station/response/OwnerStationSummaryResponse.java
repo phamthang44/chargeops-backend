@@ -12,6 +12,7 @@ public record OwnerStationSummaryResponse(
         String stationCode,
         String name,
         String addressLine,
+        String contactPhone,
         String provinceName,
         String wardName,
         int plannedChargePointCount,

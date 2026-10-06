@@ -8,6 +8,7 @@ import com.thang.chargeops.station.dto.station.request.RejectStationRequest;
 import com.thang.chargeops.station.dto.station.response.AdminStationDetailResponse;
 import com.thang.chargeops.station.dto.station.response.AdminStationListItemResponse;
 import com.thang.chargeops.station.dto.station.response.OwnerStationSummaryResponse;
+import com.thang.chargeops.station.dto.station.response.OwnerOperationsSummaryResponse;
 import com.thang.chargeops.station.dto.station.response.StationApprovalDetailResponse;
 import com.thang.chargeops.station.dto.station.response.StationApprovalSummaryResponse;
 import com.thang.chargeops.station.dto.station.response.StationCreatedResponse;
@@ -39,6 +40,11 @@ public class StationServiceImpl implements StationService {
     private final StationLifecycleUseCase lifecycleUseCase;
     private final OwnerStationUseCase ownerUseCase;
     private final AdminStationQueryUseCase adminQueryUseCase;
+
+    @Override
+    public OwnerOperationsSummaryResponse getOwnerOperationsSummary() {
+        return ownerUseCase.getOperationsSummary();
+    }
 
     @Override
     public StationCreatedResponse createStationRegistration(
