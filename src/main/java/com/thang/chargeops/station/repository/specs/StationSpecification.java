@@ -34,17 +34,26 @@ public final class StationSpecification {
                 return criteriaBuilder.conjunction();
             }
 
-            String pattern = "%" + search.trim().toLowerCase(Locale.ROOT) + "%";
+            // Sanitize input to prevent SQL LIKE wildcard injection (% and _ matching all/any records)
+            String escapedSearch = escapeLikePattern(search.trim().toLowerCase(Locale.ROOT));
+            String pattern = "%" + escapedSearch + "%";
             var owner = root.join("owner", JoinType.INNER);
 
             return criteriaBuilder.or(
-                    criteriaBuilder.like(criteriaBuilder.lower(root.get("stationCode")), pattern),
-                    criteriaBuilder.like(criteriaBuilder.lower(root.get("name")), pattern),
-                    criteriaBuilder.like(criteriaBuilder.lower(root.get("addressLine")), pattern),
-                    criteriaBuilder.like(criteriaBuilder.lower(owner.get("displayName")), pattern),
-                    criteriaBuilder.like(criteriaBuilder.lower(owner.get("email")), pattern)
+                    criteriaBuilder.like(criteriaBuilder.lower(root.get("stationCode")), pattern, '\\'),
+                    criteriaBuilder.like(criteriaBuilder.lower(root.get("name")), pattern, '\\'),
+                    criteriaBuilder.like(criteriaBuilder.lower(root.get("addressLine")), pattern, '\\'),
+                    criteriaBuilder.like(criteriaBuilder.lower(owner.get("displayName")), pattern, '\\'),
+                    criteriaBuilder.like(criteriaBuilder.lower(owner.get("email")), pattern, '\\')
             );
         };
+    }
+
+    private static String escapeLikePattern(String value) {
+        return value
+                .replace("\\", "\\\\")
+                .replace("%", "\\%")
+                .replace("_", "\\_");
     }
 
     private static Specification<Station> hasStatus(StationStatus status) {

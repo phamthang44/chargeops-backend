@@ -62,6 +62,26 @@ class StationSpecificationIntegrationTest {
         assertSingleStation("BOB@CHARGEOPS.TEST", "ST-HCM-002");
     }
 
+    @Test
+    void searchEscapesLikeWildcards() {
+        UUID charlieId = insertOwner("charlie@chargeops.test", "Charlie Fast_Charge");
+        insertStation(
+                charlieId,
+                "ST-SPECIAL-100%",
+                "Station 100% Clean",
+                "100_percent St",
+                "00001",
+                "ACTIVE"
+        );
+
+        // '%' search term must literally match '100%' station, not act as a wild-card matching all stations
+        assertSingleStation("100%", "ST-SPECIAL-100%");
+
+        // '_' search term must literally match '100_percent' address or 'Fast_Charge' owner, not act as single-char wildcard
+        assertSingleStation("100_percent", "ST-SPECIAL-100%");
+        assertSingleStation("fast_charge", "ST-SPECIAL-100%");
+    }
+
     private void assertSingleStation(String search, String expectedStationCode) {
         StationFilter filter = new StationFilter();
         filter.setSearch(search);
