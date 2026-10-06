@@ -36,8 +36,9 @@ public class Station extends SoftDeletableEntity {
     @Column(name = "station_code", nullable = false, unique = true, updatable = false, length = 20)
     private String stationCode;
 
-    @JoinColumn(name = "owner_id", nullable = false)
+    @JoinColumn(name = "owner_id", nullable = false, updatable = false)
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @Setter(AccessLevel.NONE)
     private UserProfile owner;
 
     @Column(name = "name", nullable = false, length = 100)
@@ -91,6 +92,16 @@ public class Station extends SoftDeletableEntity {
     @OneToMany(mappedBy = "station", cascade = {CascadeType.PERSIST, CascadeType.MERGE})
     @OrderBy("effectiveFrom DESC")
     private List<StationOperatingSchedule> operatingSchedules = new ArrayList<>();
+
+    /** Registration assigns the Owner once; ownership transfer is outside the product scope. */
+    public void setOwner(UserProfile owner) {
+        java.util.Objects.requireNonNull(owner, "Station owner is required");
+        if (this.owner != null && this.owner != owner
+                && (this.owner.getId() == null || !this.owner.getId().equals(owner.getId()))) {
+            throw new IllegalStateException("Station ownership transfer is not supported");
+        }
+        this.owner = owner;
+    }
 
     public void addAsset(StationAsset asset) {
         assets.add(asset);

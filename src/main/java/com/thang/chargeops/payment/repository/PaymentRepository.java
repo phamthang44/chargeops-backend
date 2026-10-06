@@ -25,7 +25,7 @@ public interface PaymentRepository extends JpaRepository<Payment, UUID> {
                COALESCE(SUM(CASE WHEN p.status = com.thang.chargeops.common.enums.PaymentStatus.PAID
                                   THEN 1 ELSE 0 END), 0) AS paidCount
         FROM Payment p
-        WHERE p.booking.connector.chargePoint.station.owner.id = :ownerId
+        WHERE p.booking.financialOwnerId = :ownerId
           AND p.environment = com.thang.chargeops.common.enums.PaymentEnvironment.SIMULATOR
           AND p.status IN (com.thang.chargeops.common.enums.PaymentStatus.PAID,
                            com.thang.chargeops.common.enums.PaymentStatus.REFUNDED)
@@ -36,7 +36,7 @@ public interface PaymentRepository extends JpaRepository<Payment, UUID> {
             "booking.connector.chargePoint.station"})
     @Query("""
         SELECT p FROM Payment p
-        WHERE p.booking.connector.chargePoint.station.owner.id = :ownerId
+        WHERE p.booking.financialOwnerId = :ownerId
           AND p.environment = com.thang.chargeops.common.enums.PaymentEnvironment.SIMULATOR
           AND p.status IN (com.thang.chargeops.common.enums.PaymentStatus.PAID,
                            com.thang.chargeops.common.enums.PaymentStatus.REFUNDED)
@@ -48,7 +48,7 @@ public interface PaymentRepository extends JpaRepository<Payment, UUID> {
     @Query("""
         SELECT p FROM Payment p
         WHERE p.booking.id = :bookingId
-          AND p.booking.connector.chargePoint.station.owner.id = :ownerId
+          AND p.booking.financialOwnerId = :ownerId
           AND p.environment = com.thang.chargeops.common.enums.PaymentEnvironment.SIMULATOR
           AND p.status IN (com.thang.chargeops.common.enums.PaymentStatus.PAID,
                            com.thang.chargeops.common.enums.PaymentStatus.REFUNDED)

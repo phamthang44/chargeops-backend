@@ -8,6 +8,9 @@ import com.thang.chargeops.profile.repository.UserProfileRepository;
 import com.thang.chargeops.profile.support.CurrentProfileProvider;
 import com.thang.chargeops.refund.service.AutomaticRefundExecutionService;
 import com.thang.chargeops.refund.service.RefundObligationService;
+import com.thang.chargeops.refund.dto.request.RefundExecutionOutcome;
+import com.thang.chargeops.refund.executor.RefundExecutionResult;
+import com.thang.chargeops.refund.executor.SimulatorRefundExecutor;
 import com.thang.chargeops.exception.AppException;
 import com.thang.chargeops.exception.errorcode.RefundErrorCode;
 import org.junit.jupiter.api.BeforeEach;
@@ -64,6 +67,8 @@ class OwnerCancellationPostgresTest {
     @Autowired private PaymentConfirmationService paymentConfirmationService;
     @Autowired private AutomaticRefundExecutionService automaticRefundExecutionService;
     @MockitoSpyBean private RefundObligationService obligations;
+    @MockitoSpyBean private SimulatorRefundExecutor simulatorRefundExecutor;
+    @MockitoSpyBean private com.thang.chargeops.support.service.AdminFinanceAccessAudit accessAudit;
     @MockitoBean private CurrentProfileProvider currentProfileProvider;
     @MockitoBean private Clock applicationClock;
     @MockitoBean private BookingCommandInFlightLock bookingCommandInFlightLock;
@@ -103,6 +108,126 @@ class OwnerCancellationPostgresTest {
                 .andExpect(status().isOk()).andExpect(jsonPath("$.data.grant.allowed").value(false))
                 .andExpect(jsonPath("$.data.insufficient.allowed").value(false));
         assertCount("refunds", paid.bookingId(), 1);
+    }
+
+    @Test void bkg063LegacyFinanceRoutesHaveNoRuntimeMapping() throws Exception {
+        String id = UUID.randomUUID().toString();
+        for (String route : List.of("refunds", "refunds/summary", "refunds/" + id,
+                "refunds/" + id + "/execute", "payouts", "payouts/" + id,
+                "payouts/" + id + "/execute", "finance/bookings", "finance/summary",
+                "receipts", "receipts/" + id, "payments", "payments/summary")) {
+            for (var request : List.of(get("/api/v1/admin/" + route), post("/api/v1/admin/" + route))) {
+                mockMvc.perform(request.with(user("admin").roles("ADMIN")))
+                        .andExpect(status().isNotFound());
+            }
+        }
+        for (String route : List.of("/api/v1/owner/finance/bookings", "/api/v1/owner/finance/summary",
+                "/api/v1/owner/refunds", "/api/v1/owner/refunds/summary")) {
+            mockMvc.perform(get(route).param("ownerId", UUID.randomUUID().toString())
+                            .with(user("admin").roles("ADMIN")))
+                    .andExpect(status().isForbidden());
+        }
+    }
+
+    @Test void bkg063ReadAuditIsAppendOnlyAndWrongCaseOrRoleCannotRead() throws Exception {
+        PaidBooking paid = createAndPayBooking(START_AT);
+        PolicyCase first = createPolicyCase(paid.bookingId());
+        PolicyCase second = createPolicyCase(paid.bookingId());
+        currentActorId.set(first.adminId());
+        mockMvc.perform(get(policyUrl(first) + "/refund-policy-context").with(user("admin").roles("ADMIN")))
+                .andExpect(status().isOk()).andExpect(header().string("Cache-Control", "no-store"));
+        assertThat(jdbc.queryForObject("""
+                SELECT count(*) FROM ticket_events
+                WHERE actor_id=? AND ticket_id=? AND reason=?
+                  AND event_type='REFUND_POLICY_CONTEXT'
+                """, Long.class, first.adminId(), first.ticketId(), "bookingId=" + paid.bookingId() + ";escalationId=" + first.escalationId())).isEqualTo(1L);
+        String wrong = policyUrl(new PolicyCase(first.ticketId(), second.escalationId(), first.adminId()));
+        mockMvc.perform(get(wrong + "/refund-policy-context").with(user("admin").roles("ADMIN")))
+                .andExpect(status().isNotFound());
+        jdbc.update("DELETE FROM ticket_escalations WHERE id=?", second.escalationId());
+        mockMvc.perform(get(policyUrl(second) + "/refund-policy-context").with(user("admin").roles("ADMIN")))
+                .andExpect(status().isNotFound());
+        for (String role : List.of("STAFF", "OWNER", "DRIVER")) {
+            mockMvc.perform(get(policyUrl(first) + "/refund-policy-context").with(user(role).roles(role)))
+                    .andExpect(status().isForbidden());
+        }
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM ticket_events WHERE ticket_id=?",
+                Long.class, first.ticketId())).isEqualTo(1L);
+        assertThatThrownBy(() -> jdbc.update("DELETE FROM ticket_events WHERE ticket_id=?", first.ticketId()))
+                .hasMessageContaining("append-only");
+        assertThatThrownBy(() -> jdbc.update("UPDATE ticket_events SET event_type='TICKET_REFUND_REFERENCES' WHERE ticket_id=?", first.ticketId()))
+                .hasMessageContaining("append-only");
+    }
+
+    @Test void bkg063ReturnedCaseKeepsReadHistoryButCannotGrantNewRefund() throws Exception {
+        PaidBooking paid = createAndPayBooking(START_AT);
+        PolicyCase policyCase = createPolicyCase(paid.bookingId());
+        jdbc.update("UPDATE ticket_escalations SET resolved_at=?, resolved_by=?, resolution_type='RETURN_TO_STATION', resolution_note='Return for investigation' WHERE id=?",
+                Timestamp.from(NOW), policyCase.adminId(), policyCase.escalationId());
+        mockMvc.perform(get(policyUrl(policyCase) + "/refund-policy-context").with(user("admin").roles("ADMIN")))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.active").value(false))
+                .andExpect(jsonPath("$.data.grant.allowed").value(false));
+        adminReview(policyCase, UUID.randomUUID(), policyPayload(1, 0, true), 409);
+        assertCount("refunds", paid.bookingId(), 0);
+        assertCount("booking_service_failure_decisions", paid.bookingId(), 0);
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM ticket_events WHERE ticket_id=?",
+                Long.class, policyCase.ticketId())).isEqualTo(1L);
+    }
+
+    @Test void bkg063AnyActiveAdminCanReadCaseAndBothTicketRoutesHaveAudit() throws Exception {
+        PaidBooking paid = createAndPayBooking(START_AT);
+        PolicyCase policyCase = createPolicyCase(paid.bookingId());
+        UUID anotherAdmin = UUID.randomUUID();
+        insertUser(anotherAdmin, "another-admin-" + anotherAdmin, "Another Admin");
+        currentActorId.set(anotherAdmin);
+        mockMvc.perform(get(policyUrl(policyCase) + "/refund-policy-context").with(user("another").roles("ADMIN")))
+                .andExpect(status().isOk());
+        for (String route : List.of("/api/v1/admin/tickets/", "/api/v1/tickets/")) {
+            mockMvc.perform(get(route + policyCase.ticketId()).with(user("another").roles("ADMIN")))
+                    .andExpect(status().isOk()).andExpect(jsonPath("$.data.resolution.financialResolution").exists());
+        }
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM ticket_events WHERE ticket_id=? AND actor_id=?",
+                Long.class, policyCase.ticketId(), anotherAdmin)).isEqualTo(3L);
+        assertThat(jdbc.queryForObject("SELECT version FROM support_tickets WHERE id=?", Long.class,
+                policyCase.ticketId())).isZero();
+        jdbc.update("UPDATE user_profile SET status='SUSPENDED' WHERE id=?", anotherAdmin);
+        mockMvc.perform(get(policyUrl(policyCase) + "/refund-policy-context").with(user("another").roles("ADMIN")))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test void bkg063StaffDetailDoesNotExposeFinanceAndExecutionPayloadIsRejected() throws Exception {
+        PaidBooking paid = createAndPayBooking(START_AT);
+        PolicyCase policyCase = createPolicyCase(paid.bookingId());
+        for (String field : List.of("amount", "executionOutcome", "bookingId")) {
+            Map<String, Object> payload = new LinkedHashMap<>(policyPayload(1, 0, true));
+            payload.put(field, field.equals("amount") ? paid.amount() : "SUCCEEDED");
+            adminReview(policyCase, UUID.randomUUID(), payload, 400);
+        }
+        adminReview(policyCase, UUID.randomUUID(), policyPayload(1, 0, true), 200);
+        UUID staffId = UUID.randomUUID();
+        insertUser(staffId, "finance-staff-" + staffId, "Staff");
+        jdbc.update("INSERT INTO station_staff_assignments(id,station_id,user_id,assigned_by,status,assigned_at,version) VALUES (?,?,?,?, 'ACTIVE',?,0)",
+                UUID.randomUUID(), incidentStationId(), staffId, ownerId, Timestamp.from(NOW));
+        currentActorId.set(staffId);
+        mockMvc.perform(get("/api/v1/tickets/" + policyCase.ticketId()).with(user("staff").roles("STAFF")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.resolution.financialResolution").doesNotExist())
+                .andExpect(jsonPath("$.data.resolution.refundIds").isEmpty());
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM ticket_events WHERE ticket_id=? AND actor_id=?",
+                Long.class, policyCase.ticketId(), staffId)).isZero();
+    }
+
+    @Test void bkg063FailedAuditPreventsFinancialReadResponse() throws Exception {
+        PaidBooking paid = createAndPayBooking(START_AT);
+        PolicyCase policyCase = createPolicyCase(paid.bookingId());
+        com.thang.chargeops.support.service.AdminFinanceAccessAudit auditTarget =
+                org.springframework.test.util.AopTestUtils.getUltimateTargetObject(accessAudit);
+        doThrow(new IllegalStateException("Audit unavailable")).when(auditTarget)
+                .appendAccessEvent(any(), any(), any(), any());
+        mockMvc.perform(get(policyUrl(policyCase) + "/refund-policy-context").with(user("admin").roles("ADMIN")))
+                .andExpect(status().isInternalServerError()).andExpect(jsonPath("$.data").doesNotExist());
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM ticket_events WHERE ticket_id=?",
+                Long.class, policyCase.ticketId())).isZero();
     }
 
     @Test void incidentStaffReportSnapshotsAndBlocksNewBookingsWithoutGrantingRefund() throws Exception {
@@ -522,6 +647,31 @@ class OwnerCancellationPostgresTest {
         assertThat(jdbc.queryForObject("SELECT runtime_status FROM connectors WHERE id=?", String.class, connectorId)).isEqualTo("AVAILABLE");
         mockMvc.perform(get("/api/v1/owner/bookings/{id}", pending.bookingId()).with(user("owner").roles("OWNER")))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.data.serviceFailureDecisions[0].reason").value(REASON));
+    }
+
+    @Test void failedSimulatorAttemptStaysPendingAndOwnerRetrySucceeds() throws Exception {
+        PaidBooking paid = createAndPayBooking(START_AT);
+        currentActorId.set(ownerId);
+        JsonNode cancelled = ownerCancel(paid.bookingId(), 1, UUID.randomUUID(), REASON, 200);
+        UUID refundId = UUID.fromString(cancelled.at("/data/refund/refundId").asText());
+        doReturn(new RefundExecutionResult(
+                RefundExecutionOutcome.FAILED,
+                "SIMULATOR", null, "SIMULATED_FAILURE", NOW, "Temporary failure"))
+                .doCallRealMethod().when(simulatorRefundExecutor).execute(any());
+        assertThat(automaticRefundExecutionService.processFirstAttempt(refundId)).isTrue();
+        assertThat(jdbc.queryForObject("SELECT status FROM refunds WHERE id=?", String.class, refundId)).isEqualTo("PENDING");
+        assertThat(jdbc.queryForObject("SELECT status FROM payments WHERE id=?", String.class, paid.paymentId())).isEqualTo("PAID");
+        UUID retryKey = UUID.randomUUID();
+        long version = jdbc.queryForObject("SELECT version FROM refunds WHERE id=?", Long.class, refundId);
+        for (int replay = 0; replay < 2; replay++) {
+            mockMvc.perform(post("/api/v1/owner/refunds/{id}/retry", refundId)
+                    .with(user("owner").roles("OWNER")).header("Idempotency-Key", retryKey)
+                    .contentType("application/json").content(json(Map.of("expectedVersion", version))))
+                    .andExpect(status().isOk()).andExpect(jsonPath("$.data.status").value("SUCCEEDED"));
+        }
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM refund_attempts WHERE refund_id=?", Long.class, refundId)).isEqualTo(2L);
+        assertThat(jdbc.queryForObject("SELECT refund_amount FROM payments WHERE id=?", java.math.BigDecimal.class, paid.paymentId()).longValueExact()).isEqualTo(paid.amount());
+        assertOwnerHistory(paid.bookingId());
     }
 
     @Test void fullPackageAfterGraceAndReplayTracksSucceededRefund() throws Exception {

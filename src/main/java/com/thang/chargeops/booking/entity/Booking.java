@@ -17,6 +17,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
+import java.util.UUID;
 
 /**
  * Đại diện cho một phiên đặt chỗ sạc điện (Booking).
@@ -46,6 +47,10 @@ public class Booking extends AuditableEntity {
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "connector_id", nullable = false)
     private Connector connector;
+
+    /** Captured and protected by the V41 database trigger; never supplied by clients. */
+    @Column(name = "financial_owner_id", nullable = false, insertable = false, updatable = false)
+    private UUID financialOwnerId;
 
     @Column(name = "booking_code", length = 32)
     private String bookingCode;
