@@ -181,6 +181,40 @@ class AdminRefundServiceImplTest {
         verify(refundAttemptRepository, never()).saveAndFlush(any());
     }
 
+    @Test
+    void listEscapesSqlLikeWildcardsInSearchQuery() {
+        org.springframework.data.domain.Page<Refund> page = org.mockito.Mockito.mock(org.springframework.data.domain.Page.class);
+        when(refundRepository.findAll(any(org.springframework.data.jpa.domain.Specification.class), any(org.springframework.data.domain.PageRequest.class)))
+                .thenReturn(page);
+
+        service.list(null, "100%_test\\", 1, 10);
+
+        org.mockito.ArgumentCaptor<org.springframework.data.jpa.domain.Specification<Refund>> specCaptor =
+                org.mockito.ArgumentCaptor.forClass(org.springframework.data.jpa.domain.Specification.class);
+        verify(refundRepository).findAll(specCaptor.capture(), any(org.springframework.data.domain.PageRequest.class));
+
+        org.springframework.data.jpa.domain.Specification<Refund> spec = specCaptor.getValue();
+        jakarta.persistence.criteria.Root<Refund> root = org.mockito.Mockito.mock(jakarta.persistence.criteria.Root.class);
+        jakarta.persistence.criteria.CriteriaQuery<?> query = org.mockito.Mockito.mock(jakarta.persistence.criteria.CriteriaQuery.class);
+        jakarta.persistence.criteria.CriteriaBuilder cb = org.mockito.Mockito.mock(jakarta.persistence.criteria.CriteriaBuilder.class);
+
+        jakarta.persistence.criteria.Path bookingPath = org.mockito.Mockito.mock(jakarta.persistence.criteria.Path.class);
+        jakarta.persistence.criteria.Path bookingCodePath = org.mockito.Mockito.mock(jakarta.persistence.criteria.Path.class);
+        jakarta.persistence.criteria.Path driverPath = org.mockito.Mockito.mock(jakarta.persistence.criteria.Path.class);
+        jakarta.persistence.criteria.Path driverNamePath = org.mockito.Mockito.mock(jakarta.persistence.criteria.Path.class);
+        jakarta.persistence.criteria.Path stationNamePath = org.mockito.Mockito.mock(jakarta.persistence.criteria.Path.class);
+
+        when(root.get("booking")).thenReturn(bookingPath);
+        when(bookingPath.get("bookingCode")).thenReturn(bookingCodePath);
+        when(bookingPath.get("driver")).thenReturn(driverPath);
+        when(driverPath.get("displayName")).thenReturn(driverNamePath);
+        when(bookingPath.get("stationNameSnapshot")).thenReturn(stationNamePath);
+
+        spec.toPredicate(root, query, cb);
+
+        verify(cb, org.mockito.Mockito.times(3)).like(any(), org.mockito.ArgumentMatchers.eq("%100\\%\\_test\\\\%"), org.mockito.ArgumentMatchers.eq('\\'));
+    }
+
     private void arrangeLockedAggregate() {
         UUID actorId = UUID.randomUUID();
         UUID connectorId = UUID.randomUUID();
