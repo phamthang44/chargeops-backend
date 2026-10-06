@@ -150,4 +150,153 @@ class RefundJpaMappingTest {
         assertThat(attemptRepository.findByRefundIdOrderBySequenceNoAsc(refundId))
                 .extracting(RefundAttempt::getSequenceNo).containsExactly(1);
     }
+
+    @Test
+    void legacyRequiresAdminActionColumnStillFeedsRequiresOwnerActionOnUnchangedSchema() {
+        Booking booking = bookingRepository.findAll().stream()
+                .filter(candidate -> "Refund JPA station".equals(candidate.getStationNameSnapshot()))
+                .findFirst().orElseThrow();
+        Payment payment = paymentRepository.findByPaymentCode("RFJPAPAY").orElseThrow();
+        PaymentTransaction source = transactionRepository
+                .findByProviderAndReceivingAccountRefAndTransactionRef(
+                        "SIMULATOR", "SIMULATOR", "RF-JPA-TX")
+                .orElseThrow();
+        UserProfile actor = profileRepository.findByKeycloakId("refund-jpa").orElseThrow();
+
+        assertThat(jdbcTemplate.queryForList("""
+                SELECT column_name FROM information_schema.columns
+                 WHERE table_name = 'refunds' AND column_name = 'requires_admin_action'
+                """, String.class)).containsExactly("requires_admin_action");
+
+        UUID pendingBasis = UUID.randomUUID();
+        insertLegacyRefund(booking, payment, source, actor, pendingBasis, true);
+        UUID pendingRefundId = jdbcTemplate.queryForObject(
+                "SELECT id FROM refunds WHERE basis_id = ?", UUID.class, pendingBasis);
+        jdbcTemplate.update("""
+                INSERT INTO refund_attempts(
+                    refund_id, sequence_no, execution_mode, execution_trigger, request_key,
+                    payload_hash, idempotency_key, status, failure_code, started_at,
+                    performed_at, completed_at, note, performed_by
+                ) VALUES (?, 1, 'SIMULATOR', 'ADMIN', ?, ?, ?, 'FAILED', 'SIMULATED_FAILURE',
+                          now(), now(), now(), 'Legacy failed attempt', ?)
+                """,
+                pendingRefundId, UUID.randomUUID(), "a".repeat(64),
+                "refund:legacy-failed-" + pendingBasis, actor.getId());
+
+        UUID succeededBasis = UUID.randomUUID();
+        jdbcTemplate.execute("""
+                INSERT INTO bookings(
+                    driver_id, connector_id, start_at, end_at, status, total_amount,
+                    station_name_snapshot, station_address_snapshot,
+                    charge_point_code_snapshot, connector_code_snapshot, expires_at
+                )
+                SELECT u.id, c.id, '2026-09-23 14:00Z', '2026-09-23 15:00Z',
+                       'CONFIRMED', 120000, 'Refund JPA station', 'Test',
+                       'CP-REFUND-JPA', 'C-REFUND-JPA', '2026-09-23 13:10Z'
+                FROM user_profile u CROSS JOIN connectors c
+                WHERE u.keycloak_id = 'refund-jpa' AND c.connector_code = 'C-REFUND-JPA';
+                INSERT INTO payments(
+                    booking_id, amount, status, method, refund_amount, paid_at, provider,
+                    receiving_account_ref, currency, needs_reconciliation, environment,
+                    version, payment_code
+                )
+                SELECT id, 120000, 'PAID', 'SIMULATOR', 0, now(), 'SIMULATOR',
+                       'SIMULATOR', 'VND', false, 'SIMULATOR', 0, 'RFJPAPAY2'
+                  FROM bookings
+                 WHERE station_name_snapshot = 'Refund JPA station'
+                   AND start_at = '2026-09-23 14:00Z';
+                INSERT INTO payment_transactions(
+                    payment_id, provider, receiving_account_ref, transaction_ref, amount,
+                    currency, received_at, application_classification, application_reason,
+                    payment_code, va_number, version
+                )
+                SELECT id, 'SIMULATOR', 'SIMULATOR', 'RF-JPA-TX-2', amount, 'VND', now(),
+                       'APPLIED', NULL, payment_code, 'SIM-VA-RF-JPA-2', 0
+                  FROM payments WHERE payment_code = 'RFJPAPAY2';
+                """);
+        entityManager.clear();
+        Payment secondPayment = paymentRepository.findByPaymentCode("RFJPAPAY2").orElseThrow();
+        Booking secondBooking = secondPayment.getBooking();
+        PaymentTransaction secondSource = transactionRepository
+                .findByProviderAndReceivingAccountRefAndTransactionRef(
+                        "SIMULATOR", "SIMULATOR", "RF-JPA-TX-2")
+                .orElseThrow();
+        insertLegacyRefund(secondBooking, secondPayment, secondSource, actor, succeededBasis, false);
+        UUID succeededRefundId = jdbcTemplate.queryForObject(
+                "SELECT id FROM refunds WHERE basis_id = ?", UUID.class, succeededBasis);
+        jdbcTemplate.update("""
+                INSERT INTO refund_attempts(
+                    refund_id, sequence_no, execution_mode, execution_trigger, request_key,
+                    payload_hash, idempotency_key, status, transfer_reference, started_at,
+                    performed_at, completed_at, note, performed_by
+                ) VALUES (?, 1, 'SIMULATOR', 'ADMIN', ?, ?, ?, 'SUCCEEDED', 'SIM-LEGACY-1',
+                          now(), now(), now(), 'Legacy admin outcome', ?)
+                """,
+                succeededRefundId, UUID.randomUUID(), "b".repeat(64),
+                "refund:legacy-succeeded-" + succeededBasis, actor.getId());
+        jdbcTemplate.update("""
+                UPDATE refunds
+                   SET status = 'SUCCEEDED', successful_attempt_id = (
+                           SELECT id FROM refund_attempts
+                            WHERE refund_id = ? AND sequence_no = 1
+                       ), completed_at = now()
+                 WHERE id = ?
+                """, succeededRefundId, succeededRefundId);
+
+        entityManager.clear();
+
+        Refund legacyPending = refundRepository.findById(pendingRefundId).orElseThrow();
+        assertThat(legacyPending.isRequiresOwnerAction()).isTrue();
+        assertThat(legacyPending.getStatus()).isEqualTo(RefundStatus.PENDING);
+        assertThat(legacyPending.getAmount()).isEqualByComparingTo("120000.00");
+        assertThat(legacyPending.getVersion()).isZero();
+        assertThat(jdbcTemplate.queryForObject(
+                "SELECT requires_admin_action FROM refunds WHERE id = ?", Boolean.class, pendingRefundId))
+                .isTrue();
+
+        Refund legacySucceeded = refundRepository.findById(succeededRefundId).orElseThrow();
+        assertThat(legacySucceeded.isRequiresOwnerAction()).isFalse();
+        assertThat(legacySucceeded.getStatus()).isEqualTo(RefundStatus.SUCCEEDED);
+        assertThat(legacySucceeded.getAmount()).isEqualByComparingTo("120000.00");
+        assertThat(legacySucceeded.getCompletedAt()).isNotNull();
+        RefundAttempt legacyAttempt = legacySucceeded.getSuccessfulAttempt();
+        assertThat(legacyAttempt.getExecutionTrigger()).isEqualTo(RefundExecutionTrigger.ADMIN);
+        assertThat(legacyAttempt.getStatus()).isEqualTo(RefundAttemptStatus.SUCCEEDED);
+        assertThat(legacyAttempt.getTransferReference()).isEqualTo("SIM-LEGACY-1");
+        assertThat(legacyAttempt.getNote()).isEqualTo("Legacy admin outcome");
+        assertThat(legacyAttempt.getPerformedBy().getId()).isEqualTo(actor.getId());
+
+        assertThat(jdbcTemplate.queryForObject(
+                "SELECT count(*) FROM refund_attempts WHERE refund_id = ?", Long.class, pendingRefundId))
+                .isEqualTo(1L);
+        assertThat(jdbcTemplate.queryForObject(
+                "SELECT count(*) FROM refund_attempts WHERE refund_id = ?", Long.class, succeededRefundId))
+                .isEqualTo(1L);
+        assertThat(jdbcTemplate.queryForObject(
+                "SELECT count(*) FROM refund_auto_dispatches WHERE refund_id = ? AND status = 'PENDING'",
+                Long.class, succeededRefundId)).isZero();
+        assertThat(jdbcTemplate.queryForObject(
+                "SELECT count(*) FROM refund_auto_dispatches WHERE refund_id = ? AND status = 'PENDING'",
+                Long.class, pendingRefundId)).isZero();
+    }
+
+    private void insertLegacyRefund(
+            Booking booking,
+            Payment payment,
+            PaymentTransaction source,
+            UserProfile actor,
+            UUID basisId,
+            boolean requiresOwnerAction
+    ) {
+        jdbcTemplate.update("""
+                INSERT INTO refunds(
+                    booking_id, payment_id, source_payment_transaction_id, amount, currency,
+                    reason, basis_type, basis_id, status, decision_at, decided_by, version,
+                    execution_policy, requires_admin_action
+                ) VALUES (?, ?, ?, 120000, 'VND', 'VOLUNTARY_GRACE', 'BOOKING_CANCELLATION',
+                          ?, 'PENDING', now(), ?, 0, 'AUTO_FIRST_ATTEMPT', ?)
+                """,
+                booking.getId(), payment.getId(), source.getId(), basisId, actor.getId(),
+                requiresOwnerAction);
+    }
 }
