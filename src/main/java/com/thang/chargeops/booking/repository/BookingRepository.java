@@ -6,7 +6,6 @@ import com.thang.chargeops.booking.projection.BookingCompletedSessionProjection;
 import com.thang.chargeops.booking.projection.BookingLifecycleCandidateProjection;
 import com.thang.chargeops.booking.projection.BookingExpirationCandidateProjection;
 import com.thang.chargeops.booking.projection.BookingTimeRangeProjection;
-import com.thang.chargeops.profile.entity.UserProfile;
 import jakarta.persistence.LockModeType;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;

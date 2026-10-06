@@ -23,7 +23,6 @@ import com.thang.chargeops.booking.history.BookingStatusReason;
 import com.thang.chargeops.booking.mapper.BookingMapper;
 import com.thang.chargeops.booking.policy.DriverBookingReadPolicy;
 import com.thang.chargeops.booking.mapper.BookingPriceLineMapper;
-import com.thang.chargeops.booking.policy.DriverBookingReadPolicy;
 import com.thang.chargeops.booking.pricing.PricePreview;
 import com.thang.chargeops.booking.projection.BookingCompletedSessionProjection;
 import com.thang.chargeops.booking.projection.BookingCheckInRouteProjection;
