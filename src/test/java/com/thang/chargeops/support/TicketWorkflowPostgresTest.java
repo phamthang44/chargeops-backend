@@ -58,6 +58,10 @@ import static org.mockito.Mockito.doAnswer;
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
 @Import({TicketWorkflowService.class, TicketEventQueryService.class, TicketKpiService.class,
     TicketAccessPolicy.class, NotificationService.class, NotificationInboxService.class,
+    com.thang.chargeops.notification.service.NotificationPersistenceService.class,
+    com.thang.chargeops.support.service.TicketEscalationService.class,
+    com.thang.chargeops.booking.service.ServiceFailureDecisionReader.class,
+    com.thang.chargeops.support.service.AdminFinanceAccessAudit.class,
     TicketResponseMapper.class, TicketResponseService.class, TicketWorkflowPostgresTest.TestClock.class})
 class TicketWorkflowPostgresTest {
     @Container @ServiceConnection

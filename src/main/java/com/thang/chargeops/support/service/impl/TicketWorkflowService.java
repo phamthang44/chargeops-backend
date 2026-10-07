@@ -2,6 +2,7 @@ package com.thang.chargeops.support.service.impl;
 
 import com.thang.chargeops.exception.AppException;
 import com.thang.chargeops.exception.errorcode.TicketErrorCode;
+import com.thang.chargeops.notification.model.NotificationI18nKey;
 import com.thang.chargeops.profile.entity.UserProfile;
 import com.thang.chargeops.profile.repository.UserProfileRepository;
 import com.thang.chargeops.infra.identity.IdentityRoleService;
@@ -29,6 +30,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Clock;
 import java.time.Instant;
+import java.util.Map;
 import java.util.UUID;
 
 @Service
@@ -231,12 +233,19 @@ public class TicketWorkflowService {
     }
 
     private void notice(SupportTicket t, String result) {
-        String body = "Ticket " + t.getTicketCode() + " đã được đánh dấu giải quyết: " + result.strip().substring(0, Math.min(800, result.strip().length())) +
-            ". Vui lòng xác nhận hoặc báo vấn đề vẫn còn trước " + t.getAutoCloseAt() +
-            ". Nếu không phản hồi trong 10 ngày, ticket tự đóng theo chính sách; đây không phải xác nhận lỗi trạm hay hoàn tiền.";
+        String title = NotificationI18nKey.format(
+                NotificationI18nKey.TICKET_RESOLVED_TITLE,
+                Map.of("code", t.getTicketCode()));
+        String body = NotificationI18nKey.format(
+                NotificationI18nKey.TICKET_RESOLVED_BODY,
+                Map.of(
+                        "code", t.getTicketCode(),
+                        "result", result.strip().substring(0, Math.min(800, result.strip().length())),
+                        "autoCloseAt", String.valueOf(t.getAutoCloseAt())
+                ));
         notifications.createTicketNotice(t.getReporter().getId(),
             t.getId() + ":" + t.getResolutionCycle() + ":RESOLVED",
-            "Ticket " + t.getTicketCode() + " đã giải quyết", body,
+            title, body,
             "/tickets/" + t.getId(), clock.instant());
     }
 

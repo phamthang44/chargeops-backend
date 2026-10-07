@@ -1,20 +1,26 @@
 package com.thang.chargeops.notification.service;
 
+import com.thang.chargeops.common.enums.UserStatus;
 import com.thang.chargeops.exception.AppException;
+import com.thang.chargeops.exception.errorcode.AuthErrorCode;
 import com.thang.chargeops.exception.errorcode.CommonErrorCode;
 import com.thang.chargeops.notification.dto.AppNotificationResponse;
 import com.thang.chargeops.notification.entity.AppNotification;
+import com.thang.chargeops.notification.model.*;
 import com.thang.chargeops.notification.repository.AppNotificationRepository;
 import com.thang.chargeops.profile.support.CurrentProfileProvider;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
+import org.springframework.data.jpa.domain.Specification;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-
 import java.time.Clock;
+import java.util.Locale;
 import java.util.UUID;
+import static com.thang.chargeops.notification.model.NotificationConstants.*;
 
 @Service
 @RequiredArgsConstructor
@@ -22,34 +28,102 @@ public class NotificationInboxService {
     private final AppNotificationRepository repository;
     private final CurrentProfileProvider currentProfile;
     private final Clock clock;
+    private static final Sort INBOX_ORDER = Sort.by(Sort.Direction.DESC, "createdAt", "id");
 
     @Transactional(readOnly = true)
     public Page<AppNotificationResponse> list(int page, int size, boolean unread) {
-        UUID userId = currentProfile.requireProfile().getId();
-        var pageable = PageRequest.of(page - 1, size,
-                Sort.by(Sort.Order.desc("createdAt"), Sort.Order.desc("id")));
-        Page<AppNotification> notifications = unread
-                ? repository.findByRecipientIdAndReadAtIsNull(userId, pageable)
-                : repository.findByRecipientId(userId, pageable);
-        return notifications.map(n -> new AppNotificationResponse(n.getId(), n.getCategory(), n.getTitle(),
-                n.getBody(), n.getActionUrl(), n.getCreatedAt(), n.getReadAt() != null, n.getReadAt()));
+        return listInScope(page, size, unread, null, null, null);
     }
 
     @Transactional(readOnly = true)
-    public long unreadCount() {
-        return repository.countByRecipientIdAndReadAtIsNull(currentProfile.requireProfile().getId());
+    public Page<AppNotificationResponse> list(int page, int size, boolean unread, String context, String category, UUID stationId) {
+        return listInScope(page, size, unread, context, category, stationId);
     }
 
-    @Transactional
-    public void markRead(UUID id) {
-        UUID userId = currentProfile.requireProfile().getId();
-        if (repository.markRead(id, userId, clock.instant()) == 0 && !repository.existsByIdAndRecipientId(id, userId)) {
-            throw new AppException(CommonErrorCode.RESOURCE_NOT_FOUND);
+    private Page<AppNotificationResponse> listInScope(int page, int size, boolean unread, String context, String category, UUID stationId) {
+        if (page < 1 || size < 1 || size > MAX_PAGE_SIZE || (long) (page - 1) * size > Integer.MAX_VALUE) {
+            throw new AppException(CommonErrorCode.INVALID_REQUEST);
         }
+        var scope = NotificationVisibilityPolicy.inScope(filter(context, category, stationId, unread));
+        return repository.findAll(scope, PageRequest.of(page - 1, size, INBOX_ORDER))
+                .map(AppNotificationResponse::from);
+    }
+
+    @Transactional(readOnly = true)
+    public long unreadCount() { return countUnreadInScope(null, null, null); }
+
+    @Transactional(readOnly = true)
+    public long unreadCount(String context, String category, UUID stationId) {
+        return countUnreadInScope(context, category, stationId);
+    }
+
+    private long countUnreadInScope(String context, String category, UUID stationId) {
+        return repository.count(NotificationVisibilityPolicy.inScope(filter(context, category, stationId, true)));
     }
 
     @Transactional
-    public void markAllRead() {
-        repository.markAllRead(currentProfile.requireProfile().getId(), clock.instant());
+    public void markRead(UUID id) { markReadInScope(id, null, null, null); }
+
+    @Transactional
+    public void markRead(UUID id, String context, String category, UUID stationId) {
+        markReadInScope(id, context, category, stationId);
+    }
+
+    private void markReadInScope(UUID id, String context, String category, UUID stationId) {
+        var f = filter(context, category, stationId, false);
+        var notice = requireVisible(id, f, false);
+        notice.markRead(f.now());
+        repository.save(notice);
+    }
+
+    @Transactional
+    public void markAllRead() { markAllReadInScope(null, null, null); }
+
+    @Transactional
+    public void markAllRead(String context, String category, UUID stationId) {
+        markAllReadInScope(context, category, stationId);
+    }
+
+    private void markAllReadInScope(String context, String category, UUID stationId) {
+        var f = filter(context, category, stationId, true);
+        var scope = NotificationVisibilityPolicy.inScope(f);
+        var notices = repository.findAll(scope);
+        notices.forEach(notice -> notice.markRead(f.now()));
+        repository.saveAll(notices);
+    }
+
+    @Transactional
+    public void dismiss(UUID id, String context, String category, UUID stationId) {
+        var f = filter(context, category, stationId, false);
+        var notice = requireVisible(id, f, true);
+        notice.dismiss(f.now());
+        repository.save(notice);
+    }
+
+    private AppNotification requireVisible(UUID id, NotificationInboxFilter filter, boolean includeDismissed) {
+        Specification<AppNotification> matchingId = (notice, query, builder) -> builder.equal(notice.get("id"), id);
+        var scope = NotificationVisibilityPolicy.inScope(filter, includeDismissed).and(matchingId);
+        return repository.findOne(scope)
+                .orElseThrow(() -> new AppException(CommonErrorCode.RESOURCE_NOT_FOUND));
+    }
+
+    private NotificationInboxFilter filter(String context, String category, UUID stationId, boolean unread) {
+        var profile = currentProfile.requireProfile();
+        if (profile.getStatus() != UserStatus.ACTIVE || profile.isDeleted()) throw new AppException(AuthErrorCode.ACCESS_DENIED);
+        NotificationAudience audience;
+        try {
+            audience = context == null ? NotificationAudience.PERSONAL : NotificationAudience.valueOf(context.toUpperCase(Locale.ROOT));
+        } catch (IllegalArgumentException e) { throw new AppException(CommonErrorCode.INVALID_REQUEST); }
+        if (audience != NotificationAudience.PERSONAL) {
+            var auth = SecurityContextHolder.getContext().getAuthentication();
+            if (auth == null || !auth.isAuthenticated() || auth.getAuthorities().stream()
+                    .noneMatch(a -> a.getAuthority().equals(ROLE_PREFIX + audience.name()))) {
+                throw new AppException(AuthErrorCode.ACCESS_DENIED);
+            }
+        }
+        if (category != null && !CATEGORIES.contains(category)) {
+            throw new AppException(CommonErrorCode.INVALID_REQUEST);
+        }
+        return new NotificationInboxFilter(profile.getId(), audience, category, stationId, unread, clock.instant());
     }
 }

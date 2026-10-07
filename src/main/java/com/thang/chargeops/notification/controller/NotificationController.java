@@ -11,7 +11,6 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
-
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -20,39 +19,49 @@ import java.util.UUID;
 @RequestMapping(SystemConstant.API_URL_PATTERN + "notifications")
 @RequiredArgsConstructor
 @Validated
+@PreAuthorize("isAuthenticated()")
 public class NotificationController {
     private final NotificationInboxService service;
 
     @GetMapping
-    @PreAuthorize("isAuthenticated()")
     public ResponseEntity<ApiResult<List<AppNotificationResponse>>> list(
             @RequestParam(defaultValue = "1") @Min(1) int page,
             @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size,
             @RequestParam(required = false) String category,
-            @RequestParam(defaultValue = "false") boolean unread) {
-        if (category != null && !category.equals("ticket")) {
-            throw new IllegalArgumentException("Unsupported notification category");
-        }
-        return ResponseEntity.ok(ApiResult.successPage(service.list(page, size, unread)));
+            @RequestParam(defaultValue = "false") boolean unread,
+            @RequestParam(required = false) String context,
+            @RequestParam(required = false) UUID stationId) {
+        return ResponseEntity.ok(ApiResult.successPage(service.list(page, size, unread, context, category, stationId)));
     }
 
     @GetMapping("/unread-count")
-    @PreAuthorize("isAuthenticated()")
-    public ResponseEntity<ApiResult<Map<String, Long>>> unreadCount() {
-        return ResponseEntity.ok(ApiResult.success(Map.of("count", service.unreadCount())));
+    public ResponseEntity<ApiResult<Map<String, Long>>> unreadCount(
+            @RequestParam(required = false) String context, @RequestParam(required = false) String category,
+            @RequestParam(required = false) UUID stationId) {
+        return ResponseEntity.ok(ApiResult.success(Map.of("count", service.unreadCount(context, category, stationId))));
     }
 
     @PatchMapping("/{id}/read")
-    @PreAuthorize("isAuthenticated()")
-    public ResponseEntity<ApiResult<Map<String, Boolean>>> read(@PathVariable UUID id) {
-        service.markRead(id);
+    public ResponseEntity<ApiResult<Map<String, Boolean>>> read(@PathVariable UUID id,
+            @RequestParam(required = false) String context, @RequestParam(required = false) String category,
+            @RequestParam(required = false) UUID stationId) {
+        service.markRead(id, context, category, stationId);
         return ResponseEntity.ok(ApiResult.success(Map.of("read", true)));
     }
 
     @PatchMapping("/read-all")
-    @PreAuthorize("isAuthenticated()")
-    public ResponseEntity<ApiResult<Map<String, Boolean>>> readAll() {
-        service.markAllRead();
+    public ResponseEntity<ApiResult<Map<String, Boolean>>> readAll(
+            @RequestParam(required = false) String context, @RequestParam(required = false) String category,
+            @RequestParam(required = false) UUID stationId) {
+        service.markAllRead(context, category, stationId);
         return ResponseEntity.ok(ApiResult.success(Map.of("read", true)));
+    }
+
+    @PatchMapping("/{id}/dismiss")
+    public ResponseEntity<ApiResult<Map<String, Boolean>>> dismiss(@PathVariable UUID id,
+            @RequestParam(required = false) String context, @RequestParam(required = false) String category,
+            @RequestParam(required = false) UUID stationId) {
+        service.dismiss(id, context, category, stationId);
+        return ResponseEntity.ok(ApiResult.success(Map.of("dismissed", true)));
     }
 }
