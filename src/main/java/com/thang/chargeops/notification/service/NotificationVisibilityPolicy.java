@@ -61,7 +61,6 @@ public final class NotificationVisibilityPolicy {
                                     NotificationInboxFilter f, boolean includeDismissed) {
         List<Predicate> checks = new ArrayList<>();
         checks.add(cb.equal(n.get(RECIPIENT_ID), f.recipientId()));
-        checks.add(n.get(AUDIENCE).in(NotificationAudience.PERSONAL, f.context()));
         checks.add(cb.notEqual(n.get(EVENT_TYPE), NotificationEventType.LEGACY_QUARANTINED));
         if (!includeDismissed) checks.add(cb.isNull(n.get(DISMISSED_AT)));
         checks.add(cb.or(cb.isNull(n.get(EXPIRES_AT)), cb.greaterThan(n.get(EXPIRES_AT), f.now())));
@@ -76,15 +75,26 @@ public final class NotificationVisibilityPolicy {
         checks.add(cb.exists(account));
 
         checks.add(consistentResources(cb, query, n));
-        Predicate personal = personalScope(cb, query, n, f);
-        Predicate roleScope = switch (f.context()) {
-            case PERSONAL -> cb.disjunction();
-            case DRIVER -> driverScope(cb, query, n, f);
-            case OWNER -> ownerScope(cb, query, n, f);
-            case STAFF -> staffScope(cb, query, n, f);
-            case ADMIN -> adminScope(cb, query, n, f);
-        };
-        checks.add(cb.or(personal, roleScope));
+
+        if (f.context() == NotificationAudience.PERSONAL) {
+            checks.add(cb.equal(n.get(AUDIENCE), NotificationAudience.PERSONAL));
+            checks.add(personalScope(cb, query, n, f));
+        } else if (f.context() == NotificationAudience.DRIVER) {
+            checks.add(n.get(AUDIENCE).in(NotificationAudience.PERSONAL, NotificationAudience.DRIVER));
+            Predicate personal = personalScope(cb, query, n, f);
+            Predicate driver = driverScope(cb, query, n, f);
+            checks.add(cb.or(personal, driver));
+        } else {
+            // Operational portals (OWNER, STAFF, ADMIN) strictly isolate to their role audience
+            checks.add(cb.equal(n.get(AUDIENCE), f.context()));
+            Predicate roleScope = switch (f.context()) {
+                case OWNER -> ownerScope(cb, query, n, f);
+                case STAFF -> staffScope(cb, query, n, f);
+                case ADMIN -> adminScope(cb, query, n, f);
+                default -> cb.disjunction();
+            };
+            checks.add(roleScope);
+        }
         return cb.and(checks.toArray(Predicate[]::new));
     }
 

@@ -254,6 +254,16 @@ class NotificationScopePostgresTest {
         assertThatThrownBy(() -> inbox.list(1, 101, false)).isInstanceOf(AppException.class);
     }
 
+    @Test void ownerConsoleNeverSeesDriverResolvedTickets() {
+        UUID driverTicketNotice = notice(owner, "PERSONAL", "TICKET_RESOLVED", booking, ticket, station, null);
+        UUID ownerNotice = notice(owner, "OWNER", "RESPONSIBILITY_DECIDED", booking, null, station, null);
+        actor(owner, "OWNER");
+        // In OWNER context, personal driver ticket resolutions MUST NOT appear
+        assertThat(inbox.list(1, 20, false, "owner", null, null).getContent())
+                .extracting("id").containsExactly(ownerNotice);
+        assertThat(inbox.unreadCount("owner", null, null)).isEqualTo(1);
+    }
+
     private UUID user() {
         UUID id = UUID.randomUUID();
         jdbc.update("INSERT INTO user_profile(id,keycloak_id,email,status) VALUES (?,?,?,'ACTIVE')", id, id.toString(), id + "@example.test");
