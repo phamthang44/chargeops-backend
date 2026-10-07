@@ -44,6 +44,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
@@ -230,13 +231,22 @@ public class AdminRefundServiceImpl implements AdminRefundService {
                     cb.equal(root.get(BOOKING_FIELD).get("driver").get("id"), id)
             );
         } catch (IllegalArgumentException ignored) {
-            String pattern = "%" + search.toLowerCase() + "%";
+            // Sanitize input to prevent SQL LIKE wildcard injection (% and _ matching all/any records)
+            String escapedSearch = escapeLikePattern(search.trim().toLowerCase(Locale.ROOT));
+            String pattern = "%" + escapedSearch + "%";
             return (root, query, cb) -> cb.or(
-                    cb.like(cb.lower(root.get(BOOKING_FIELD).get("bookingCode")), pattern),
-                    cb.like(cb.lower(root.get(BOOKING_FIELD).get("driver").get("displayName")), pattern),
-                    cb.like(cb.lower(root.get(BOOKING_FIELD).get("stationNameSnapshot")), pattern)
+                    cb.like(cb.lower(root.get(BOOKING_FIELD).get("bookingCode")), pattern, '\\'),
+                    cb.like(cb.lower(root.get(BOOKING_FIELD).get("driver").get("displayName")), pattern, '\\'),
+                    cb.like(cb.lower(root.get(BOOKING_FIELD).get("stationNameSnapshot")), pattern, '\\')
             );
         }
+    }
+
+    private static String escapeLikePattern(String value) {
+        return value
+                .replace("\\", "\\\\")
+                .replace("%", "\\%")
+                .replace("_", "\\_");
     }
 
     private static String normalize(String value) {
