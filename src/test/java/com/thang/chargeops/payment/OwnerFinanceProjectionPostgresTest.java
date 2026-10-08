@@ -9,6 +9,7 @@ import com.thang.chargeops.exception.errorcode.CommonErrorCode;
 import com.thang.chargeops.exception.errorcode.PaymentErrorCode;
 import com.thang.chargeops.payment.entity.Payment;
 import com.thang.chargeops.payment.entity.PaymentTransaction;
+import com.thang.chargeops.payment.dto.response.OwnerFinanceSummaryResponse;
 import com.thang.chargeops.payment.repository.PaymentRepository;
 import com.thang.chargeops.payment.repository.PaymentTransactionRepository;
 import com.thang.chargeops.payment.service.impl.OwnerFinanceServiceImpl;
@@ -39,6 +40,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
+import org.springframework.test.context.transaction.TestTransaction;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -167,13 +169,15 @@ class OwnerFinanceProjectionPostgresTest {
         // Add an UNAPPLIED receipt (30,000 VND)
         jdbc.execute(String.format("""
             INSERT INTO payment_transactions(payment_id, provider, receiving_account_ref, transaction_ref,
-                amount, currency, received_at, application_classification, payment_code, version)
-            VALUES ('%s', 'SIMULATOR', 'SIMULATOR', 'TX-UNAPPLIED-OVERPAY', 30000, 'VND', now(), 'UNAPPLIED', 'SCOPE074A', 0);
+                amount, currency, received_at, application_classification, application_reason, payment_code, version)
+            VALUES ('%s', 'SIMULATOR', 'SIMULATOR', 'TX-UNAPPLIED-OVERPAY', 30000, 'VND', now(), 'UNAPPLIED', 'EXCESS', 'SCOPE074A', 0);
         """, paymentA));
 
         // Create a refund for 120,000 with 2 attempts: 1 FAILED, 1 SUCCEEDED
         var payment = payments.findById(paymentA).orElseThrow();
-        var appliedReceipt = receipts.findByPaymentIdOrderByReceivedAtAscIdAsc(paymentA).getFirst();
+        var appliedReceipt = receipts.findByPaymentIdOrderByReceivedAtAscIdAsc(paymentA).stream()
+                .filter(receipt -> receipt.getApplicationClassification() == PaymentApplicationClassification.APPLIED)
+                .findFirst().orElseThrow();
         var actor = users.findById(ownerA).orElseThrow();
 
         var refund = refunds.saveAndFlush(Refund.createPending(new PendingRefundSpec(
@@ -202,15 +206,19 @@ class OwnerFinanceProjectionPostgresTest {
 
         // Add 2 ticket findings to booking
         jdbc.execute(String.format("""
-            INSERT INTO support_tickets(booking_id, reporter_user_id, category, status, priority, title, description)
-            VALUES ('%s', '%s', 'CHARGING_ISSUE', 'OPEN', 'MEDIUM', 'Ticket 1', 'Test ticket');
+            INSERT INTO support_tickets(ticket_code, booking_id, reporter_id, category, status, priority, subject, description)
+            VALUES ('TKT-20261007-0074', '%s', '%s', 'CHARGING_ISSUE', 'OPEN', 'MEDIUM', 'Ticket 1', 'Test ticket');
         """, bookingA, ownerA));
         UUID ticketId = jdbc.queryForObject("SELECT id FROM support_tickets WHERE booking_id = '" + bookingA + "' LIMIT 1", UUID.class);
         jdbc.execute(String.format("""
-            INSERT INTO ticket_findings(ticket_id, booking_id, recorded_by, conclusion, notes)
-            VALUES ('%s', '%s', '%s', 'STATION_FAILURE', 'Finding 1'),
-                   ('%s', '%s', '%s', 'STATION_FAILURE', 'Finding 2');
+            INSERT INTO ticket_findings(ticket_id, booking_id, recorded_by, conclusion, reason, affected_at, recorded_at)
+            VALUES ('%s', '%s', '%s', 'STATION_FAILURE', 'Finding 1', now(), now()),
+                   ('%s', '%s', '%s', 'STATION_FAILURE', 'Finding 2', now(), now());
         """, ticketId, bookingA, ownerA, ticketId, bookingA, ownerA));
+        jdbc.update("""
+            INSERT INTO ticket_events(ticket_id, actor_id, actor_kind, event_type, resolution_cycle, created_at)
+            SELECT ?, ?, 'OWNER', 'CLAIMED', 0, now() FROM generate_series(1, 3)
+        """, ticketId, ownerA);
 
         em.clear();
 
@@ -282,8 +290,8 @@ class OwnerFinanceProjectionPostgresTest {
 
     @Test
     void driftOnListAndDetailThrowsException() {
-        // Corrupt paymentA refund_amount to 50000 when no refund exists
-        jdbc.execute(String.format("UPDATE payments SET refund_amount = 50000 WHERE id = '%s'", paymentA));
+        // Full-package amount obeys the DB constraint, but has no successful refund evidence.
+        jdbc.execute(String.format("UPDATE payments SET refund_amount = amount WHERE id = '%s'", paymentA));
         em.clear();
 
         assertThatThrownBy(() -> finance.list(1, 10))
@@ -333,21 +341,20 @@ class OwnerFinanceProjectionPostgresTest {
 
     @Test
     void environmentIsolationExcludesNonSimulator() {
-        // Set payment environment to TEST
-        jdbc.execute(String.format("UPDATE payments SET environment = 'TEST' WHERE id = '%s'", paymentA));
-        em.clear();
-
-        var summary = finance.summary();
-        assertThat(summary.grossVnd()).isZero();
-        assertThat(summary.totalBookings()).isZero();
-
-        var list = finance.list(1, 10).getContent();
-        assertThat(list).isEmpty();
-
-        assertThatThrownBy(() -> finance.get(bookingA))
-                .isInstanceOfSatisfying(AppException.class, ex -> {
-                    assertThat(ex.getErrorCode()).isEqualTo(CommonErrorCode.RESOURCE_NOT_FOUND);
-                });
+        for (var environment : new PaymentEnvironment[] {
+                PaymentEnvironment.TEST, PaymentEnvironment.LIVE, PaymentEnvironment.LEGACY }) {
+            jdbc.update("UPDATE payments SET environment = ? WHERE id = ?", environment.name(), paymentA);
+            em.clear();
+            var summary = finance.summary();
+            assertThat(summary.grossVnd()).as(environment.name()).isZero();
+            assertThat(summary.refundedVnd()).isZero();
+            assertThat(summary.pendingRefundVnd()).isZero();
+            assertThat(summary.totalBookings()).isZero();
+            assertThat(finance.list(1, 10).getContent()).isEmpty();
+            assertThatThrownBy(() -> finance.get(bookingA))
+                    .isInstanceOfSatisfying(AppException.class, ex ->
+                            assertThat(ex.getErrorCode()).isEqualTo(CommonErrorCode.RESOURCE_NOT_FOUND));
+        }
     }
 
     @Test
@@ -387,10 +394,13 @@ class OwnerFinanceProjectionPostgresTest {
 
     @Test
     void concurrentConsistencyWithTwoRealPostgresTransactions() throws Exception {
+        // Other connections must see the baseline, unlike the usual rollback-only test fixture.
+        TestTransaction.flagForCommit();
+        TestTransaction.end();
         CountDownLatch t1Started = new CountDownLatch(1);
         CountDownLatch t2Committed = new CountDownLatch(1);
-        AtomicReference<Long> grossBefore = new AtomicReference<>();
-        AtomicReference<Long> grossAfter = new AtomicReference<>();
+        AtomicReference<OwnerFinanceSummaryResponse> before = new AtomicReference<>();
+        AtomicReference<OwnerFinanceSummaryResponse> after = new AtomicReference<>();
         AtomicReference<Throwable> t1Error = new AtomicReference<>();
 
         Thread t1 = new Thread(() -> {
@@ -400,16 +410,17 @@ class OwnerFinanceProjectionPostgresTest {
             try {
                 tt.execute(status -> {
                     // T1 reads summary at t1
-                    grossBefore.set(finance.summary().grossVnd());
+                    before.set(finance.summary());
                     t1Started.countDown();
                     try {
                         // Wait for T2 to commit on another connection
-                        t2Committed.await(5, TimeUnit.SECONDS);
+                        assertThat(t2Committed.await(15, TimeUnit.SECONDS)).isTrue();
                     } catch (InterruptedException e) {
                         Thread.currentThread().interrupt();
+                        throw new IllegalStateException(e);
                     }
                     // T1 reads summary again in the SAME transaction at t2
-                    grossAfter.set(finance.summary().grossVnd());
+                    after.set(finance.summary());
                     return null;
                 });
             } catch (Throwable t) {
@@ -417,22 +428,49 @@ class OwnerFinanceProjectionPostgresTest {
             }
         });
 
-        t1.start();
-        t1Started.await(5, TimeUnit.SECONDS);
-
-        // T2 runs on a separate transaction / connection and commits an update
-        TransactionTemplate tt2 = new TransactionTemplate(txManager);
-        tt2.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
-        tt2.execute(status -> {
-            jdbc.execute(String.format("UPDATE payments SET version = version + 1 WHERE id = '%s'", paymentA));
-            return null;
-        });
-        t2Committed.countDown();
-
-        t1.join(5000);
-
-        assertThat(t1Error.get()).isNull();
-        assertThat(grossBefore.get()).isNotNull().isEqualTo(120000L);
-        assertThat(grossAfter.get()).isNotNull().isEqualTo(120000L);
+        try {
+            t1.start();
+            assertThat(t1Started.await(15, TimeUnit.SECONDS)).isTrue();
+            TransactionTemplate tt2 = new TransactionTemplate(txManager);
+            tt2.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+            tt2.execute(status -> {
+                var payment = payments.findById(paymentA).orElseThrow();
+                var receipt = receipts.findByPaymentIdOrderByReceivedAtAscIdAsc(paymentA).getFirst();
+                var actor = users.findById(ownerA).orElseThrow();
+                var refund = refunds.saveAndFlush(Refund.createPending(new PendingRefundSpec(
+                        payment.getBooking(), payment, receipt, RefundReason.VOLUNTARY_GRACE,
+                        RefundBasisType.BOOKING_CANCELLATION, UUID.randomUUID(), NOW.minusSeconds(10), actor)));
+                UUID key = UUID.randomUUID();
+                var attempt = RefundAttempt.start(new PendingRefundAttemptSpec(refund, 1,
+                        RefundExecutionMode.SIMULATOR, key, "c".repeat(64), "refund:" + key,
+                        RefundExecutionTrigger.OWNER, actor, NOW.minusSeconds(5)));
+                attempt.completeSucceeded("SIM_CONCURRENT", "TRANSFER_CONCURRENT", NOW.minusSeconds(4));
+                attempts.saveAndFlush(attempt);
+                refund.completeWith(attempt, NOW.minusSeconds(4));
+                refunds.saveAndFlush(refund);
+                payment.recordFullRefund(BigDecimal.valueOf(120000));
+                payments.saveAndFlush(payment);
+                return null;
+            });
+            t2Committed.countDown();
+            t1.join(15000);
+            assertThat(t1.isAlive()).isFalse();
+            assertThat(t1Error.get()).isNull();
+            assertThat(before.get()).isNotNull();
+            assertThat(before.get().netVnd()).isEqualTo(120000);
+            assertThat(after.get()).isEqualTo(before.get());
+            // A new service transaction sees T2's committed full refund.
+            var fresh = finance.summary();
+            assertThat(fresh.grossVnd()).isEqualTo(120000);
+            assertThat(fresh.refundedVnd()).isEqualTo(120000);
+            assertThat(fresh.netVnd()).isZero();
+        } finally {
+            t2Committed.countDown();
+            t1.join(15000);
+            if (t1.isAlive()) t1.interrupt();
+            // Only the disposable Testcontainers database; removes the explicitly committed fixture.
+            jdbc.execute("TRUNCATE TABLE user_profile CASCADE");
+            TestTransaction.start();
+        }
     }
 }

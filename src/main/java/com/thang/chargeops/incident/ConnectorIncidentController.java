@@ -19,7 +19,7 @@ import java.util.UUID;
 @RestController
 @RequestMapping(SystemConstant.API_URL_PATTERN + "stations/{stationId}")
 @RequiredArgsConstructor
-@PreAuthorize("isAuthenticated()")
+@PreAuthorize("hasAnyRole('OWNER', 'STAFF', 'ADMIN')")
 public class ConnectorIncidentController {
     private final ConnectorIncidentService service;
     @PostMapping("/connectors/{connectorId}/incidents")

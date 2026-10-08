@@ -18,6 +18,11 @@ public final class SecurityConstants {
             "/api/v1/administrative-units/**",
             "/api/v1/legal-documents/**",
             "/api/v1/legal-documents/terms-of-service",
+            // WebSocket handshake is intentionally unauthenticated: browsers cannot send
+            // Authorization headers during the HTTP upgrade. Real authentication happens at
+            // the STOMP CONNECT frame (StompAuthChannelInterceptor) which fails closed.
+            "/ws",
+            "/ws/**",
             // Actuator (health/info/prometheus) — Prometheus scrapes without a token.
             // In prod keep these off the public Nginx route; Prometheus reaches them on the internal network.
             "/actuator/**"

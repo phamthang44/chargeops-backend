@@ -7,12 +7,14 @@ import com.thang.chargeops.exception.AppException;
 import com.thang.chargeops.exception.errorcode.StationErrorCode;
 import com.thang.chargeops.incident.ConnectorIncident;
 import com.thang.chargeops.incident.ConnectorIncidentRepository;
+import com.thang.chargeops.incident.IncidentReasonResolver;
 import com.thang.chargeops.profile.entity.UserProfile;
 import com.thang.chargeops.profile.repository.UserProfileRepository;
 import com.thang.chargeops.profile.support.CurrentProfileProvider;
 import com.thang.chargeops.station.access.service.StationAccessService;
 import com.thang.chargeops.station.entity.ChargePoint;
 import com.thang.chargeops.station.entity.Connector;
+import com.thang.chargeops.station.entity.ConnectorStatusEvent;
 import com.thang.chargeops.station.entity.Station;
 import com.thang.chargeops.station.repository.ChargePointRepository;
 import com.thang.chargeops.station.repository.ConnectorRepository;
@@ -26,6 +28,7 @@ import com.thang.chargeops.station.staff.repository.StationStaffAssignmentReposi
 import com.thang.chargeops.station.staff.service.StaffStationOperationService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
@@ -34,6 +37,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.Comparator;
 import java.util.EnumSet;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 import static com.thang.chargeops.station.staff.dto.StaffOperationResponses.*;
@@ -52,6 +56,7 @@ public class StaffStationOperationServiceImpl implements StaffStationOperationSe
     private final ConnectorRepository connectors;
     private final BookingRepository bookings;
     private final ConnectorIncidentRepository incidents;
+    private final IncidentReasonResolver incidentReasons;
     private final EquipmentStatusHistoryService history;
     private final StaffChargePointHistoryRepository chargePointEvents;
     private final StaffConnectorHistoryRepository connectorEvents;
@@ -88,7 +93,8 @@ public class StaffStationOperationServiceImpl implements StaffStationOperationSe
         readablePoint(stationId, chargePointId);
         return chargePointEvents.findByChargePoint_Id(chargePointId, historyPage(page, size))
                 .map(event -> new HistoryItem(event.getId(), event.getStatusDimension().name(),
-                        event.getFromStatus(), event.getToStatus(), event.getReason(), event.getActorType(),
+                        event.getFromStatus(), event.getToStatus(), event.getReason(), null, null, null,
+                        event.getActorType(),
                         event.getPerformedBy().getDisplayName(), event.getPerformedAt()));
     }
 
@@ -97,11 +103,21 @@ public class StaffStationOperationServiceImpl implements StaffStationOperationSe
     public Page<HistoryItem> connectorHistory(UUID stationId, UUID chargePointId, UUID connectorId,
                                               int page, int size) {
         readableConnector(stationId, chargePointId, connectorId);
-        return connectorEvents.findByConnector_Id(connectorId, historyPage(page, size))
-                .map(event -> new HistoryItem(event.getId(), "RUNTIME", event.getFromStatus().name(),
-                        event.getToStatus().name(), event.getReason(), event.getActorType(),
-                        event.getPerformedBy() == null ? "SYSTEM" : event.getPerformedBy().getDisplayName(),
-                        event.getPerformedAt()));
+        Page<ConnectorStatusEvent> events = connectorEvents.findByConnector_Id(connectorId, historyPage(page, size));
+        Map<String, IncidentReasonResolver.Resolved> resolved =
+                incidentReasons.resolve(events.getContent().stream().map(ConnectorStatusEvent::getReason).toList());
+        List<HistoryItem> content = events.getContent().stream().map(event -> {
+            IncidentReasonResolver.Resolved reference = resolved.get(event.getReason());
+            return new HistoryItem(event.getId(), "RUNTIME", event.getFromStatus().name(),
+                    event.getToStatus().name(), event.getReason(),
+                    reference != null ? reference.action() : null,
+                    reference != null ? reference.incidentId() : null,
+                    reference != null ? reference.detail() : null,
+                    event.getActorType(),
+                    event.getPerformedBy() == null ? "SYSTEM" : event.getPerformedBy().getDisplayName(),
+                    event.getPerformedAt());
+        }).toList();
+        return new PageImpl<>(content, events.getPageable(), events.getTotalElements());
     }
 
     @Transactional
@@ -222,7 +238,11 @@ public class StaffStationOperationServiceImpl implements StaffStationOperationSe
     }
 
     private ConnectorItem connector(Connector value) {
+        UUID activeIncidentId = incidents.findFirstByConnectorIdAndStatusOrderByReportedAtDesc(
+                value.getId(), ConnectorIncident.Status.OPEN)
+                .map(ConnectorIncident::getId)
+                .orElse(null);
         return new ConnectorItem(value.getId(), value.getConnectorCode(), value.getConnectorType(),
-                value.getRuntimeStatus(), value.getVersion());
+                value.getRuntimeStatus(), value.getVersion(), activeIncidentId);
     }
 }

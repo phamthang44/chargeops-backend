@@ -52,6 +52,15 @@ public class OwnerTicketService {
         return ticket;
     }
 
+    private SupportTicket readable(UUID ticketId) {
+        UUID actorId = ownerId();
+        SupportTicket ticket = tickets.findById(ticketId).orElseThrow(() -> new AppException(TicketErrorCode.NOT_FOUND));
+        boolean isStationOwner = access.isOwner(ticket, actorId);
+        boolean isReporter = ticket.getReporter() != null && ticket.getReporter().getId().equals(actorId);
+        if (!isStationOwner && !isReporter) throw new AppException(TicketErrorCode.ACCESS_DENIED);
+        return ticket;
+    }
+
     @Transactional(readOnly = true)
     public Page<TicketResponse> list(UUID stationId, TicketStatus status, int page, int size) {
         UUID actorId = ownerId();
@@ -68,17 +77,17 @@ public class OwnerTicketService {
 
     @Transactional(readOnly = true)
     public TicketResponse get(UUID ticketId) {
-        return responses.toResponse(owned(ticketId));
+        return responses.toResponse(readable(ticketId));
     }
 
     @Transactional(readOnly = true)
     public TicketDetailResponse getDetail(UUID ticketId) {
-        return responses.toDetail(owned(ticketId));
+        return responses.toDetail(readable(ticketId));
     }
 
     @Transactional(readOnly = true)
     public void requireOwned(UUID ticketId) {
-        owned(ticketId);
+        readable(ticketId);
     }
 
     @Transactional
@@ -95,14 +104,18 @@ public class OwnerTicketService {
 
     @Transactional
     public TicketResponse changeStatus(UUID ticketId, TicketStatusRequest request) {
-        owned(ticketId);
-        if (request.status() == TicketStatus.CLOSED) throw new AppException(TicketErrorCode.ACCESS_DENIED);
+        SupportTicket ticket = readable(ticketId);
+        UUID actorId = ownerId();
+        boolean isReporter = ticket.getReporter() != null && ticket.getReporter().getId().equals(actorId);
+        if (request.status() == TicketStatus.CLOSED && !isReporter) {
+            throw new AppException(TicketErrorCode.ACCESS_DENIED);
+        }
         return workflow.changeStatus(ticketId, request);
     }
 
     @Transactional
     public TicketMessageResponse reply(UUID ticketId, UUID clientMessageId, MessageRequest request) {
-        owned(ticketId);
+        readable(ticketId);
         return ticketService.replyTicket(ticketId, clientMessageId, request);
     }
 }

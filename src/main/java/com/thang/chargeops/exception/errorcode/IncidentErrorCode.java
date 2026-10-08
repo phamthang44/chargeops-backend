@@ -11,7 +11,8 @@ import org.springframework.http.HttpStatus;
 public enum IncidentErrorCode implements BaseErrorCode {
     VERSION_CONFLICT(HttpStatus.CONFLICT, "INC_VERSION_CONFLICT", IncidentErrorMessage.VERSION_CONFLICT),
     STATE_CONFLICT(HttpStatus.CONFLICT, "INC_STATE_CONFLICT", IncidentErrorMessage.STATE_CONFLICT),
-    OPEN_INCIDENT(HttpStatus.CONFLICT, "INC_OPEN_INCIDENT", IncidentErrorMessage.OPEN_INCIDENT);
+    OPEN_INCIDENT(HttpStatus.CONFLICT, "INC_OPEN_INCIDENT", IncidentErrorMessage.OPEN_INCIDENT),
+    ALREADY_OPEN(HttpStatus.CONFLICT, "INC_ALREADY_OPEN", IncidentErrorMessage.ALREADY_OPEN);
     private final HttpStatus httpStatus;
     private final String code;
     private final ErrorMessage.Template template;

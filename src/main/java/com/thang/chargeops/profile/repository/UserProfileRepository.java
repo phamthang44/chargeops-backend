@@ -2,12 +2,14 @@ package com.thang.chargeops.profile.repository;
 
 import com.thang.chargeops.profile.entity.UserProfile;
 import jakarta.persistence.LockModeType;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -35,4 +37,14 @@ public interface UserProfileRepository extends JpaRepository<UserProfile, UUID> 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("SELECT u FROM UserProfile u WHERE u.id = :id")
     Optional<UserProfile> findByIdWithLock(@Param("id") UUID id);
+
+    /** Global search (admin only): displayName / email, đã lowercase + escape LIKE. */
+    @Query("""
+            SELECT u FROM UserProfile u
+            WHERE u.deletedAt IS NULL
+              AND (lower(u.displayName) LIKE :pattern ESCAPE '\\'
+                   OR lower(u.email) LIKE :pattern ESCAPE '\\')
+            ORDER BY u.displayName ASC
+            """)
+    List<UserProfile> searchProfiles(@Param("pattern") String pattern, Pageable pageable);
 }

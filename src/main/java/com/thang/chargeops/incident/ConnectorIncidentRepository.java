@@ -10,4 +10,5 @@ public interface ConnectorIncidentRepository extends JpaRepository<ConnectorInci
     boolean existsByConnectorIdAndStatus(UUID connectorId, ConnectorIncident.Status status);
     @Query("SELECT i.connector.id FROM ConnectorIncident i WHERE i.id = :id")
     Optional<UUID> findConnectorId(@Param("id") UUID id);
+    Optional<ConnectorIncident> findFirstByConnectorIdAndStatusOrderByReportedAtDesc(UUID connectorId, ConnectorIncident.Status status);
 }

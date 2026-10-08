@@ -6,6 +6,7 @@ import com.thang.chargeops.common.enums.ProvisioningStatus;
 import com.thang.chargeops.common.enums.RuntimeStatus;
 import com.thang.chargeops.exception.AppException;
 import com.thang.chargeops.exception.errorcode.StationErrorCode;
+import com.thang.chargeops.incident.IncidentReasonResolver;
 import com.thang.chargeops.profile.entity.UserProfile;
 import com.thang.chargeops.station.dto.chargepoint.response.ChargePointStatusEventResponse;
 import com.thang.chargeops.station.dto.chargepoint.response.ConnectorStatusEventResponse;
@@ -13,16 +14,20 @@ import com.thang.chargeops.station.entity.ChargePoint;
 import com.thang.chargeops.station.entity.ChargePointStatusEvent;
 import com.thang.chargeops.station.entity.Connector;
 import com.thang.chargeops.station.entity.ConnectorStatusEvent;
+import com.thang.chargeops.station.event.EquipmentChangeType;
+import com.thang.chargeops.station.event.EquipmentStateChangedEvent;
 import com.thang.chargeops.station.repository.ChargePointStatusEventRepository;
 import com.thang.chargeops.station.repository.ConnectorStatusEventRepository;
 import com.thang.chargeops.station.service.EquipmentStatusHistoryService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
 
@@ -32,6 +37,8 @@ public class EquipmentStatusHistoryServiceImpl implements EquipmentStatusHistory
 
     private final ChargePointStatusEventRepository chargePointStatusEventRepository;
     private final ConnectorStatusEventRepository connectorStatusEventRepository;
+    private final ApplicationEventPublisher eventPublisher;
+    private final IncidentReasonResolver incidentReasons;
 
     @Override
     @Transactional(propagation = Propagation.MANDATORY)
@@ -43,15 +50,25 @@ public class EquipmentStatusHistoryServiceImpl implements EquipmentStatusHistory
             UserProfile performedBy,
             String reason
     ) {
+        Instant occurredAt = Instant.now();
         chargePointStatusEventRepository.save(ChargePointStatusEvent.provisioningTransition(
                 chargePoint,
                 fromStatus,
                 toStatus,
                 actorType,
                 performedBy,
-                Instant.now(),
+                occurredAt,
                 reason
         ));
+        publishStateChanged(
+                chargePoint.getStation().getId(),
+                chargePoint.getId(),
+                null,
+                fromStatus.name(),
+                toStatus.name(),
+                EquipmentChangeType.CHARGE_POINT_PROVISIONING,
+                occurredAt
+        );
     }
 
     @Override
@@ -64,15 +81,25 @@ public class EquipmentStatusHistoryServiceImpl implements EquipmentStatusHistory
             UserProfile performedBy,
             String reason
     ) {
+        Instant occurredAt = Instant.now();
         chargePointStatusEventRepository.save(ChargePointStatusEvent.operationalTransition(
                 chargePoint,
                 fromStatus,
                 toStatus,
                 actorType,
                 performedBy,
-                Instant.now(),
+                occurredAt,
                 reason
         ));
+        publishStateChanged(
+                chargePoint.getStation().getId(),
+                chargePoint.getId(),
+                null,
+                fromStatus.name(),
+                toStatus.name(),
+                EquipmentChangeType.CHARGE_POINT_OPERATIONAL,
+                occurredAt
+        );
     }
 
     @Override
@@ -85,15 +112,17 @@ public class EquipmentStatusHistoryServiceImpl implements EquipmentStatusHistory
             UserProfile performedBy,
             String reason
     ) {
+        Instant occurredAt = Instant.now();
         connectorStatusEventRepository.save(ConnectorStatusEvent.userTransition(
                 connector,
                 fromStatus,
                 toStatus,
                 actorType,
                 performedBy,
-                Instant.now(),
+                occurredAt,
                 reason
         ));
+        publishConnectorChanged(connector, fromStatus.name(), toStatus.name(), occurredAt);
     }
 
     @Override
@@ -122,6 +151,44 @@ public class EquipmentStatusHistoryServiceImpl implements EquipmentStatusHistory
                 occurredAt,
                 reason
         ));
+        publishConnectorChanged(connector, fromStatus.name(), toStatus.name(), occurredAt);
+    }
+
+    /**
+     * Publishes the scalar snapshot while still inside the caller's transaction, so station and
+     * charge point IDs are resolved eagerly (JPA lazy proxies must not be touched after commit).
+     */
+    private void publishConnectorChanged(Connector connector, String from, String to, Instant occurredAt) {
+        var chargePoint = connector.getChargePoint();
+        publishStateChanged(
+                chargePoint.getStation().getId(),
+                chargePoint.getId(),
+                connector.getId(),
+                from,
+                to,
+                EquipmentChangeType.CONNECTOR_RUNTIME,
+                occurredAt
+        );
+    }
+
+    private void publishStateChanged(
+            UUID stationId,
+            UUID chargePointId,
+            UUID connectorId,
+            String from,
+            String to,
+            EquipmentChangeType changeType,
+            Instant occurredAt
+    ) {
+        eventPublisher.publishEvent(new EquipmentStateChangedEvent(
+                stationId,
+                chargePointId,
+                connectorId,
+                from,
+                to,
+                changeType,
+                occurredAt
+        ));
     }
 
     @Override
@@ -137,10 +204,12 @@ public class EquipmentStatusHistoryServiceImpl implements EquipmentStatusHistory
     @Override
     @Transactional(readOnly = true)
     public List<ConnectorStatusEventResponse> getConnectorHistory(UUID connectorId) {
-        return connectorStatusEventRepository
-                .findAllByConnectorIdOrderByPerformedAtAscIdAsc(connectorId)
-                .stream()
-                .map(this::toResponse)
+        List<ConnectorStatusEvent> events =
+                connectorStatusEventRepository.findAllByConnectorIdOrderByPerformedAtAscIdAsc(connectorId);
+        Map<String, IncidentReasonResolver.Resolved> resolved =
+                incidentReasons.resolve(events.stream().map(ConnectorStatusEvent::getReason).toList());
+        return events.stream()
+                .map(event -> toResponse(event, resolved.get(event.getReason())))
                 .toList();
     }
 
@@ -159,13 +228,16 @@ public class EquipmentStatusHistoryServiceImpl implements EquipmentStatusHistory
         );
     }
 
-    private ConnectorStatusEventResponse toResponse(ConnectorStatusEvent event) {
+    private ConnectorStatusEventResponse toResponse(ConnectorStatusEvent event, IncidentReasonResolver.Resolved reference) {
         UserProfile actor = event.getPerformedBy();
         return new ConnectorStatusEventResponse(
                 event.getId(),
                 event.getFromStatus(),
                 event.getToStatus(),
                 event.getReason(),
+                reference != null ? reference.action() : null,
+                reference != null ? reference.incidentId() : null,
+                reference != null ? reference.detail() : null,
                 event.getActorType(),
                 actor != null ? actor.getId() : null,
                 actor != null ? actor.getDisplayName() : "SYSTEM",

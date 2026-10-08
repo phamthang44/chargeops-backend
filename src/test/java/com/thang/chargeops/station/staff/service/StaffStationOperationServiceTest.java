@@ -52,6 +52,7 @@ class StaffStationOperationServiceTest {
     @Mock ConnectorRepository connectors;
     @Mock BookingRepository bookings;
     @Mock ConnectorIncidentRepository incidents;
+    @Mock com.thang.chargeops.incident.IncidentReasonResolver incidentReasons;
     @Mock EquipmentStatusHistoryService history;
     @Mock
     StaffChargePointHistoryRepository chargePointEvents;

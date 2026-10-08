@@ -56,7 +56,8 @@ import static org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTest
         BookingNoShowServiceImpl.class,
         BookingSessionCompletionCoordinator.class,
         BookingAutomaticCompletionServiceImpl.class,
-        EquipmentStatusHistoryServiceImpl.class
+        EquipmentStatusHistoryServiceImpl.class,
+        com.thang.chargeops.incident.IncidentReasonResolver.class
 })
 @Transactional(propagation = Propagation.NOT_SUPPORTED)
 class BookingLifecycleConcurrencyIntegrationTest {

@@ -48,7 +48,7 @@ import java.util.UUID;
 /** Connector lock serializes reports, snapshot membership, session resolution and recovery. */
 @Service
 @RequiredArgsConstructor
-@PreAuthorize("isAuthenticated()")
+@PreAuthorize("hasAnyRole('OWNER', 'STAFF', 'ADMIN')")
 public class ConnectorIncidentService {
     private final CurrentProfileProvider currentProfileProvider;
     private final UserProfileRepository profiles;
@@ -78,10 +78,14 @@ public class ConnectorIncidentService {
         Optional<ConnectorIncident> replay = replay(actor, IncidentCommand.Operation.REPORT, key, hash);
         if (replay.isPresent()) return response(replay.get());
         if (connector.getVersion() != request.expectedConnectorVersion()) versionConflict(connector.getVersion());
+        if (incidents.existsByConnectorIdAndStatus(connectorId, ConnectorIncident.Status.OPEN)) {
+            throw new AppException(IncidentErrorCode.ALREADY_OPEN);
+        }
 
         ConnectorIncident incident = incidents.saveAndFlush(ConnectorIncident.report(
                 connector, actor, actorType(connector, actor), reason, request.occurredAt(), now));
-        transition(connector, RuntimeStatus.OFFLINE, actor, "INCIDENT_REPORT:" + incident.getId());
+        transition(connector, RuntimeStatus.OFFLINE, actor,
+                IncidentAuditReason.format(IncidentAuditReason.Action.INCIDENT_REPORT, incident.getId(), null, incident.getReason()));
         affectedBookings.saveAll(snapshotReader.findAffected(connectorId, request.occurredAt()).stream()
                 .map(booking -> IncidentBooking.snapshot(incident, booking)).toList());
         record(actor, incident, IncidentCommand.Operation.REPORT, key, hash, now);
@@ -115,7 +119,8 @@ public class ConnectorIncidentService {
         Instant now = clock.instant();
         incident.recover(actor, actorType(connector, actor), reason, now);
         incidents.flush();
-        transition(connector, recoveredRuntime(connector), actor, "INCIDENT_RECOVER:" + incidentId);
+        transition(connector, recoveredRuntime(connector), actor,
+                IncidentAuditReason.format(IncidentAuditReason.Action.INCIDENT_RECOVER, incidentId, null, reason));
         record(actor, incident, IncidentCommand.Operation.RECOVER, key, hash, now);
         connectors.flush();
         return response(incident);
@@ -156,7 +161,8 @@ public class ConnectorIncidentService {
         affected.resolve(actor, reason, now);
         // Safety resolution never grants money or makes the hardware AVAILABLE.
         // If recovery preceded resolution, leave OFFLINE for an explicit runtime acknowledgement.
-        transition(connector, RuntimeStatus.OFFLINE, actor, "INCIDENT_SESSION_STOP:" + incidentId + ":" + bookingId);
+        transition(connector, RuntimeStatus.OFFLINE, actor,
+                IncidentAuditReason.format(IncidentAuditReason.Action.INCIDENT_SESSION_STOP, incidentId, bookingId, reason));
         record(actor, affected.getIncident(), IncidentCommand.Operation.RESOLVE_SESSION, key, hash, now);
         bookings.flush();
         connectors.flush();

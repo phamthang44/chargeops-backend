@@ -24,11 +24,13 @@ import com.thang.chargeops.refund.executor.RefundExecutionCommand;
 import com.thang.chargeops.refund.executor.RefundExecutorRegistry;
 import com.thang.chargeops.refund.factory.RefundAttemptFactory;
 import com.thang.chargeops.refund.model.RefundExecutionMode;
+import com.thang.chargeops.refund.model.RefundAttemptStatus;
 import com.thang.chargeops.refund.model.RefundStatus;
 import com.thang.chargeops.refund.projection.RefundExecutionRouteProjection;
 import com.thang.chargeops.refund.repository.RefundAttemptRepository;
 import com.thang.chargeops.refund.repository.RefundRepository;
 import com.thang.chargeops.refund.service.OwnerRefundService;
+import com.thang.chargeops.refund.service.OwnerRefundAttemptSanitizer;
 import com.thang.chargeops.refund.service.RefundDetailAssembler;
 import com.thang.chargeops.refund.service.RefundExecutionPayloadHasher;
 import com.thang.chargeops.refund.service.RefundExecutionResultHandler;
@@ -156,14 +158,16 @@ public class OwnerRefundServiceImpl implements OwnerRefundService {
             throw new AppException(RefundErrorCode.EXECUTION_CONFLICT,
                     "Only a failed Simulator refund may be retried by its Owner");
         }
-        long attemptCount = attemptRepository.countByRefundId(refundId);
-        if (attemptCount == 0) {
+        List<RefundAttempt> previousAttempts = attemptRepository.findByRefundIdOrderBySequenceNoAsc(refundId);
+        if (previousAttempts.isEmpty()
+                || previousAttempts.getLast().getStatus() != RefundAttemptStatus.FAILED
+                || previousAttempts.stream().anyMatch(previous -> previous.getStatus() == RefundAttemptStatus.STARTED)) {
             throw new AppException(RefundErrorCode.EXECUTION_CONFLICT,
-                    "The first Simulator attempt is still pending");
+                    "Only a terminal failed attempt may start a new Owner retry");
         }
         Instant at = applicationClock.instant();
         RefundAttempt attempt = RefundAttemptFactory.ownerRetry(refund,
-                Math.toIntExact(attemptCount + 1), requestKey, payloadHash, lockedOwner, at);
+                Math.addExact(previousAttempts.getLast().getSequenceNo(), 1), requestKey, payloadHash, lockedOwner, at);
         var result = executorRegistry.require(RefundExecutionMode.SIMULATOR)
                 .execute(new RefundExecutionCommand(refundId, requestKey, request, at));
         resultHandler.apply(refund, payment, attempt, result, at);
@@ -189,7 +193,7 @@ public class OwnerRefundServiceImpl implements OwnerRefundService {
                 refund.getBooking().getConnector().getChargePoint().getStation().getId(),
                 base.amount(), base.currency(), base.reason(), base.status(),
                 base.requiresOwnerAction(), base.version(), base.decisionAt(),
-                base.completedAt(), base.attempts());
+                base.completedAt(), base.attempts().stream().map(OwnerRefundAttemptSanitizer::sanitize).toList());
     }
 
     private UUID ownerId(Booking booking) {

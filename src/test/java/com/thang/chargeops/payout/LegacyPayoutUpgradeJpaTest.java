@@ -19,6 +19,7 @@ import org.testcontainers.utility.DockerImageName;
 import java.nio.charset.StandardCharsets;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase.Replace.NONE;
 
 @Testcontainers
@@ -37,6 +38,45 @@ class LegacyPayoutUpgradeJpaTest {
     @Autowired OwnerAdjustmentRepository adjustments;
     @Autowired OwnerBookingFinancialRepository financials;
     @Autowired org.springframework.jdbc.core.JdbcTemplate jdbc;
+    @Autowired com.thang.chargeops.payment.repository.PaymentRepository paymentRepository;
+    @Autowired com.thang.chargeops.payment.repository.PaymentTransactionRepository receiptRepository;
+    @Autowired com.thang.chargeops.refund.repository.RefundRepository refundRepository;
+    @Autowired jakarta.persistence.EntityManager entityManager;
+
+    @Test
+    void bkg065CurrentOwnerLedgerRecomputesFromPreservedSourcesAfterUpgrade() {
+        var profile = org.mockito.Mockito.mock(com.thang.chargeops.profile.support.CurrentProfileProvider.class);
+        var finance = new com.thang.chargeops.payment.service.impl.OwnerFinanceServiceImpl(
+                profile, paymentRepository, receiptRepository, refundRepository);
+        var financialOwner = jdbc.queryForObject("SELECT id FROM user_profile WHERE keycloak_id='payout-schema'", java.util.UUID.class);
+        var nextOwner = jdbc.queryForObject("SELECT id FROM user_profile WHERE keycloak_id='legacy-next-owner'", java.util.UUID.class);
+        var bookingId = jdbc.queryForObject("SELECT id FROM bookings WHERE booking_code='BKG-PAYOUT-SCHEMA'", java.util.UUID.class);
+        org.mockito.Mockito.when(profile.requireProfileId()).thenReturn(financialOwner);
+        var beforeClear = finance.summary();
+        assertThat(beforeClear.grossVnd()).isEqualTo(100000);
+        assertThat(beforeClear.refundedVnd()).isZero();
+        assertThat(beforeClear.pendingRefundVnd()).isZero();
+        assertThat(beforeClear.netVnd()).isEqualTo(100000);
+        var beforeDetail = finance.get(bookingId);
+        assertThat(beforeDetail.receipts()).hasSize(1);
+        assertThat(beforeDetail.collectedAmount()).isEqualTo(100000);
+        entityManager.clear();
+        assertThat(finance.summary()).isEqualTo(beforeClear);
+        assertThat(finance.get(bookingId)).isEqualTo(beforeDetail);
+        assertThat(finance.list(1, 20).getContent()).singleElement().satisfies(row -> {
+            assertThat(row.bookingId()).isEqualTo(bookingId);
+            assertThat(row.collectedAmount()).isEqualTo(beforeDetail.collectedAmount());
+            assertThat(row.refundedAmount()).isEqualTo(beforeDetail.refundedAmount());
+            assertThat(row.pendingRefundAmount()).isEqualTo(beforeDetail.pendingRefundAmount());
+            assertThat(row.netRecordedAmount()).isEqualTo(beforeDetail.netRecordedAmount());
+        });
+        org.mockito.Mockito.when(profile.requireProfileId()).thenReturn(nextOwner);
+        assertThat(finance.summary().grossVnd()).isZero();
+        assertThat(finance.list(1, 20)).isEmpty();
+        assertThatThrownBy(() -> finance.get(bookingId))
+                .isInstanceOfSatisfying(com.thang.chargeops.exception.AppException.class, error ->
+                        assertThat(error.getErrorCode()).isEqualTo(com.thang.chargeops.exception.errorcode.CommonErrorCode.RESOURCE_NOT_FOUND));
+    }
 
     @Test
     void readsHistoricalPayoutAfterUpgradeWithoutChangingMoneyOrFinancialOwner() {

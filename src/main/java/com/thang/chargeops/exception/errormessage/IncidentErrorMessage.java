@@ -11,7 +11,9 @@ public final class IncidentErrorMessage {
             "error.incident.stateConflict", "The incident command is not allowed in the current state");
     public static final ErrorMessage.Template OPEN_INCIDENT = template(
             "error.incident.openIncident", "Recover all open incidents before making this connector available");
+    public static final ErrorMessage.Template ALREADY_OPEN = template(
+            "error.incident.alreadyOpen", "Connector already has an active incident; resolve it before reporting a new one");
     static List<ErrorMessage.Template> templates() {
-        return List.of(VERSION_CONFLICT, STATE_CONFLICT, OPEN_INCIDENT);
+        return List.of(VERSION_CONFLICT, STATE_CONFLICT, OPEN_INCIDENT, ALREADY_OPEN);
     }
 }

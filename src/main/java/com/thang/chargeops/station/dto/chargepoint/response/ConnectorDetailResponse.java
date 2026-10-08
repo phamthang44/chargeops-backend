@@ -16,6 +16,7 @@ public record ConnectorDetailResponse(
         BigDecimal powerKw,
         ChargerType chargerType,
         RuntimeStatus runtimeStatus,
-        Instant createdAt
+        Instant createdAt,
+        UUID activeIncidentId
 ) {
 }
