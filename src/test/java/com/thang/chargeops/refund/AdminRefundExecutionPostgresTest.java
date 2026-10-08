@@ -409,7 +409,7 @@ class AdminRefundExecutionPostgresTest {
                 SELECT id, 'RF station %2$s', 'Test address', '0901234567', 'ACTIVE'
                 FROM user_profile WHERE keycloak_id='%1$s';
                 INSERT INTO charge_points(station_id, charge_point_code, provisioning_status, operational_status)
-                SELECT id, '%3$s', 'PROVISIONED', 'OPERATING'
+                SELECT id, '%3$s', 'PROVISIONED', 'AVAILABLE'
                 FROM stations WHERE name='RF station %2$s';
                 INSERT INTO connectors(charge_point_id, connector_code, connector_type, power_kw, charger_type, runtime_status)
                 SELECT id, '%4$s', 'CCS2', 60, 'DC', 'AVAILABLE'

@@ -35,6 +35,10 @@ import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.UUID;
 
+import com.thang.chargeops.support.service.TicketEscalationService;
+import com.thang.chargeops.booking.service.ServiceFailureDecisionReader;
+import com.thang.chargeops.support.service.AdminFinanceAccessAudit;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.when;
 import static org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase.Replace.NONE;
@@ -71,6 +75,9 @@ class SupportTicketCreatePostgresTest {
     @Autowired EntityManager entityManager;
     @MockitoBean CurrentProfileProvider currentProfileProvider;
     @MockitoBean TicketAccessPolicy ticketAccessPolicy;
+    @MockitoBean TicketEscalationService ticketEscalationService;
+    @MockitoBean ServiceFailureDecisionReader serviceFailureDecisionReader;
+    @MockitoBean AdminFinanceAccessAudit adminFinanceAccessAudit;
 
     @Test
     void chargingIssueCreationPersistsFirstMessageAndHoldsPayout() {

@@ -330,16 +330,17 @@ class BookingCheckoutIntegrationTest {
         );
         jdbcTemplate.update("""
                 INSERT INTO bookings(
-                    id, driver_id, connector_id, booking_code, start_at, end_at,
+                    id, driver_id, financial_owner_id, connector_id, booking_code, start_at, end_at,
                     status, total_amount, station_name_snapshot,
                     station_address_snapshot, charge_point_code_snapshot,
                     connector_code_snapshot, expires_at, version, created_at, updated_at
                 )
-                VALUES (?, ?, ?, ?, ?, ?, 'PENDING', 126000,
+                VALUES (?, ?, ?, ?, ?, ?, ?, 'PENDING', 126000,
                         'Checkout Station', 'Test Address', 'CP-01', 'CON-01',
                         ?, 0, ?, ?)
                 """,
                 fixtureBookingId,
+                actorId,
                 actorId,
                 connectorId,
                 "BK-" + shortSuffix,

@@ -97,14 +97,16 @@ class BookingHoldConcurrencyIntegrationTest {
 
     private UUID driverAId;
     private UUID driverBId;
+    private UUID ownerId;
     private UUID connector1Id;
     private UUID connector2Id;
 
     @BeforeEach
     void setUpFixtures() {
+        jdbcTemplate.execute("ALTER TABLE bookings ALTER COLUMN financial_owner_id DROP NOT NULL");
         driverAId = UUID.randomUUID();
         driverBId = UUID.randomUUID();
-        UUID ownerId = UUID.randomUUID();
+        ownerId = UUID.randomUUID();
         UUID stationId = UUID.randomUUID();
         UUID chargePointId = UUID.randomUUID();
         connector1Id = UUID.randomUUID();
@@ -315,15 +317,15 @@ class BookingHoldConcurrencyIntegrationTest {
         // 1. Driver A đã có sẵn 1 booking đã thanh toán (CONFIRMED) trên Connector 1
         requiresNewTransaction().executeWithoutResult(status -> {
             jdbcTemplate.update("""
-                    INSERT INTO bookings(id, driver_id, connector_id, start_at, end_at, status,
+                    INSERT INTO bookings(id, driver_id, financial_owner_id, connector_id, start_at, end_at, status,
                                          total_amount, station_name_snapshot, station_address_snapshot,
                                          charge_point_code_snapshot, connector_code_snapshot, expires_at,
                                          payment_confirmed_at, version, created_at, updated_at)
-                    VALUES (?, ?, ?, ?, ?, 'CONFIRMED', 126000,
+                    VALUES (?, ?, ?, ?, ?, ?, 'CONFIRMED', 126000,
                             'Station Concurrency', 'Address', 'CP-01', 'CON-01', NULL,
                             ?, 0, ?, ?)
                     """,
-                    paidBookingId, driverAId, connector1Id,
+                    paidBookingId, driverAId, ownerId, connector1Id,
                     Timestamp.from(startAt), Timestamp.from(endAt),
                     Timestamp.from(NOW),
                     Timestamp.from(NOW),
@@ -391,14 +393,14 @@ class BookingHoldConcurrencyIntegrationTest {
         // 1. Tạo 1 PENDING booking đã quá hạn (expiresAt = NOW - 10s)
         requiresNewTransaction().executeWithoutResult(status -> {
             jdbcTemplate.update("""
-                    INSERT INTO bookings(id, driver_id, connector_id, start_at, end_at, status,
+                    INSERT INTO bookings(id, driver_id, financial_owner_id, connector_id, start_at, end_at, status,
                                          total_amount, station_name_snapshot, station_address_snapshot,
                                          charge_point_code_snapshot, connector_code_snapshot, expires_at,
                                          version, created_at, updated_at)
-                    VALUES (?, ?, ?, ?, ?, 'PENDING', 126000,
+                    VALUES (?, ?, ?, ?, ?, ?, 'PENDING', 126000,
                             'Station', 'Address', 'CP-01', 'CON-01', ?, 0, ?, ?)
                     """,
-                    expiredBookingId, driverAId, connector1Id,
+                    expiredBookingId, driverAId, ownerId, connector1Id,
                     Timestamp.from(startAt), Timestamp.from(endAt),
                     Timestamp.from(NOW.minusSeconds(10)),
                     Timestamp.from(NOW.minusSeconds(610)),

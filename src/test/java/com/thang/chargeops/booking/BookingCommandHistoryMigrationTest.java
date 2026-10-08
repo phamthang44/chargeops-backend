@@ -30,7 +30,7 @@ class BookingCommandHistoryMigrationTest {
             flyway.migrate();
             flyway.validate();
 
-            assertThat(flyway.info().current().getVersion().getVersion()).isEqualTo("33");
+            assertThat(Integer.parseInt(flyway.info().current().getVersion().getVersion())).isGreaterThanOrEqualTo(33);
             try (Connection connection = DriverManager.getConnection(
                     postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword())) {
                 assertThat(count(connection, """

@@ -127,7 +127,7 @@ class PayoutSchemaMigrationTest {
 
             UUID refund = UUID.randomUUID();
             exec(db, "INSERT INTO refunds(id,booking_id,payment_id,source_payment_transaction_id,amount,currency," +
-                    "reason,basis_type,basis_id,status,decision_at,decided_by,execution_policy,requires_admin_action) " +
+                    "reason,basis_type,basis_id,status,decision_at,decided_by,execution_policy,requires_owner_action) " +
                     "VALUES ('" + refund + "','" + booking + "','" + payment + "','" + receipt +
                     "',100000,'VND','STATION_FAILURE','STATION_FAILURE_FINDING','" + UUID.randomUUID() +
                     "','PENDING','2026-09-30 13:00Z','" + owner + "','ADMIN_REQUIRED',true)");

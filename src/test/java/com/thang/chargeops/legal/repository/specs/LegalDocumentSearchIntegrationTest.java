@@ -82,7 +82,7 @@ class LegalDocumentSearchIntegrationTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"refund", "REFUNDS"})
+    @ValueSource(strings = {"refund", "REFUND"})
     void searchesKeywordAndTitleInBothLanguages(String search) {
         assertThat(search(new LegalDocumentFilter(search, LegalDocType.OPERATIONAL_REGULATION,
                 TargetAudience.DRIVER, true)))

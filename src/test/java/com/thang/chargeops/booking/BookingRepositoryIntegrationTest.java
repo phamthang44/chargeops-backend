@@ -39,10 +39,11 @@ class BookingRepositoryIntegrationTest {
 
     private UUID connectorId;
     private UUID driverId;
+    private UUID ownerId;
 
     @BeforeEach
     void setUpData() {
-        UUID ownerId = insertProfile("owner@chargeops.test");
+        ownerId = insertProfile("owner@chargeops.test");
         driverId = insertProfile("driver@chargeops.test");
         UUID stationId = insertStation(ownerId);
         UUID chargePointId = insertChargePoint(stationId);
@@ -510,15 +511,16 @@ class BookingRepositoryIntegrationTest {
         jdbcTemplate.update(
                 """
                 INSERT INTO bookings
-                    (id, driver_id, connector_id, start_at, end_at, status,
+                    (id, driver_id, financial_owner_id, connector_id, start_at, end_at, status,
                      total_amount, station_name_snapshot, station_address_snapshot,
                      charge_point_code_snapshot, connector_code_snapshot,
                      expires_at, check_in_deadline, version, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, 'Station', '1 Le Loi',
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'Station', '1 Le Loi',
                         'CP-01', 'C-01', ?, ?, 0, ?, ?)
                 """,
                 bookingId,
                 driverId,
+                ownerId,
                 connectorId,
                 Timestamp.from(startAt),
                 Timestamp.from(endAt),

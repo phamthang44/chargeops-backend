@@ -14,6 +14,10 @@ import org.springframework.data.domain.Sort;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.orm.ObjectOptimisticLockingFailureException;
 
+import com.thang.chargeops.infra.persistence.CurrentActorContext;
+import com.thang.chargeops.infra.persistence.JpaAuditingConfig;
+import org.springframework.context.annotation.Import;
+
 import java.math.BigDecimal;
 import java.sql.Timestamp;
 import java.time.Instant;
@@ -26,6 +30,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
         "spring.jpa.hibernate.ddl-auto=create-drop",
         "spring.flyway.enabled=false"
 })
+@Import({JpaAuditingConfig.class, CurrentActorContext.class})
 class StationRepositoryProjectionIntegrationTest {
 
     @Autowired

@@ -179,10 +179,10 @@ class BookingExpirationConcurrencyIntegrationTest {
         jdbcTemplate.update("""
                 INSERT INTO payments(id, booking_id, amount, status, method, refund_amount,
                                      paid_at, provider, receiving_account_ref, currency, version,
-                                     needs_reconciliation, payment_code, provider_order_ref,
+                                     needs_reconciliation, environment, payment_code, provider_order_ref,
                                      va_number, provider_expires_at)
                 VALUES (?, ?, ?, ?, 'SIMULATOR', 0, ?, 'SIMULATOR', ?, 'VND', 0,
-                        false, ?, ?, ?, ?)
+                        false, 'SIMULATOR', ?, ?, ?, ?)
                 """,
                 paymentId,
                 bookingId,

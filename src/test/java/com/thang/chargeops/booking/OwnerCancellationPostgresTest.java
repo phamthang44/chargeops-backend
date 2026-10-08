@@ -505,13 +505,13 @@ class OwnerCancellationPostgresTest {
                 UUID.randomUUID(), stationId, staffId, ownerId, Timestamp.from(NOW));
         currentActorId.set(staffId);
         UUID key = UUID.randomUUID();
-        JsonNode reported = incidentReport(key, 0, "driver", 200);
+        JsonNode reported = incidentReport(key, 0, "staff", 200);
         UUID incidentId = UUID.fromString(reported.at("/data/incidentId").asText());
         assertThat(reported.at("/data/runtimeStatus").asText()).isEqualTo("OFFLINE");
         assertThat(reported.at("/data/affectedBookingIds/0").asText()).isEqualTo(paid.bookingId().toString());
         assertThat(reported.toString()).doesNotContain("paymentId", "receiptId", "amount", "payloadHash", "keycloakId");
-        assertThat(incidentReport(key, 0, "driver", 200).at("/data/incidentId")).isEqualTo(reported.at("/data/incidentId"));
-        incidentReport(key, 1, "driver", 409);
+        assertThat(incidentReport(key, 0, "staff", 200).at("/data/incidentId")).isEqualTo(reported.at("/data/incidentId"));
+        incidentReport(key, 1, "staff", 409);
         assertCount("refunds", paid.bookingId(), 0);
         assertThat(jdbc.queryForObject("SELECT actor_type FROM connector_incidents WHERE id=?", String.class, incidentId)).isEqualTo("STAFF");
         assertThat(jdbc.queryForObject("SELECT count(*) FROM incident_commands WHERE incident_id=?", Long.class, incidentId)).isEqualTo(1L);
@@ -556,7 +556,10 @@ class OwnerCancellationPostgresTest {
     @Test void incidentTwoOpenIncidentsRecoveryAndOrdinaryRuntimeGuard() throws Exception {
         currentActorId.set(ownerId);
         UUID first = UUID.fromString(incidentReport(UUID.randomUUID(),0,"owner",200).at("/data/incidentId").asText());
-        UUID second = UUID.fromString(incidentReport(UUID.randomUUID(),1,"owner",200).at("/data/incidentId").asText());
+        incidentReport(UUID.randomUUID(),1,"owner",409);
+        UUID second = UUID.randomUUID();
+        jdbc.update("INSERT INTO connector_incidents(id,connector_id,status,reason,occurred_at,reported_at,reported_by,actor_type,previous_runtime_status) VALUES (?,?,'OPEN',?,?,?,?,'ADMIN','OFFLINE')",
+                second,connectorId,REASON,Timestamp.from(NOW),Timestamp.from(NOW),ownerId);
         UUID key = UUID.randomUUID();
         assertThat(incidentRecover(first,0,key,200).at("/data/runtimeStatus").asText()).isEqualTo("OFFLINE");
         UUID cpId = jdbc.queryForObject("SELECT charge_point_id FROM connectors WHERE id=?",UUID.class,connectorId);
@@ -711,7 +714,7 @@ class OwnerCancellationPostgresTest {
     }
     private JsonNode incidentReport(UUID key,long version,String role,int expectedStatus) throws Exception {
         return body(mockMvc.perform(post("/api/v1/stations/{s}/connectors/{c}/incidents",incidentStationId(),connectorId)
-                .with(user(role).roles(role.equals("owner") ? "OWNER" : "DRIVER"))
+                .with(user(role).roles(role.toUpperCase()))
                 .header("Idempotency-Key",key).contentType("application/json")
                 .content(json(Map.of("expectedConnectorVersion",version,"reason",REASON,"occurredAt",NOW))))
                 .andExpect(status().is(expectedStatus)).andReturn());
@@ -838,6 +841,74 @@ class OwnerCancellationPostgresTest {
         }
         assertCount("refunds", paid.bookingId(), 1);
         assertCount("booking_service_failure_decisions", paid.bookingId(), 1);
+        UUID refundId = jdbc.queryForObject("SELECT id FROM refunds WHERE booking_id=?", UUID.class, paid.bookingId());
+        String basis = jdbc.queryForObject("SELECT basis_type || ':' || basis_id::text FROM refunds WHERE id=?", String.class, refundId);
+        String decisionAudit = jdbc.queryForObject("SELECT jsonb_agg(to_jsonb(d))::text FROM booking_service_failure_decisions d WHERE booking_id=?", String.class, paid.bookingId());
+        // Whichever actor lost may refresh and link the obligation, never dispatch a second refund.
+        String actorKind = jdbc.queryForObject("SELECT actor_kind FROM booking_service_failure_decisions WHERE booking_id=?", String.class, paid.bookingId());
+        if (actorKind.equals("OWNER")) {
+            currentActorId.set(policyCase.adminId());
+            adminReview(policyCase, UUID.randomUUID(), policyPayload(2, 1, true), 200);
+        } else {
+            currentActorId.set(ownerId);
+            mockMvc.perform(post("/api/v1/owner/bookings/{id}/station-failure-refund", paid.bookingId())
+                    .with(user("owner").roles("OWNER")).header("Idempotency-Key", UUID.randomUUID())
+                    .contentType("application/json").content(json(Map.of("expectedVersion", 2,
+                            "expectedDecisionVersion", 1, "affectedAt", NOW.toString(), "reason", REASON))))
+                    .andExpect(status().isOk());
+        }
+        assertCount("refunds", paid.bookingId(), 1);
+        assertCount("booking_service_failure_decisions", paid.bookingId(), 2);
+        assertThat(jdbc.queryForObject("SELECT basis_type || ':' || basis_id::text FROM refunds WHERE id=?", String.class, refundId)).isEqualTo(basis);
+        assertThat(jdbc.queryForObject("SELECT jsonb_agg(to_jsonb(d))::text FROM booking_service_failure_decisions d WHERE booking_id=? AND sequence_no=1", String.class, paid.bookingId())).isEqualTo(decisionAudit);
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM refund_auto_dispatches WHERE refund_id=?", Long.class, refundId)).isEqualTo(1L);
+        assertThat(automaticRefundExecutionService.processFirstAttempt(refundId)).isTrue();
+        assertThat(automaticRefundExecutionService.processFirstAttempt(refundId)).isFalse();
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM refund_attempts WHERE refund_id=?", Long.class, refundId)).isEqualTo(1L);
+        assertThat(jdbc.queryForObject("SELECT refund_amount FROM payments WHERE id=?", Long.class, paid.paymentId())).isEqualTo(paid.amount());
+    }
+
+    @Test void bkg075ClosedCaseKeepsFailedRefundAndOwnerRetryWithSafeError() throws Exception {
+        PaidBooking paid = createAndPayBooking(START_AT);
+        PolicyCase policyCase = createPolicyCase(paid.bookingId());
+        JsonNode grant = adminReview(policyCase, UUID.randomUUID(), policyPayload(1, 0, true), 200);
+        UUID refundId = UUID.fromString(grant.at("/data/refund/refundId").asText());
+        doReturn(new RefundExecutionResult(RefundExecutionOutcome.FAILED, "SIMULATOR", null,
+                "PRIVATE_FAILURE", NOW, "internal.example token=PRIVATE_MARKER"))
+                .doCallRealMethod().when(simulatorRefundExecutor).execute(any());
+        automaticRefundExecutionService.processFirstAttempt(refundId);
+        String audit = jdbc.queryForObject("SELECT jsonb_agg(to_jsonb(d))::text FROM booking_service_failure_decisions d WHERE booking_id=?", String.class, paid.bookingId());
+        long ticketVersion = jdbc.queryForObject("SELECT version FROM support_tickets WHERE id=?", Long.class, policyCase.ticketId());
+        mockMvc.perform(patch("/api/v1/admin/tickets/{id}/escalation", policyCase.ticketId())
+                .with(user("admin").roles("ADMIN")).contentType("application/json")
+                .content(json(Map.of("expectedVersion", ticketVersion, "action", "CLOSE_SUPPORT_CASE",
+                        "closureReason", "OTHER", "note", REASON))))
+                .andExpect(status().isOk());
+        currentActorId.set(ownerId);
+        mockMvc.perform(get("/api/v1/owner/refunds/{id}", refundId).with(user("owner").roles("OWNER")))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.status").value("PENDING"))
+                .andExpect(jsonPath("$.data.attempts[0].failureCode").value("REFUND_EXECUTION_FAILED"))
+                .andExpect(content().string(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("PRIVATE_MARKER"))));
+        long version = jdbc.queryForObject("SELECT version FROM refunds WHERE id=?", Long.class, refundId);
+        UUID key = UUID.randomUUID();
+        for (String role : List.of("ADMIN", "STAFF", "DRIVER")) {
+            mockMvc.perform(post("/api/v1/owner/refunds/{id}/retry", refundId).with(user(role).roles(role))
+                    .header("Idempotency-Key", key).contentType("application/json")
+                    .content(json(Map.of("expectedVersion", version)))).andExpect(status().isForbidden());
+        }
+        for (String field : List.of("amount", "outcome", "executionMode", "transferReference")) {
+            Map<String, Object> payload = new LinkedHashMap<>(); payload.put("expectedVersion", version); payload.put(field, "SUCCEEDED");
+            mockMvc.perform(post("/api/v1/owner/refunds/{id}/retry", refundId).with(user("owner").roles("OWNER"))
+                    .header("Idempotency-Key", key).contentType("application/json").content(json(payload)))
+                    .andExpect(status().isBadRequest());
+        }
+        mockMvc.perform(post("/api/v1/owner/refunds/{id}/retry", refundId).with(user("owner").roles("OWNER"))
+                .header("Idempotency-Key", key).contentType("application/json").content(json(Map.of("expectedVersion", version))))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.status").value("SUCCEEDED"));
+        assertThat(jdbc.queryForObject("SELECT status FROM support_tickets WHERE id=?", String.class, policyCase.ticketId())).isEqualTo("CLOSED");
+        assertThat(jdbc.queryForObject("SELECT jsonb_agg(to_jsonb(d))::text FROM booking_service_failure_decisions d WHERE booking_id=?", String.class, paid.bookingId())).isEqualTo(audit);
+        assertThat(jdbc.queryForObject("SELECT note FROM refund_attempts WHERE refund_id=? AND sequence_no=1", String.class, refundId)).contains("PRIVATE_MARKER");
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM refund_attempts WHERE refund_id=?", Long.class, refundId)).isEqualTo(2L);
     }
 
     @Test void adminCannotGrantWhenCaseClosesWhileWaitingForFinancialLock() throws Exception {
@@ -913,6 +984,105 @@ class OwnerCancellationPostgresTest {
         assertThat(jdbc.queryForObject("SELECT runtime_status FROM connectors WHERE id=?", String.class, connectorId)).isEqualTo("AVAILABLE");
         mockMvc.perform(get("/api/v1/owner/bookings/{id}", pending.bookingId()).with(user("owner").roles("OWNER")))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.data.serviceFailureDecisions[0].reason").value(REASON));
+    }
+
+    @ParameterizedTest @ValueSource(strings = {"OWNER", "ADMIN", "GRACE"})
+    void bkg065SourceAndAllOwnerReadsAgreeThroughFailureRetryAndLateReceipt(String decisionKind) throws Exception {
+        PaidBooking paid = createAndPayBooking(START_AT);
+        bkg065AssertLedger(paid, 0, 0);
+        UUID refundId;
+        if (decisionKind.equals("GRACE")) {
+            currentActorId.set(driverId);
+            String policyVersion = jdbc.queryForObject("SELECT policy_version FROM bookings WHERE id=?", String.class, paid.bookingId());
+            JsonNode cancelled = body(mockMvc.perform(post("/api/v1/bookings/{id}/cancel", paid.bookingId())
+                    .with(user("driver").roles("DRIVER")).header("Idempotency-Key", UUID.randomUUID())
+                    .contentType("application/json").content(json(Map.of("expectedVersion", 1,
+                            "expectedRefundAmount", paid.amount(), "acceptedPolicyVersion", policyVersion))))
+                    .andExpect(status().isOk()).andReturn());
+            refundId = UUID.fromString(cancelled.at("/data/refunds/0/refundId").asText());
+        } else if (decisionKind.equals("ADMIN")) {
+            PolicyCase policyCase = createPolicyCase(paid.bookingId());
+            refundId = UUID.fromString(adminReview(policyCase, UUID.randomUUID(),
+                    policyPayload(1, 0, true), 200).at("/data/refund/refundId").asText());
+        } else {
+            currentActorId.set(ownerId);
+            refundId = UUID.fromString(ownerCancel(paid.bookingId(), 1, UUID.randomUUID(), REASON, 200)
+                    .at("/data/refund/refundId").asText());
+        }
+        bkg065AssertLedger(paid, 0, paid.amount());
+        doReturn(new RefundExecutionResult(RefundExecutionOutcome.FAILED, "SIMULATOR", null,
+                "SIMULATED_FAILURE", NOW, "Temporary failure"))
+                .doCallRealMethod().when(simulatorRefundExecutor).execute(any());
+        assertThat(automaticRefundExecutionService.processFirstAttempt(refundId)).isTrue();
+        bkg065AssertLedger(paid, 0, paid.amount());
+        mockMvc.perform(get("/api/v1/owner/refunds/{id}", refundId).with(user("owner").roles("OWNER")))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.status").value("PENDING"))
+                .andExpect(jsonPath("$.data.requiresOwnerAction").value(true));
+        long version = jdbc.queryForObject("SELECT version FROM refunds WHERE id=?", Long.class, refundId);
+        UUID retryKey = UUID.randomUUID();
+        for (int replay = 0; replay < 2; replay++) {
+            mockMvc.perform(post("/api/v1/owner/refunds/{id}/retry", refundId)
+                    .with(user("owner").roles("OWNER")).header("Idempotency-Key", retryKey)
+                    .contentType("application/json").content(json(Map.of("expectedVersion", version))))
+                    .andExpect(status().isOk()).andExpect(jsonPath("$.data.status").value("SUCCEEDED"));
+            bkg065AssertLedger(paid, paid.amount(), 0);
+        }
+        String paymentCode = jdbc.queryForObject("SELECT payment_code FROM payments WHERE id=?", String.class, paid.paymentId());
+        String vaNumber = jdbc.queryForObject("SELECT va_number FROM payments WHERE id=?", String.class, paid.paymentId());
+        var late = paymentConfirmationService.processReceipt(new NormalizedReceipt("SIMULATOR", "SIMULATOR",
+                "BKG065-LATE-" + UUID.randomUUID(), java.math.BigDecimal.valueOf(paid.amount()), "VND",
+                NOW, NOW.plusSeconds(60), vaNumber, paymentCode, "Late additional receipt", "{}"));
+        assertThat(late.status()).isEqualTo(com.thang.chargeops.payment.model.PaymentReceiptResult.Status.UNAPPLIED);
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM payment_transactions WHERE payment_id=? AND application_classification='UNAPPLIED'", Long.class, paid.paymentId())).isEqualTo(1L);
+        bkg065AssertLedger(paid, paid.amount(), 0);
+        assertCount("refunds", paid.bookingId(), 1);
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM refund_attempts WHERE refund_id=?", Long.class, refundId)).isEqualTo(2L);
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM refund_attempts WHERE refund_id=? AND status='SUCCEEDED'", Long.class, refundId)).isEqualTo(1L);
+        assertThat(jdbc.queryForObject("SELECT status FROM bookings WHERE id=?", String.class, paid.bookingId())).isEqualTo("CANCELLED");
+    }
+
+    private void bkg065AssertLedger(PaidBooking paid, long refunded, long pending) throws Exception {
+        currentActorId.set(ownerId);
+        long sourceGross = jdbc.queryForObject("SELECT coalesce(sum(amount),0) FROM payment_transactions WHERE payment_id=? AND application_classification='APPLIED'", Long.class, paid.paymentId());
+        long sourceRefunded = jdbc.queryForObject("SELECT coalesce(sum(amount),0) FROM refunds WHERE payment_id=? AND status='SUCCEEDED'", Long.class, paid.paymentId());
+        long sourcePending = jdbc.queryForObject("SELECT coalesce(sum(amount),0) FROM refunds WHERE payment_id=? AND status='PENDING'", Long.class, paid.paymentId());
+        assertThat(sourceGross).isEqualTo(paid.amount());
+        assertThat(sourceRefunded).isEqualTo(refunded);
+        assertThat(sourcePending).isEqualTo(pending);
+        mockMvc.perform(get("/api/v1/owner/finance/summary").with(user("owner").roles("OWNER")))
+                .andExpect(status().isOk()).andExpect(header().string("Cache-Control", "no-store"))
+                .andExpect(jsonPath("$.data.grossVnd").value(sourceGross))
+                .andExpect(jsonPath("$.data.refundedVnd").value(sourceRefunded))
+                .andExpect(jsonPath("$.data.pendingRefundVnd").value(sourcePending))
+                .andExpect(jsonPath("$.data.totalBookings").value(1))
+                .andExpect(jsonPath("$.data.paidBookings").value(refunded > 0 ? 0 : 1))
+                .andExpect(jsonPath("$.data.netVnd").value(sourceGross - sourceRefunded));
+        for (String route : List.of("/api/v1/owner/finance/bookings/" + paid.bookingId(),
+                "/api/v1/owner/finance/bookings?page=1&size=20")) {
+            JsonNode payload = body(mockMvc.perform(get(route).with(user("owner").roles("OWNER")))
+                    .andExpect(status().isOk()).andReturn()).get("data");
+            JsonNode row = payload.isArray() ? payload.get(0) : payload;
+            assertThat(row.get("bookingId").asText()).isEqualTo(paid.bookingId().toString());
+            assertThat(row.get("collectedAmount").asLong()).isEqualTo(sourceGross);
+            assertThat(row.get("refundedAmount").asLong()).isEqualTo(sourceRefunded);
+            assertThat(row.get("pendingRefundAmount").asLong()).isEqualTo(sourcePending);
+            assertThat(row.get("netRecordedAmount").asLong()).isEqualTo(sourceGross - sourceRefunded);
+            assertThat(row.get("receipts").size()).isEqualTo(payload.isArray() ? 0 : 1);
+        }
+        mockMvc.perform(get("/api/v1/owner/refunds/summary").with(user("owner").roles("OWNER")))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.pendingRefundAmountVnd").value(sourcePending))
+                .andExpect(jsonPath("$.data.totalRefundAmountVnd").value(sourcePending + sourceRefunded));
+        if (sourcePending + sourceRefunded > 0) {
+            UUID refundId = jdbc.queryForObject("SELECT id FROM refunds WHERE payment_id=?", UUID.class, paid.paymentId());
+            String expectedStatus = sourceRefunded > 0 ? "SUCCEEDED" : "PENDING";
+            mockMvc.perform(get("/api/v1/owner/refunds").with(user("owner").roles("OWNER")))
+                    .andExpect(status().isOk()).andExpect(jsonPath("$.data[0].refundId").value(refundId.toString()))
+                    .andExpect(jsonPath("$.data[0].amount").value(sourcePending + sourceRefunded))
+                    .andExpect(jsonPath("$.data[0].status").value(expectedStatus));
+            mockMvc.perform(get("/api/v1/owner/refunds/{id}", refundId).with(user("owner").roles("OWNER")))
+                    .andExpect(status().isOk()).andExpect(jsonPath("$.data.amount").value(sourcePending + sourceRefunded))
+                    .andExpect(jsonPath("$.data.status").value(expectedStatus));
+        }
     }
 
     @Test void failedSimulatorAttemptStaysPendingAndOwnerRetrySucceeds() throws Exception {
