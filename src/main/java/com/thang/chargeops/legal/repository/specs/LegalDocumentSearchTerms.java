@@ -35,6 +35,7 @@ final class LegalDocumentSearchTerms {
             return "";
         }
         return term.replace("!", "!!")
+                .replace("\\", "!\\")
                 .replace("%", "!%")
                 .replace("_", "!_");
     }
