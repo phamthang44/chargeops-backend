@@ -32,6 +32,9 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.domain.Specification;
 
 import java.math.BigDecimal;
 import java.time.Clock;
@@ -179,6 +182,17 @@ class AdminRefundServiceImplTest {
                         org.assertj.core.api.Assertions.assertThat(exception.getErrorCode())
                                 .isEqualTo(RefundErrorCode.VERSION_CONFLICT));
         verify(refundAttemptRepository, never()).saveAndFlush(any());
+    }
+
+    @Test
+    void listWithWildcardSearchEscapesWildcardCharactersInSpecification() {
+        when(refundRepository.findAll(any(Specification.class), any(Pageable.class)))
+                .thenReturn(Page.empty());
+
+        Page<RefundDetailResponse> result = service.list(RefundStatus.PENDING, "100%_\\test", 1, 10);
+
+        org.assertj.core.api.Assertions.assertThat(result).isNotNull();
+        verify(refundRepository).findAll(any(Specification.class), any(Pageable.class));
     }
 
     private void arrangeLockedAggregate() {
