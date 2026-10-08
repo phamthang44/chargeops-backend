@@ -141,6 +141,17 @@ public class AppNotification extends BaseEntity {
         return n;
     }
 
+    public static AppNotification responsibilityDecision(com.thang.chargeops.booking.decision.BookingServiceFailureDecision decision,
+                                                         NotificationContent content) {
+        if (decision.getId() == null) throw new AppException(NotificationErrorCode.INVALID_INTENT);
+        var booking = decision.getBooking();
+        var n = base(booking.getDriver().getId(), NotificationAudience.DRIVER,
+                NotificationEventType.RESPONSIBILITY_DECIDED, CATEGORY_FINANCE,
+                decision.getId() + ":RESPONSIBILITY_DECIDED", content);
+        n.setBookingTarget(booking);
+        return n;
+    }
+
     public static AppNotification assignedTicket(SupportTicket ticket, NotificationAudience audience,
                                                    String sourceKey, NotificationContent content) {
         if (ticket.getId() == null || ticket.getStation() == null || ticket.getAssignedHandler() == null

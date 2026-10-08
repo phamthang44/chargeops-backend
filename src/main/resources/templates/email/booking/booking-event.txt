@@ -1,0 +1,12 @@
+ChargeOps · [(${model.heading})]
+
+Xin chào [(${model.recipientName})],
+Booking [(${model.bookingCode})] · [(${model.stationName})]
+[(${model.message})]
+Khung giờ: [(${model.timeWindowText})]
+Thời điểm sự kiện: [(${model.occurredAtText})]
+
+Xem hồ sơ và trạng thái mới nhất: [(${model.actionUrl})]
+[# th:if="${model.supportContact != null and !model.supportContact.isBlank()}"]Hỗ trợ: [(${model.supportContact})][/]
+
+Thư tự động từ ChargeOps — vui lòng không trả lời email này.

@@ -1,0 +1,14 @@
+<!DOCTYPE html>
+<html lang="vi" th:replace="~{email/layout/email-base :: layout(~{::content})}">
+<body><div th:fragment="content" style="padding:32px;font-family:Arial,sans-serif;color:#242434;line-height:1.6;">
+  <p>ChargeOps</p>
+  <h1 style="font-size:24px;">Booking đã bị hủy</h1>
+  <p>Xin chào <span th:text="${model.recipientName}">bạn</span>,</p>
+  <p><span th:text="${model.reasonText}"></span> <strong th:text="${model.bookingCode}">BK</strong>.</p>
+  <p><strong th:text="${model.stationName}">Trạm</strong><br/><span th:text="${model.stationAddress}">Địa chỉ</span></p>
+  <p>Khung giờ đã đặt: <span th:text="${model.timeWindowText}"></span><br/>
+     Thời điểm hủy: <span th:text="${model.cancelledAtText}"></span></p>
+  <p th:text="${model.refundText}"></p>
+  <p><a th:href="${model.bookingUrl}" style="color:#635bff;">Xem chi tiết booking</a></p>
+  <p th:if="${model.supportContact != null and !model.supportContact.isBlank()}">Hỗ trợ: <span th:text="${model.supportContact}"></span></p>
+</div></body></html>

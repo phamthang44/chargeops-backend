@@ -25,6 +25,7 @@ import com.thang.chargeops.payment.projection.OrderPaymentMatchProjection;
 import com.thang.chargeops.payment.repository.PaymentRepository;
 import com.thang.chargeops.payment.repository.PaymentTransactionRepository;
 import com.thang.chargeops.payment.service.impl.PaymentConfirmationServiceImpl;
+import com.thang.chargeops.notification.outbox.BookingConfirmationOutboxWriter;
 import com.thang.chargeops.station.entity.ChargePoint;
 import com.thang.chargeops.station.entity.Connector;
 import com.thang.chargeops.station.entity.Station;
@@ -61,6 +62,7 @@ class PaymentConfirmationServiceTest {
     private PaymentTransactionRepository paymentTransactionRepository;
     private BookingStatusHistoryRecorder bookingStatusHistoryRecorder;
     private BookingPolicyConfig bookingPolicyConfig;
+    private BookingConfirmationOutboxWriter confirmationOutboxWriter;
     private Clock applicationClock;
 
     private PaymentConfirmationServiceImpl service;
@@ -84,6 +86,7 @@ class PaymentConfirmationServiceTest {
         paymentTransactionRepository = mock(PaymentTransactionRepository.class);
         bookingStatusHistoryRecorder = mock(BookingStatusHistoryRecorder.class);
         bookingPolicyConfig = mock(BookingPolicyConfig.class);
+        confirmationOutboxWriter = mock(BookingConfirmationOutboxWriter.class);
         applicationClock = Clock.fixed(NOW, ZoneOffset.UTC);
 
         when(bookingPolicyConfig.getCancellationGraceMinutes()).thenReturn(10);
@@ -107,6 +110,7 @@ class PaymentConfirmationServiceTest {
                 paymentTransactionRepository,
                 bookingStatusHistoryRecorder,
                 bookingPolicyConfig,
+                confirmationOutboxWriter,
                 applicationClock
         );
 
@@ -199,6 +203,7 @@ class PaymentConfirmationServiceTest {
         // BR-PAY-02: freeCancellationDeadline = min(NOW + 10m, START_AT)
         Instant expectedDeadline = NOW.plus(Duration.ofMinutes(10));
         verify(booking).confirmPayment(NOW, expectedDeadline);
+        verify(confirmationOutboxWriter).recordConfirmed(eq(booking), any(PaymentTransaction.class), eq(NOW));
         verify(bookingStatusHistoryRecorder).recordSystemTransition(
                 eq(booking),
                 eq(BookingStatusReason.PAYMENT_CONFIRMED),
@@ -270,6 +275,7 @@ class PaymentConfirmationServiceTest {
                 paymentTransactionRepository,
                 bookingStatusHistoryRecorder,
                 bookingPolicyConfig,
+                confirmationOutboxWriter,
                 lateClock
         );
 

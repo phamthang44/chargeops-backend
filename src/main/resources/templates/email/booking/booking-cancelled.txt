@@ -1,0 +1,16 @@
+ChargeOps · Đã hủy booking [(${model.bookingCode})]
+
+Xin chào [(${model.recipientName})],
+[(${model.reasonText})] [(${model.bookingCode})].
+
+Trạm: [(${model.stationName})]
+Địa chỉ: [(${model.stationAddress})]
+Khung giờ đã đặt: [(${model.timeWindowText})]
+Thời điểm hủy: [(${model.cancelledAtText})]
+
+[(${model.refundText})]
+
+Xem chi tiết booking: [(${model.bookingUrl})]
+[# th:if="${model.supportContact != null and !model.supportContact.isBlank()}"]Hỗ trợ: [(${model.supportContact})][/]
+
+Thư tự động từ ChargeOps — vui lòng không trả lời email này.

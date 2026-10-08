@@ -29,6 +29,9 @@ import com.thang.chargeops.exception.errorcode.ProfileErrorCode;
 import com.thang.chargeops.exception.errorcode.RefundErrorCode;
 import com.thang.chargeops.exception.errorcode.StationErrorCode;
 import com.thang.chargeops.payment.entity.Payment;
+import com.thang.chargeops.notification.model.NotificationEventType;
+import com.thang.chargeops.notification.service.NotificationService;
+import com.thang.chargeops.notification.outbox.BookingConfirmationOutboxWriter;
 import com.thang.chargeops.payment.repository.PaymentRepository;
 import com.thang.chargeops.payment.repository.PaymentTransactionRepository;
 import com.thang.chargeops.profile.entity.UserProfile;
@@ -70,6 +73,8 @@ public class BookingCancellationServiceImpl implements BookingCancellationServic
     private final BookingCancellationPolicy bookingCancellationPolicy;
     private final RefundObligationService refundObligationService;
     private final DriverBookingDetailAssembler driverBookingDetailAssembler;
+    private final NotificationService notificationService;
+    private final BookingConfirmationOutboxWriter notificationOutboxWriter;
     private final Clock applicationClock;
 
     @Override
@@ -287,6 +292,13 @@ public class BookingCancellationServiceImpl implements BookingCancellationServic
             );
             refundObligationService.createObligation(refundCommand);
         }
+
+        // The recipient is the Driver already locked at step 3. Reuse the JPA inbox service
+        // without acquiring another profile lock after Connector -> Booking -> Payment.
+        // Use the persisted command identity so client retries do not create another notice.
+        notificationService.createBookingNotice(lockedBooking, NotificationEventType.BOOKING_CANCELLED,
+                command.getId() + ":BOOKING_CANCELLED", decisionAt, null);
+        notificationOutboxWriter.recordCancelled(command);
 
         // 14. Explicit flush to increment optimistic version and persist refund before assembly
         bookingRepository.flush();

@@ -15,10 +15,12 @@ import java.time.Instant;
 
 @Component
 @RequiredArgsConstructor
+@org.springframework.context.annotation.Import(com.thang.chargeops.notification.outbox.BookingEventOutboxWriter.class)
 public class RefundExecutionResultHandler {
     private final RefundAttemptRepository attemptRepository;
     private final RefundRepository refundRepository;
     private final PaymentRepository paymentRepository;
+    private final com.thang.chargeops.notification.outbox.BookingEventOutboxWriter notificationOutbox;
 
     public void apply(
             Refund refund,
@@ -42,5 +44,6 @@ public class RefundExecutionResultHandler {
             refund.requireOwnerAction();
         }
         refundRepository.flush();
+        notificationOutbox.recordAttempt(attempt);
     }
 }

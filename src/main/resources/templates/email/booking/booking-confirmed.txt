@@ -1,0 +1,18 @@
+[(${subject})]
+
+Chào [(${model.recipientName})], booking của bạn đã được xác nhận.
+
+Mã booking: [(${model.bookingCode})]
+Trạm sạc: [(${model.stationName})]
+Địa chỉ: [(${model.stationAddress})]
+Cổng sạc: Trụ [(${model.chargePointCode})] · Cổng [(${model.connectorCode})]
+Thời gian bắt đầu – kết thúc: [(${model.timeWindowText})] ([(${model.timeZoneLabel})])
+Số tiền đã thanh toán: [(${model.paidAmountText})]
+
+Xem booking: [(${model.bookingUrl})]
+
+Bạn có thể xem lại trạng thái mới nhất của booking trong ứng dụng trước khi di chuyển.
+
+---------------------------------
+ChargeOps · Nền tảng đặt chỗ sạc điện
+Bạn nhận được thư này vì đã đặt booking [(${model.bookingCode})] trên ChargeOps.

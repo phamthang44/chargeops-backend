@@ -35,10 +35,12 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 @Service
 @RequiredArgsConstructor
 @Slf4j
+@org.springframework.context.annotation.Import(com.thang.chargeops.notification.outbox.BookingEventOutboxWriter.class)
 public class RefundObligationServiceImpl implements RefundObligationService {
     private final PaymentTransactionRepository transactionRepository;
     private final RefundRepository refundRepository;
     private final RefundAutoDispatchRepository autoDispatchRepository;
+    private final com.thang.chargeops.notification.outbox.BookingEventOutboxWriter notificationOutbox;
 
     @Override
     @Transactional(propagation = Propagation.MANDATORY)
@@ -99,6 +101,7 @@ public class RefundObligationServiceImpl implements RefundObligationService {
                 command.basisId(), command.decisionAt(), command.lockedActor()));
         try {
             Refund saved = refundRepository.saveAndFlush(pending);
+            notificationOutbox.recordPending(saved);
             if (saved.getExecutionPolicy() == com.thang.chargeops.refund.model.RefundExecutionPolicy.AUTO_FIRST_ATTEMPT) {
                 UUID requestKey = UUID.nameUUIDFromBytes(
                         ("refund-auto-first-attempt:" + saved.getId()).getBytes(UTF_8)

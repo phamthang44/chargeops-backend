@@ -245,9 +245,9 @@ class BookingLifecycleConcurrencyIntegrationTest {
                     id, booking_id, amount, status, method, refund_amount, paid_at,
                     provider, receiving_account_ref, currency, version,
                     needs_reconciliation, payment_code, provider_order_ref,
-                    va_number, provider_expires_at
+                    va_number, provider_expires_at, environment
                 ) VALUES (?, ?, ?, 'PAID', 'SIMULATOR', 0, ?, 'SIMULATOR', ?, 'VND', 0,
-                          false, ?, ?, ?, ?)
+                          false, ?, ?, ?, ?, 'SIMULATOR')
                 """,
                 paymentId, bookingId, AMOUNT, Timestamp.from(startAt.minusSeconds(300)),
                 "ACC-" + suffix, "CO" + suffix.toUpperCase(), "ORDER-" + suffix,

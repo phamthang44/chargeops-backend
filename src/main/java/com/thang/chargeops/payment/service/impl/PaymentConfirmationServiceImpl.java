@@ -24,6 +24,7 @@ import com.thang.chargeops.payment.projection.OrderPaymentMatchProjection;
 import com.thang.chargeops.payment.repository.PaymentRepository;
 import com.thang.chargeops.payment.repository.PaymentTransactionRepository;
 import com.thang.chargeops.payment.service.PaymentConfirmationService;
+import com.thang.chargeops.notification.outbox.BookingConfirmationOutboxWriter;
 import com.thang.chargeops.station.entity.ChargePoint;
 import com.thang.chargeops.station.entity.Connector;
 import com.thang.chargeops.station.entity.Station;
@@ -50,6 +51,7 @@ public class PaymentConfirmationServiceImpl implements PaymentConfirmationServic
     private final PaymentTransactionRepository paymentTransactionRepository;
     private final BookingStatusHistoryRecorder bookingStatusHistoryRecorder;
     private final BookingPolicyConfig bookingPolicyConfig;
+    private final BookingConfirmationOutboxWriter bookingConfirmationOutboxWriter;
     private final Clock applicationClock;
 
     @Override
@@ -223,6 +225,8 @@ public class PaymentConfirmationServiceImpl implements PaymentConfirmationServic
         bookingStatusHistoryRecorder.recordSystemTransition(
                 context.booking(), BookingStatusReason.PAYMENT_CONFIRMED, acceptedAt,
                 booking -> booking.confirmPayment(acceptedAt, freeCancellationDeadline));
+
+        bookingConfirmationOutboxWriter.recordConfirmed(context.booking(), transaction, acceptedAt);
 
         log.info("Receipt applied: txRef={}, bookingId={}, paymentId={}",
                 receipt.transactionRef(), context.booking().getId(), context.payment().getId());

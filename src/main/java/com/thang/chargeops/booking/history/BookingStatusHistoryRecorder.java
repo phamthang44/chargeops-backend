@@ -15,9 +15,11 @@ import java.util.function.Consumer;
 /** Records history inside a transaction owned by the calling application service. */
 @Service
 @RequiredArgsConstructor
+@org.springframework.context.annotation.Import(com.thang.chargeops.notification.outbox.BookingEventOutboxWriter.class)
 public class BookingStatusHistoryRecorder {
 
     private final BookingStatusHistoryRepository historyRepository;
+    private final com.thang.chargeops.notification.outbox.BookingEventOutboxWriter notificationOutbox;
 
     @Transactional(propagation = Propagation.MANDATORY)
     public void recordCreation(
@@ -52,11 +54,12 @@ public class BookingStatusHistoryRecorder {
                 transition,
                 BookingHistoryInvariantMessages.TRANSITION_REQUIRED
         ).accept(booking);
-        historyRepository.save(BookingStatusHistory.userTransition(
+        var recorded = historyRepository.save(BookingStatusHistory.userTransition(
                 command,
                 actorType,
                 new BookingStatusChange(fromStatus, booking.getStatus(), reason, occurredAt)
         ));
+        notificationOutbox.recordHistory(recorded);
     }
 
     @Transactional(propagation = Propagation.MANDATORY)
@@ -71,10 +74,11 @@ public class BookingStatusHistoryRecorder {
                 transition,
                 BookingHistoryInvariantMessages.TRANSITION_REQUIRED
         ).accept(booking);
-        historyRepository.save(BookingStatusHistory.systemTransition(
+        var recorded = historyRepository.save(BookingStatusHistory.systemTransition(
                 booking,
                 new BookingStatusChange(fromStatus, booking.getStatus(), reason, occurredAt)
         ));
+        notificationOutbox.recordHistory(recorded);
     }
 
     private static BookingStatus requireCurrentStatus(Booking booking) {

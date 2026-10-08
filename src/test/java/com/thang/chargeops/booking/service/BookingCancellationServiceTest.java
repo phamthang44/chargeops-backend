@@ -29,6 +29,8 @@ import com.thang.chargeops.exception.errorcode.CommandErrorCode;
 import com.thang.chargeops.exception.errorcode.CommonErrorCode;
 import com.thang.chargeops.exception.errorcode.RefundErrorCode;
 import com.thang.chargeops.payment.entity.Payment;
+import com.thang.chargeops.notification.model.NotificationEventType;
+import com.thang.chargeops.notification.service.NotificationService;
 import com.thang.chargeops.payment.repository.PaymentRepository;
 import com.thang.chargeops.payment.repository.PaymentTransactionRepository;
 import com.thang.chargeops.profile.entity.UserProfile;
@@ -92,6 +94,8 @@ class BookingCancellationServiceTest {
     @Mock private BookingCancellationPolicy bookingCancellationPolicy;
     @Mock private RefundObligationService refundObligationService;
     @Mock private DriverBookingDetailAssembler driverBookingDetailAssembler;
+    @Mock private NotificationService notificationService;
+    @Mock private com.thang.chargeops.notification.outbox.BookingConfirmationOutboxWriter notificationOutboxWriter;
 
     private Clock applicationClock;
     private BookingCancellationServiceImpl service;
@@ -118,6 +122,8 @@ class BookingCancellationServiceTest {
                 bookingCancellationPolicy,
                 refundObligationService,
                 driverBookingDetailAssembler,
+                notificationService,
+                notificationOutboxWriter,
                 applicationClock
         );
 
@@ -198,6 +204,38 @@ class BookingCancellationServiceTest {
 
         lenient().when(driverBookingDetailAssembler.assemble(eq(booking), eq(payment), eq(NOW)))
                 .thenReturn(detailResponse);
+    }
+
+    @Nested
+    class CancellationNotificationTest {
+        @Test
+        void successfulCancellationUsesPersistedCommandIdentity() {
+            setupStandardSuccessfulFlow(BookingStatus.CONFIRMED, 126000L);
+            service.cancelBooking(BOOKING_ID, REQUEST_KEY, new CancelBookingRequest(1L, 126000L, POLICY_VERSION));
+            var order = inOrder(refundObligationService, notificationService, bookingRepository);
+            order.verify(refundObligationService).createObligation(any());
+            order.verify(notificationService).createBookingNotice(booking, NotificationEventType.BOOKING_CANCELLED,
+                    COMMAND_ID + ":BOOKING_CANCELLED", NOW, null);
+            order.verify(bookingRepository).flush();
+        }
+
+        @Test
+        void staleConsentDoesNotCreateNotice() {
+            setupStandardSuccessfulFlow(BookingStatus.CONFIRMED, 0L);
+            assertThatThrownBy(() -> service.cancelBooking(BOOKING_ID, REQUEST_KEY,
+                    new CancelBookingRequest(1L, 126000L, POLICY_VERSION)))
+                    .isInstanceOf(AppException.class);
+            verifyNoInteractions(notificationService);
+        }
+
+        @Test
+        void fastReplayDoesNotCreateNotice() {
+            when(bookingCommandRegistry.findReplay(any(), any(), any(), any())).thenReturn(Optional.of(BOOKING_ID));
+            when(bookingRepository.findById(BOOKING_ID)).thenReturn(Optional.of(booking));
+            when(paymentRepository.findByBookingId(BOOKING_ID)).thenReturn(Optional.of(payment));
+            service.cancelBooking(BOOKING_ID, REQUEST_KEY, new CancelBookingRequest(1L, 126000L, POLICY_VERSION));
+            verifyNoInteractions(notificationService);
+        }
     }
 
     @Nested

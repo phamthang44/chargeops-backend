@@ -151,14 +151,15 @@ class BookingCommandHistoryJpaTest {
                 Timestamp.from(NOW)
         );
         jdbcTemplate.update("""
-                INSERT INTO bookings(id, driver_id, connector_id, start_at, end_at, status,
+                INSERT INTO bookings(id, driver_id, financial_owner_id, connector_id, start_at, end_at, status,
                                      total_amount, station_name_snapshot, station_address_snapshot,
                                      charge_point_code_snapshot, connector_code_snapshot, expires_at,
                                      version, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, 'PENDING', 126000,
+                VALUES (?, ?, ?, ?, ?, ?, 'PENDING', 126000,
                         'Command Station', 'Test Address', 'CP-01', 'CON-01', ?, 0, ?, ?)
                 """,
                 bookingId,
+                actorId,
                 actorId,
                 connectorId,
                 Timestamp.from(Instant.parse("2026-09-16T10:00:00Z")),

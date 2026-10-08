@@ -71,11 +71,277 @@ class OwnerCancellationPostgresTest {
     @MockitoSpyBean private com.thang.chargeops.support.service.AdminFinanceAccessAudit accessAudit;
     @MockitoBean private CurrentProfileProvider currentProfileProvider;
     @MockitoBean private Clock applicationClock;
+    @MockitoSpyBean private com.thang.chargeops.booking.config.BookingPolicyConfig reminderBookingPolicy;
     @MockitoBean private BookingCommandInFlightLock bookingCommandInFlightLock;
     private final AtomicReference<UUID> currentActorId = new AtomicReference<>();
     private UUID ownerId;
     private UUID driverId;
     private UUID connectorId;
+    @Autowired private com.thang.chargeops.notification.email.NotificationEmailDeliveryStore emailDeliveries;
+    @Autowired private com.thang.chargeops.notification.outbox.NotificationOutboxRepository notificationOutbox;
+    private final com.thang.chargeops.notification.email.BookingEmailRenderer emailRenderer = new com.thang.chargeops.notification.email.BookingEmailRenderer();
+    @Autowired private com.thang.chargeops.notification.outbox.BookingReminderService reminders;
+    @Autowired private com.thang.chargeops.booking.service.BookingNoShowService noShows;
+    @Autowired private com.thang.chargeops.booking.service.BookingAutomaticCompletionService completions;
+    @Autowired private com.thang.chargeops.notification.outbox.NotificationOutboxStore outboxStore;
+
+    @ParameterizedTest @ValueSource(strings = {"CANCEL_OWNER", "CANCEL_ADMIN", "NO_SHOW", "COMPLETED", "REMINDER", "DECISION", "PENDING", "FAILED", "SUCCEEDED_DRIVER", "SUCCEEDED_OWNER"})
+    @org.junit.jupiter.api.condition.EnabledIfSystemProperty(named="chargeops.smtp.integration",matches="true")
+    void extendedEventsTravelThroughRealKafkaAndMailpitOnce(String scenario) throws Exception {
+        var paid = createAndPayBooking(START_AT);
+        String type;
+        String audience = "DRIVER";
+        if (scenario.equals("CANCEL_ADMIN")) {
+            var policyCase = createPolicyCase(paid.bookingId());
+            adminReview(policyCase, UUID.randomUUID(), policyPayload(1,0,true),200);
+            type="BOOKING_CANCELLED";
+        } else if (scenario.equals("NO_SHOW")) {
+            var at=START_AT.plusSeconds(2700);
+            when(applicationClock.instant()).thenReturn(at);
+            assertThat(noShows.markNoShowIfDue(paid.bookingId(),connectorId,at)).isTrue();
+            type="BOOKING_NO_SHOW";
+        } else if (scenario.equals("COMPLETED")) {
+            jdbc.update("UPDATE bookings SET status='CHECKED_IN', checked_in_at=? WHERE id=?",Timestamp.from(START_AT),paid.bookingId());
+            when(applicationClock.instant()).thenReturn(START_AT.plusSeconds(60));
+            currentActorId.set(driverId);
+            mockMvc.perform(post("/api/v1/bookings/{id}/complete",paid.bookingId()).with(user("driver").roles("DRIVER"))
+                    .header("Idempotency-Key",UUID.randomUUID()).contentType("application/json").content(json(Map.of("expectedVersion",1))))
+                    .andExpect(status().isOk());
+            type="BOOKING_COMPLETED";
+        } else if (scenario.equals("REMINDER")) {
+            var at=START_AT.minusSeconds(1800);
+            when(applicationClock.instant()).thenReturn(at);
+            assertThat(reminders.recordIfDue(paid.bookingId(),at)).isTrue();
+            type="BOOKING_REMINDER";
+        } else {
+            currentActorId.set(ownerId);
+            var result=ownerCancel(paid.bookingId(),1,UUID.randomUUID(),REASON,200);
+            var refundId=UUID.fromString(result.at("/data/refund/refundId").asText());
+            if (scenario.equals("FAILED")) {
+                doReturn(new RefundExecutionResult(RefundExecutionOutcome.FAILED,"SIMULATOR",null,"SIMULATED_FAILURE",NOW,"Internal private evidence"))
+                        .when(simulatorRefundExecutor).execute(any());
+                assertThat(automaticRefundExecutionService.processFirstAttempt(refundId)).isTrue();
+                type="REFUND_ATTEMPT_FAILED"; audience="OWNER";
+            } else if (scenario.startsWith("SUCCEEDED")) {
+                assertThat(automaticRefundExecutionService.processFirstAttempt(refundId)).isTrue();
+                type="REFUND_SUCCEEDED"; audience=scenario.endsWith("OWNER") ? "OWNER" : "DRIVER";
+            } else type=scenario.equals("DECISION") ? "RESPONSIBILITY_DECIDED" : scenario.equals("PENDING") ? "REFUND_PENDING" : "BOOKING_CANCELLED";
+        }
+        var event=eventFor(paid.bookingId(),type,audience);
+        String email="bkg066-"+UUID.randomUUID()+"@example.test";
+        jdbc.update("UPDATE user_profile SET email=? WHERE id=?",email,event.recipientId());
+        jdbc.update("UPDATE notification_outbox SET next_attempt_at=CURRENT_TIMESTAMP+interval '1 day' WHERE status='PENDING' AND event_id<>?",event.eventId());
+        jdbc.update("UPDATE notification_email_deliveries SET next_attempt_at=CURRENT_TIMESTAMP+interval '1 day' WHERE status='PENDING'");
+        String topic="chargeops.lab.extended."+UUID.randomUUID();
+        String group=topic+".reader";
+        String broker=System.getProperty("chargeops.kafka.bootstrap-servers","localhost:9092");
+        var producer=new org.springframework.kafka.core.DefaultKafkaProducerFactory<String,String>(Map.of("bootstrap.servers",broker,"acks","all","enable.idempotence",true),
+                new org.apache.kafka.common.serialization.StringSerializer(),new org.apache.kafka.common.serialization.StringSerializer());
+        var kafka=new org.springframework.kafka.core.KafkaTemplate<>(producer);
+        var consumers=new org.springframework.kafka.core.DefaultKafkaConsumerFactory<String,String>(Map.of("bootstrap.servers",broker,"group.id",group,
+                "enable.auto.commit",false,"auto.offset.reset","earliest"),new org.apache.kafka.common.serialization.StringDeserializer(),new org.apache.kafka.common.serialization.StringDeserializer());
+        var properties=new org.springframework.kafka.listener.ContainerProperties(topic);
+        properties.setAckMode(org.springframework.kafka.listener.ContainerProperties.AckMode.RECORD);
+        var listener=new com.thang.chargeops.notification.kafka.BookingNotificationEmailConsumer(emailDeliveries,objectMapper);
+        properties.setMessageListener((org.springframework.kafka.listener.MessageListener<String,String>)listener::receiveConfirmed);
+        var container=new org.springframework.kafka.listener.ConcurrentMessageListenerContainer<>(consumers,properties);
+        var publisher=new com.thang.chargeops.notification.kafka.BookingNotificationPublisher(kafka,objectMapper,topic);
+        var worker=new com.thang.chargeops.notification.outbox.BookingNotificationOutboxWorker(outboxStore,publisher,objectMapper,1,10);
+        var sender=new org.springframework.mail.javamail.JavaMailSenderImpl(); sender.setHost("localhost");sender.setPort(1025);
+        sender.getJavaMailProperties().putAll(Map.of("mail.smtp.connectiontimeout","3000","mail.smtp.timeout","10000","mail.smtp.writetimeout","10000"));
+        var smtp=new com.thang.chargeops.notification.email.BookingNotificationEmailWorker(emailDeliveries,emailRenderer,sender,"noreply@chargeops.test","http://localhost:5173","support",1,5);
+        try(var admin=org.apache.kafka.clients.admin.AdminClient.create(Map.of("bootstrap.servers",broker))) {
+            admin.createTopics(List.of(new org.apache.kafka.clients.admin.NewTopic(topic,3,(short)1))).all().get(10,TimeUnit.SECONDS);
+            try {
+                container.start();
+                org.awaitility.Awaitility.await().atMost(Duration.ofSeconds(30)).untilAsserted(()->assertThat(container.getAssignedPartitions()).hasSize(3));
+                worker.dispatchPending();
+                org.awaitility.Awaitility.await().atMost(Duration.ofSeconds(15)).untilAsserted(()->assertThat(jdbc.queryForObject("SELECT status FROM notification_email_deliveries WHERE event_id=?",String.class,event.eventId())).isEqualTo("PENDING"));
+                smtp.dispatchPending();
+                kafka.send(topic,event.bookingId().toString(),objectMapper.writeValueAsString(event)).get(10,TimeUnit.SECONDS);
+                org.awaitility.Awaitility.await().atMost(Duration.ofSeconds(15)).untilAsserted(()->assertThat(admin.listConsumerGroupOffsets(group).partitionsToOffsetAndMetadata().get(5,TimeUnit.SECONDS).values().stream().mapToLong(org.apache.kafka.clients.consumer.OffsetAndMetadata::offset).sum()).isEqualTo(2));
+                smtp.dispatchPending();
+                assertThat(jdbc.queryForObject("SELECT status FROM notification_email_deliveries WHERE event_id=?",String.class,event.eventId())).isEqualTo("SENT");
+                assertThat(notificationOutbox.findById(event.eventId()).orElseThrow().getStatus()).isEqualTo("PUBLISHED");
+                var client=java.net.http.HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(3)).build();
+                String url="http://localhost:8025/api/v1/search?query="+java.net.URLEncoder.encode("to:"+email,java.nio.charset.StandardCharsets.UTF_8);
+                var response=client.send(java.net.http.HttpRequest.newBuilder(java.net.URI.create(url)).timeout(Duration.ofSeconds(5)).GET().build(),java.net.http.HttpResponse.BodyHandlers.ofString());
+                assertThat(response.statusCode()).isEqualTo(200);
+                var mails=objectMapper.readTree(response.body()).get("messages");
+                assertThat(mails.size()).isEqualTo(1);
+                var content=client.send(java.net.http.HttpRequest.newBuilder(java.net.URI.create("http://localhost:8025/api/v1/message/"+mails.get(0).get("ID").asString())).timeout(Duration.ofSeconds(5)).GET().build(),java.net.http.HttpResponse.BodyHandlers.ofString());
+                var body=objectMapper.readTree(content.body());
+                String bookingCode=jdbc.queryForObject("SELECT booking_code FROM bookings WHERE id=?",String.class,paid.bookingId());
+                assertThat(body.get("HTML").asString()).contains(bookingCode).doesNotContain(REASON,"Internal private evidence");
+                assertThat(body.get("Text").asString()).contains("Booking").doesNotContain("Internal private evidence");
+            } finally { container.stop();admin.deleteTopics(List.of(topic)).all().get(10,TimeUnit.SECONDS); }
+        } finally { worker.shutdown();smtp.shutdown();kafka.destroy();producer.destroy(); }
+    }
+
+    @ParameterizedTest @ValueSource(longs = {-1801, -1800, -1, 0, 1})
+    void reminderDueBoundariesAndReplay(long offset) throws Exception {
+        PaidBooking paid = createAndPayBooking(START_AT);
+        Instant at = START_AT.plusSeconds(offset);
+        when(applicationClock.instant()).thenReturn(at);
+        boolean due = offset >= -1800 && offset < 0;
+        assertThat(reminders.recordIfDue(paid.bookingId(), at)).isEqualTo(due);
+        assertThat(reminders.recordIfDue(paid.bookingId(), at)).isFalse();
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM notification_outbox WHERE booking_id=? AND event_type='BOOKING_REMINDER'", Long.class, paid.bookingId())).isEqualTo(due ? 1 : 0);
+        if (due) {
+            var event = eventFor(paid.bookingId(), "BOOKING_REMINDER", "DRIVER");
+            var model = prepareEvent(event);
+            assertThat(model.event().message()).contains("check-in đúng hạn");
+            assertThat(jdbc.queryForObject("SELECT expires_at FROM app_notifications WHERE booking_id=? AND event_type='BOOKING_REMINDER'", Timestamp.class, paid.bookingId()).toInstant()).isEqualTo(START_AT);
+            jdbc.update("UPDATE bookings SET status='CHECKED_IN', checked_in_at=? WHERE id=?", Timestamp.from(at), paid.bookingId());
+            assertThat(emailDeliveries.beginSend(activeEmailClaim(event.eventId()), model, "http://localhost:5173", "support", 5)).isFalse();
+            assertThat(jdbc.queryForObject("SELECT status FROM notification_email_deliveries WHERE event_id=?", String.class, event.eventId())).isEqualTo("SKIPPED");
+        }
+    }
+
+    @Test void reminderConcurrentWorkersAndLateConfirmationCreateOneIntent() throws Exception {
+        // Exercise catch-up with a supported policy allowing a booking at the reminder boundary.
+        doReturn(30).when(reminderBookingPolicy).getMinimumAdvanceMinutes();
+        var start = NOW.plusSeconds(1800);
+        var paid = createPendingBookingWithCheckout(start);
+        var at = NOW.plusSeconds(60);
+        when(applicationClock.instant()).thenReturn(at);
+        var receipt = paymentConfirmationService.processReceipt(new NormalizedReceipt("SIMULATOR", "SIMULATOR",
+                "REMINDER-LATE-" + UUID.randomUUID(), java.math.BigDecimal.valueOf(paid.amount()), "VND",
+                at, at, paid.vaNumber(), paid.paymentCode(), "Late confirmation reminder", "{}"));
+        assertThat(receipt.status()).isEqualTo(com.thang.chargeops.payment.model.PaymentReceiptResult.Status.APPLIED);
+        assertThat(reminders.candidates(at, 50)).contains(paid.bookingId());
+        try (var pool = Executors.newFixedThreadPool(2)) {
+            var a = pool.submit(() -> reminders.recordIfDue(paid.bookingId(), at));
+            var b = pool.submit(() -> reminders.recordIfDue(paid.bookingId(), at));
+            assertThat(List.of(a.get(20, TimeUnit.SECONDS), b.get(20, TimeUnit.SECONDS))).containsExactlyInAnyOrder(true, false);
+        }
+        assertThat(reminders.candidates(at, 50)).doesNotContain(paid.bookingId());
+        var event = eventFor(paid.bookingId(), "BOOKING_REMINDER", "DRIVER");
+        var model = prepareEvent(event);
+        when(applicationClock.instant()).thenReturn(start);
+        assertThat(emailDeliveries.beginSend(activeEmailClaim(event.eventId()), model, "http://localhost:5173", "support", 5)).isFalse();
+    }
+
+    @ParameterizedTest @ValueSource(booleans = {true, false})
+    void lifecycleTransitionsCreateDurableEmailFromHistory(boolean noShow) throws Exception {
+        var paid = createAndPayBooking(START_AT);
+        if (noShow) {
+            jdbc.update("UPDATE bookings SET check_in_deadline=? WHERE id=?", Timestamp.from(NOW), paid.bookingId());
+            assertThat(noShows.markNoShowIfDue(paid.bookingId(), connectorId, NOW)).isTrue();
+            assertThat(noShows.markNoShowIfDue(paid.bookingId(), connectorId, NOW)).isFalse();
+        } else {
+            jdbc.update("UPDATE bookings SET status='CHECKED_IN', checked_in_at=? WHERE id=?", Timestamp.from(START_AT), paid.bookingId());
+            Instant completedAt = START_AT.plusSeconds(3600);
+            assertThat(completions.completeIfDue(paid.bookingId(), connectorId, completedAt)).isTrue();
+            assertThat(completions.completeIfDue(paid.bookingId(), connectorId, completedAt)).isFalse();
+        }
+        var event = eventFor(paid.bookingId(), noShow ? "BOOKING_NO_SHOW" : "BOOKING_COMPLETED", "DRIVER");
+        var model = prepareEvent(event);
+        assertThat(model.event().message()).contains(noShow ? "không xác lập khoản hoàn" : "không xác nhận dung lượng pin");
+        var rendered = emailRenderer.renderBookingEvent(model.event());
+        assertThat(rendered.html()).contains(model.event().heading());
+        assertThat(rendered.text()).contains(model.event().bookingCode());
+        var claim = activeEmailClaim(event.eventId());
+        assertThat(emailDeliveries.beginSend(claim, model, "http://localhost:5173", "support", 5)).isTrue();
+        assertThat(emailDeliveries.markSent(claim)).isTrue();
+        assertThat(emailDeliveries.captureEvent(event)).isFalse();
+    }
+
+    @Test void refundEventsKeepRecipientMatrixAndSkipSupersededPendingFailure() throws Exception {
+        var paid = createAndPayBooking(START_AT);
+        currentActorId.set(ownerId);
+        var result = ownerCancel(paid.bookingId(), 1, UUID.randomUUID(), REASON, 200);
+        UUID refundId = UUID.fromString(result.at("/data/refund/refundId").asText());
+        var decision = eventFor(paid.bookingId(), "RESPONSIBILITY_DECIDED", "DRIVER");
+        assertThat(prepareEvent(decision).event().message()).contains("chấp thuận hoàn").doesNotContain(REASON);
+        var pending = eventFor(paid.bookingId(), "REFUND_PENDING", "DRIVER");
+        var pendingModel = prepareEvent(pending);
+        doReturn(new RefundExecutionResult(RefundExecutionOutcome.FAILED, "SIMULATOR", null, "SIMULATED_FAILURE", NOW, "Internal sensitive note"))
+                .doCallRealMethod().when(simulatorRefundExecutor).execute(any());
+        assertThat(automaticRefundExecutionService.processFirstAttempt(refundId)).isTrue();
+        var failed = eventFor(paid.bookingId(), "REFUND_ATTEMPT_FAILED", "OWNER");
+        var failedModel = prepareEvent(failed);
+        assertThat(failed.recipientId()).isEqualTo(ownerId);
+        assertThat(failedModel.event().actionUrl()).isEqualTo("http://localhost:5173/owner/revenue?tab=refunds");
+        assertThat(failedModel.event().message()).doesNotContain("Internal sensitive note", "SIMULATED_FAILURE");
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM notification_outbox WHERE booking_id=? AND event_type='REFUND_ATTEMPT_FAILED' AND audience<>'OWNER'", Long.class, paid.bookingId())).isZero();
+        long version = jdbc.queryForObject("SELECT version FROM refunds WHERE id=?", Long.class, refundId);
+        UUID retryKey = UUID.randomUUID();
+        for (int i=0;i<2;i++) mockMvc.perform(post("/api/v1/owner/refunds/{id}/retry", refundId).with(user("owner").roles("OWNER"))
+                .header("Idempotency-Key", retryKey).contentType("application/json").content(json(Map.of("expectedVersion",version))))
+                .andExpect(status().isOk());
+        assertThat(emailDeliveries.beginSend(activeEmailClaim(pending.eventId()), pendingModel, "http://localhost:5173", "support", 5)).isFalse();
+        assertThat(emailDeliveries.beginSend(activeEmailClaim(failed.eventId()), failedModel, "http://localhost:5173", "support", 5)).isFalse();
+        for (String audience : List.of("DRIVER","OWNER")) {
+            var success = eventFor(paid.bookingId(), "REFUND_SUCCEEDED", audience);
+            var model = prepareEvent(success);
+            assertThat(model.event().message()).contains("đã hoàn tất trong Simulator", "không phải chuyển tiền ngân hàng");
+        }
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM notification_outbox WHERE booking_id=? AND event_type='REFUND_SUCCEEDED'", Long.class, paid.bookingId())).isEqualTo(2);
+    }
+
+    @Test void cancellationRollbackRemovesAllNewIntentsAndNotices() throws Exception {
+        var paid = createAndPayBooking(START_AT);
+        currentActorId.set(ownerId);
+        assertThatThrownBy(() -> new org.springframework.transaction.support.TransactionTemplate(transactionManager).execute(tx -> {
+            try { ownerCancel(paid.bookingId(), 1, UUID.randomUUID(), REASON, 200); }
+            catch (Exception e) { throw new RuntimeException(e); }
+            throw new IllegalStateException("rollback after all intents");
+        })).isInstanceOf(IllegalStateException.class);
+        assertThat(jdbc.queryForObject("SELECT status FROM bookings WHERE id=?", String.class, paid.bookingId())).isEqualTo("CONFIRMED");
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM notification_outbox WHERE booking_id=? AND event_type<>'BOOKING_CONFIRMED'", Long.class, paid.bookingId())).isZero();
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM app_notifications WHERE booking_id=? AND event_type<>'BOOKING_CONFIRMED'", Long.class, paid.bookingId())).isZero();
+    }
+
+    private com.thang.chargeops.notification.kafka.BookingNotificationEvent eventFor(UUID bookingId, String type, String audience) {
+        var eventId = jdbc.queryForObject("SELECT event_id FROM notification_outbox WHERE booking_id=? AND event_type=? AND audience=?", UUID.class, bookingId,type,audience);
+        return objectMapper.readValue(notificationOutbox.findById(eventId).orElseThrow().getPayload(), com.thang.chargeops.notification.kafka.BookingNotificationEvent.class);
+    }
+
+    private com.thang.chargeops.notification.email.NotificationEmailDeliveryStore.PreparedEmail prepareEvent(com.thang.chargeops.notification.kafka.BookingNotificationEvent event) {
+        assertThat(emailDeliveries.captureEvent(event)).isTrue();
+        jdbc.update("UPDATE notification_email_deliveries SET next_attempt_at=CURRENT_TIMESTAMP+interval '1 day' WHERE status='PENDING' AND event_id<>?", event.eventId());
+        var claim = emailDeliveries.claimDelivery(180,5).orElseThrow();
+        return emailDeliveries.prepare(claim,"http://localhost:5173","support").orElseThrow();
+    }
+
+    private com.thang.chargeops.notification.email.NotificationEmailDeliveryStore.Claim activeEmailClaim(UUID eventId) {
+        return jdbc.queryForObject("SELECT delivery_id,claim_token,attempt_count FROM notification_email_deliveries WHERE event_id=?", (rs,n) ->
+                new com.thang.chargeops.notification.email.NotificationEmailDeliveryStore.Claim(rs.getObject(1,UUID.class),rs.getObject(2,UUID.class),rs.getInt(3)),eventId);
+    }
+
+    @ParameterizedTest @ValueSource(booleans = {true, false})
+    void stationCancellationEmailUsesAuthoritativeSourceAndSafeCopy(boolean admin) throws Exception {
+        PaidBooking paid = createAndPayBooking(START_AT);
+        UUID key = UUID.randomUUID();
+        if (admin) {
+            PolicyCase policyCase = createPolicyCase(paid.bookingId());
+            adminReview(policyCase, key, policyPayload(1, 0, true), 200);
+            adminReview(policyCase, key, policyPayload(1, 0, true), 200);
+        } else {
+            currentActorId.set(ownerId);
+            ownerCancel(paid.bookingId(), 1, key, REASON, 200);
+            ownerCancel(paid.bookingId(), 1, key, REASON, 200);
+        }
+        UUID eventId = jdbc.queryForObject("SELECT event_id FROM notification_outbox WHERE booking_id=? AND event_type='BOOKING_CANCELLED'", UUID.class, paid.bookingId());
+        var event = objectMapper.readValue(notificationOutbox.findById(eventId).orElseThrow().getPayload(),
+                com.thang.chargeops.notification.kafka.BookingNotificationEvent.class);
+        assertThat(event.recipientId()).isEqualTo(driverId);
+        assertThat(emailDeliveries.captureCancelled(event)).isTrue();
+        assertThat(emailDeliveries.captureCancelled(event)).isFalse();
+        // Isolate this delivery from intents created by the other tests in this shared database.
+        jdbc.update("UPDATE notification_email_deliveries SET next_attempt_at=CURRENT_TIMESTAMP + interval '1 day' WHERE event_id<>?", eventId);
+        var claim = emailDeliveries.claimDelivery(180, 5).orElseThrow();
+        var prepared = emailDeliveries.prepare(claim, "http://localhost:5173", "support").orElseThrow();
+        var rendered = emailRenderer.renderBookingCancelled(prepared.cancelled());
+        assertThat(rendered.text()).contains("trạm không thể phục vụ", "đang chờ xử lý").doesNotContain("Bạn đã hủy", REASON);
+        assertThat(rendered.html()).contains("trạm không thể phục vụ");
+        assertThat(emailDeliveries.beginSend(claim, prepared, "http://localhost:5173", "support", 5)).isTrue();
+        assertThat(emailDeliveries.markSent(claim)).isTrue();
+        assertThat(emailDeliveries.captureCancelled(event)).isFalse();
+        assertThat(jdbc.queryForObject("SELECT status FROM notification_email_deliveries WHERE event_id=?", String.class, eventId)).isEqualTo("SENT");
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM app_notifications WHERE booking_id=? AND event_type='BOOKING_CANCELLED'", Long.class, paid.bookingId())).isEqualTo(1);
+    }
 
     @BeforeEach void setUp() {
         when(applicationClock.instant()).thenReturn(NOW);

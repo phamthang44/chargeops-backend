@@ -16,6 +16,11 @@ import com.thang.chargeops.common.enums.BookingStatus;
 import com.thang.chargeops.exception.AppException;
 import com.thang.chargeops.exception.errorcode.RefundErrorCode;
 import com.thang.chargeops.payment.repository.PaymentRepository;
+import com.thang.chargeops.notification.model.NotificationAudience;
+import com.thang.chargeops.notification.model.NotificationEventType;
+import com.thang.chargeops.notification.repository.AppNotificationRepository;
+import com.thang.chargeops.notification.service.NotificationPersistenceService;
+import com.thang.chargeops.notification.service.NotificationService;
 import com.thang.chargeops.payment.repository.PaymentTransactionRepository;
 import com.thang.chargeops.profile.entity.UserProfile;
 import com.thang.chargeops.profile.repository.UserProfileRepository;
@@ -86,7 +91,14 @@ import static org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTest
 @Import({
         BookingCommandRegistry.class,
         BookingStatusHistoryRecorder.class,
-        RefundObligationServiceImpl.class
+        RefundObligationServiceImpl.class,
+        NotificationService.class,
+        NotificationPersistenceService.class,
+        com.thang.chargeops.notification.outbox.BookingConfirmationOutboxWriter.class,
+        com.thang.chargeops.notification.outbox.NotificationOutboxStore.class,
+        com.thang.chargeops.notification.email.NotificationEmailDeliveryStore.class,
+        com.thang.chargeops.notification.email.BookingEventEmailSource.class,
+        BookingCancellationPostgresTest.EmailTestConfiguration.class
 })
 @Transactional(propagation = Propagation.NOT_SUPPORTED)
 class BookingCancellationPostgresTest {
@@ -116,8 +128,24 @@ class BookingCancellationPostgresTest {
     @Autowired private RefundRepository refundRepository;
     @Autowired private RefundAttemptRepository refundAttemptRepository;
     @Autowired private RefundAutoDispatchRepository autoDispatchRepository;
+    @Autowired private com.thang.chargeops.notification.outbox.BookingEventOutboxWriter eventOutboxWriter;
+    @Autowired private NotificationService notificationService;
+    @Autowired private AppNotificationRepository notificationRepository;
+    @Autowired private com.thang.chargeops.notification.outbox.BookingConfirmationOutboxWriter notificationOutboxWriter;
+    @Autowired private com.thang.chargeops.notification.outbox.NotificationOutboxRepository outboxRepository;
+    @Autowired private com.thang.chargeops.notification.outbox.NotificationOutboxStore outboxStore;
+    @Autowired private com.thang.chargeops.notification.email.NotificationEmailDeliveryStore emailStore;
+    @Autowired private com.thang.chargeops.notification.email.NotificationEmailDeliveryRepository emailRepository;
+    @Autowired private tools.jackson.databind.ObjectMapper json;
+
+    @org.springframework.boot.test.context.TestConfiguration
+    static class EmailTestConfiguration {
+        @org.springframework.context.annotation.Bean
+        tools.jackson.databind.ObjectMapper jsonMapper() { return tools.jackson.databind.json.JsonMapper.builder().build(); }
+    }
 
     private BookingCancellationServiceImpl service;
+    private BookingCancellationPolicy policy;
     private UUID driverId;
     private UUID bookingId;
 
@@ -132,7 +160,7 @@ class BookingCancellationPostgresTest {
         when(currentDriver.getId()).thenReturn(driverId);
         when(currentProfileProvider.requireProfile()).thenReturn(currentDriver);
 
-        BookingCancellationPolicy policy = mock(BookingCancellationPolicy.class);
+        policy = mock(BookingCancellationPolicy.class);
         when(policy.calculateRefund(any(), eq(NOW), eq(false)))
                 .thenReturn(new CancellationRefundDecision(
                         CancellationRefundTier.GRACE,
@@ -165,8 +193,311 @@ class BookingCancellationPostgresTest {
                 policy,
                 refundObligationService,
                 assembler,
+                notificationService,
+                notificationOutboxWriter,
                 Clock.fixed(NOW, ZoneOffset.UTC)
         );
+    }
+
+    @Test
+    @org.junit.jupiter.api.condition.EnabledIfSystemProperty(named = "chargeops.smtp.integration", matches = "true")
+    void cancelledBookingTravelsThroughRealKafkaAndMailpitOnce() throws Exception {
+        cancelInTransaction(UUID.randomUUID());
+        var event = cancellationEvent();
+        isolatePendingEmail();
+        jdbc.update("UPDATE notification_outbox SET next_attempt_at=CURRENT_TIMESTAMP+INTERVAL '1 day' "
+                + "WHERE status='PENDING' AND event_id<>?", event.eventId());
+        String topic = "chargeops.lab.cancel." + UUID.randomUUID();
+        String group = "chargeops-lab-cancel-" + UUID.randomUUID();
+        String broker = System.getProperty("chargeops.kafka.bootstrap-servers", "localhost:9092");
+        var producerProperties = new java.util.HashMap<String, Object>();
+        producerProperties.put("bootstrap.servers", broker);
+        producerProperties.put("key.serializer", org.apache.kafka.common.serialization.StringSerializer.class);
+        producerProperties.put("value.serializer", org.apache.kafka.common.serialization.StringSerializer.class);
+        producerProperties.put("acks", "all");
+        var producer = new org.springframework.kafka.core.DefaultKafkaProducerFactory<String, String>(producerProperties);
+        var kafka = new org.springframework.kafka.core.KafkaTemplate<String, String>(producer);
+        var consumerProperties = new java.util.HashMap<String, Object>();
+        consumerProperties.put("bootstrap.servers", broker);
+        consumerProperties.put("group.id", group);
+        consumerProperties.put("key.deserializer", org.apache.kafka.common.serialization.StringDeserializer.class);
+        consumerProperties.put("value.deserializer", org.apache.kafka.common.serialization.StringDeserializer.class);
+        consumerProperties.put("enable.auto.commit", false);
+        consumerProperties.put("auto.offset.reset", "earliest");
+        var factory = new org.springframework.kafka.core.DefaultKafkaConsumerFactory<String, String>(consumerProperties);
+        var properties = new org.springframework.kafka.listener.ContainerProperties(topic);
+        properties.setAckMode(org.springframework.kafka.listener.ContainerProperties.AckMode.RECORD);
+        var listener = new com.thang.chargeops.notification.kafka.BookingNotificationEmailConsumer(emailStore, json);
+        properties.setMessageListener((org.springframework.kafka.listener.MessageListener<String, String>) listener::receiveConfirmed);
+        var container = new org.springframework.kafka.listener.ConcurrentMessageListenerContainer<>(factory, properties);
+        var sender = new org.springframework.mail.javamail.JavaMailSenderImpl();
+        sender.setHost("localhost"); sender.setPort(1025);
+        sender.getJavaMailProperties().putAll(java.util.Map.of("mail.smtp.connectiontimeout", "3000",
+                "mail.smtp.timeout", "10000", "mail.smtp.writetimeout", "10000"));
+        var smtp = emailWorker(sender);
+        var publisher = new com.thang.chargeops.notification.kafka.BookingNotificationPublisher(kafka, json, topic);
+        var worker = new com.thang.chargeops.notification.outbox.BookingNotificationOutboxWorker(outboxStore, publisher, json, 1, 10);
+        try (var admin = org.apache.kafka.clients.admin.AdminClient.create(java.util.Map.of("bootstrap.servers", broker))) {
+            admin.createTopics(List.of(new org.apache.kafka.clients.admin.NewTopic(topic, 3, (short) 1))).all().get(10, TimeUnit.SECONDS);
+            try {
+                container.start();
+                org.awaitility.Awaitility.await().atMost(java.time.Duration.ofSeconds(30)).untilAsserted(() ->
+                        assertThat(container.getAssignedPartitions()).hasSize(3));
+                worker.dispatchPending();
+                org.awaitility.Awaitility.await().atMost(java.time.Duration.ofSeconds(15)).untilAsserted(() ->
+                        assertThat(emailState()).containsEntry("status", "PENDING"));
+                smtp.dispatchPending();
+                kafka.send(topic, bookingId.toString(), json.writeValueAsString(event)).get(10, TimeUnit.SECONDS);
+                org.awaitility.Awaitility.await().atMost(java.time.Duration.ofSeconds(15)).untilAsserted(() -> {
+                    var offsets = admin.listConsumerGroupOffsets(group).partitionsToOffsetAndMetadata().get(5, TimeUnit.SECONDS);
+                    assertThat(offsets.values().stream().mapToLong(org.apache.kafka.clients.consumer.OffsetAndMetadata::offset).sum()).isEqualTo(2);
+                });
+                smtp.dispatchPending();
+                assertThat(emailState()).containsEntry("status", "SENT").containsEntry("attempt_count", 1);
+                assertThat(outboxRepository.findById(event.eventId()).orElseThrow().getStatus()).isEqualTo("PUBLISHED");
+                String email = jdbc.queryForObject("SELECT email FROM user_profile WHERE id=?", String.class, driverId);
+                var client = java.net.http.HttpClient.newBuilder().connectTimeout(java.time.Duration.ofSeconds(3)).build();
+                String search = "http://localhost:8025/api/v1/search?query=" + java.net.URLEncoder.encode("to:" + email,
+                        java.nio.charset.StandardCharsets.UTF_8);
+                var response = client.send(java.net.http.HttpRequest.newBuilder(java.net.URI.create(search))
+                        .timeout(java.time.Duration.ofSeconds(5)).GET().build(), java.net.http.HttpResponse.BodyHandlers.ofString());
+                assertThat(response.statusCode()).isEqualTo(200);
+                var result = json.readTree(response.body());
+                assertThat(result.get("messages").size()).isEqualTo(1);
+                assertThat(result.get("messages").get(0).get("Subject").asString()).contains("Đã hủy booking");
+                var mail = client.send(java.net.http.HttpRequest.newBuilder(java.net.URI.create(
+                        "http://localhost:8025/api/v1/message/" + result.get("messages").get(0).get("ID").asString()))
+                        .timeout(java.time.Duration.ofSeconds(5)).GET().build(), java.net.http.HttpResponse.BodyHandlers.ofString());
+                var content = json.readTree(mail.body());
+                assertThat(content.get("HTML").asString()).contains("đang chờ xử lý", bookingId.toString());
+                assertThat(content.get("Text").asString()).contains("đang chờ xử lý", "126.000");
+            } finally {
+                container.stop();
+                admin.deleteTopics(List.of(topic)).all().get(10, TimeUnit.SECONDS);
+            }
+        } finally {
+            worker.shutdown(); smtp.shutdown(); kafka.destroy(); producer.destroy();
+        }
+    }
+
+    @Test
+    void cancellationOutboxKeepsCommandIdentityOnWriterReplay() {
+        UUID requestKey = UUID.randomUUID();
+        cancelInTransaction(requestKey);
+        var event = cancellationEvent();
+        new TransactionTemplate(transactionManager).executeWithoutResult(status -> notificationOutboxWriter.recordCancelled(
+                bookingCommandRepository.findByActor_IdAndOperationAndRequestKey(driverId,
+                        BookingCommandOperation.CANCEL_BOOKING, requestKey).orElseThrow()));
+        assertThat(cancellationEvent()).isEqualTo(event);
+        var row = outboxRepository.findById(event.eventId()).orElseThrow();
+        assertThat(row.getSourceReceiptId()).isNull();
+        assertThat(row.getSourceCommandId()).isNotNull();
+        assertThat(row.getStatus()).isEqualTo("PENDING");
+    }
+
+    @Test
+    void cancelledConsumerRejectsForgedPayloadAndDedupePreservesSent() throws Exception {
+        cancelInTransaction(UUID.randomUUID());
+        var event = cancellationEvent();
+        var forged = new com.thang.chargeops.notification.kafka.BookingNotificationEvent(event.eventId(), 1,
+                event.eventType(), event.sourceEventKey(), event.bookingId(), event.stationId(), event.recipientId(),
+                event.audience(), event.occurredAt().plusSeconds(1));
+        assertThatThrownBy(() -> emailStore.captureCancelled(forged))
+                .isInstanceOf(com.thang.chargeops.notification.kafka.InvalidBookingNotificationException.class);
+        assertThat(emailStore.captureCancelled(event)).isTrue();
+        isolatePendingEmail();
+        jdbc.update("UPDATE user_profile SET email=?, display_name=? WHERE id=?",
+                "latest-" + UUID.randomUUID() + "@example.test", "An <script>", driverId);
+        var sender = org.mockito.Mockito.spy(new org.springframework.mail.javamail.JavaMailSenderImpl());
+        var sent = new java.util.ArrayList<jakarta.mail.internet.MimeMessage>();
+        org.mockito.Mockito.doAnswer(invocation -> {
+            assertThat(org.springframework.transaction.support.TransactionSynchronizationManager.isActualTransactionActive()).isFalse();
+            assertThat(emailState().get("send_started_at")).isNotNull();
+            sent.add(invocation.getArgument(0));
+            return null;
+        }).when(sender).send(org.mockito.ArgumentMatchers.any(jakarta.mail.internet.MimeMessage.class));
+        var worker = emailWorker(sender);
+        try {
+            worker.dispatchPending();
+            assertThat(emailStore.captureCancelled(event)).isFalse();
+            worker.dispatchPending();
+        } finally { worker.shutdown(); }
+        assertThat(sent).hasSize(1);
+        assertThat(sent.getFirst().getSubject()).contains("Đã hủy booking");
+        assertThat(sent.getFirst().getAllRecipients()[0].toString()).startsWith("latest-");
+        assertThat(sent.getFirst().getHeader("Message-ID", null)).contains(emailState().get("delivery_id").toString());
+        var claimModel = new com.thang.chargeops.notification.email.BookingEmailRenderer().renderBookingCancelled(
+                cancellationPreparedBeforeSendForPreview(event));
+        assertThat(claimModel.html()).contains("An &lt;script&gt;", "đang chờ xử lý").doesNotContain("An <script>", "đã hoàn tất");
+        assertThat(claimModel.text()).contains("đang chờ xử lý", "/bookings/" + bookingId);
+        assertThat(emailState()).containsEntry("status", "SENT").containsEntry("attempt_count", 1);
+    }
+
+    private com.thang.chargeops.notification.email.BookingCancelledEmailModel cancellationPreparedBeforeSendForPreview(
+            com.thang.chargeops.notification.kafka.BookingNotificationEvent event) {
+        return new TransactionTemplate(transactionManager).execute(status ->
+                com.thang.chargeops.notification.email.BookingCancelledEmailModel.cancelled(
+                        emailRepository.findCancelledContext(event.eventId()).orElseThrow(), "http://localhost:5173", ""));
+    }
+
+    @Test
+    void unpaidCancellationEmailHasNoReceiptAndNoRefundClaim() {
+        jdbc.update("DELETE FROM payment_transactions WHERE payment_id=(SELECT id FROM payments WHERE booking_id=?)", bookingId);
+        jdbc.update("UPDATE bookings SET status='PENDING',payment_confirmed_at=NULL,free_cancellation_deadline=NULL,"
+                + "check_in_deadline=NULL,expires_at=? WHERE id=?", Timestamp.from(NOW.plusSeconds(600)), bookingId);
+        jdbc.update("UPDATE payments SET status='PENDING',paid_at=NULL WHERE booking_id=?", bookingId);
+        cancelWithoutRefund();
+        var event = cancellationEvent();
+        assertThat(emailStore.captureCancelled(event)).isTrue();
+        isolatePendingEmail();
+        var claim = emailStore.claimDelivery(180, 5).orElseThrow();
+        var model = emailStore.prepare(claim, "http://localhost:5173", "").orElseThrow().cancelled();
+        assertThat(model.refundText()).contains("trước khi thanh toán", "không phát sinh hoàn tiền");
+        assertThat(outboxRepository.findById(event.eventId()).orElseThrow().getSourceReceiptId()).isNull();
+    }
+
+    @Test
+    void cancellationSendRechecksRecipientAfterPreparation() {
+        cancelInTransaction(UUID.randomUUID());
+        emailStore.captureCancelled(cancellationEvent());
+        isolatePendingEmail();
+        var claim = emailStore.claimDelivery(180, 5).orElseThrow();
+        var model = emailStore.prepare(claim, "http://localhost:5173", "").orElseThrow();
+        jdbc.update("UPDATE user_profile SET status='SUSPENDED' WHERE id=?", driverId);
+        assertThat(emailStore.beginSend(claim, model, "http://localhost:5173", "", 5)).isFalse();
+        assertThat(emailState()).containsEntry("status", "SKIPPED").containsEntry("skip_reason", "RECIPIENT_INACTIVE");
+    }
+
+    @Test
+    void cancellationSendRechecksRefundOutcomeAfterRendering() {
+        cancelInTransaction(UUID.randomUUID());
+        emailStore.captureCancelled(cancellationEvent());
+        isolatePendingEmail();
+        var claim = emailStore.claimDelivery(180, 5).orElseThrow();
+        var prepared = emailStore.prepare(claim, "http://localhost:5173", "").orElseThrow();
+        assertThat(prepared.cancelled().refundText()).contains("đang chờ xử lý");
+        var refund = refundRepository.findByBookingIdOrderByCreatedAtAscIdAsc(bookingId).getFirst();
+        var execution = new AutomaticRefundExecutionServiceImpl(connectorRepository, bookingRepository,
+                paymentRepository, paymentTransactionRepository, refundRepository, refundAttemptRepository,
+                autoDispatchRepository, new RefundExecutorRegistry(List.of(new SimulatorRefundExecutor())),
+                new RefundExecutionResultHandler(refundAttemptRepository, refundRepository, paymentRepository, eventOutboxWriter),
+                Clock.fixed(NOW.plusSeconds(1), ZoneOffset.UTC));
+        new TransactionTemplate(transactionManager).execute(status -> execution.processFirstAttempt(refund.getId()));
+        assertThat(emailStore.beginSend(claim, prepared, "http://localhost:5173", "", 5)).isFalse();
+        assertThat(emailState()).containsEntry("status", "PENDING").containsEntry("sanitized_last_error", "EMAIL_CONTEXT_CHANGED");
+        jdbc.update("UPDATE notification_email_deliveries SET next_attempt_at=CURRENT_TIMESTAMP WHERE delivery_id=?", emailState().get("delivery_id"));
+        var next = emailStore.claimDelivery(180, 5).orElseThrow();
+        var refreshed = emailStore.prepare(next, "http://localhost:5173", "").orElseThrow();
+        assertThat(refreshed.cancelled().refundText()).contains("mô phỏng", "đã hoàn tất").doesNotContain("tài khoản ngân hàng");
+        assertThat(emailStore.beginSend(next, refreshed, "http://localhost:5173", "", 5)).isTrue();
+    }
+
+    private com.thang.chargeops.notification.kafka.BookingNotificationEvent cancellationEvent() {
+        var rows = outboxRepository.findAll().stream().filter(row -> row.getBookingId().equals(bookingId)
+                && "BOOKING_CANCELLED".equals(row.getEventType())).toList();
+        assertThat(rows).hasSize(1);
+        return json.readValue(rows.getFirst().getPayload(), com.thang.chargeops.notification.kafka.BookingNotificationEvent.class);
+    }
+
+    private void isolatePendingEmail() {
+        jdbc.update("UPDATE notification_email_deliveries SET next_attempt_at=CURRENT_TIMESTAMP+INTERVAL '1 day' "
+                + "WHERE status='PENDING' AND event_id NOT IN (SELECT event_id FROM notification_outbox WHERE booking_id=?)", bookingId);
+        jdbc.update("UPDATE notification_email_deliveries SET lease_until=CURRENT_TIMESTAMP+INTERVAL '1 day' "
+                + "WHERE status='PROCESSING' AND event_id NOT IN (SELECT event_id FROM notification_outbox WHERE booking_id=?)", bookingId);
+    }
+
+    private java.util.Map<String, Object> emailState() {
+        return jdbc.queryForMap("SELECT d.* FROM notification_email_deliveries d JOIN notification_outbox o ON o.event_id=d.event_id WHERE o.booking_id=?", bookingId);
+    }
+
+    private com.thang.chargeops.notification.email.BookingNotificationEmailWorker emailWorker(
+            org.springframework.mail.javamail.JavaMailSenderImpl sender) {
+        return new com.thang.chargeops.notification.email.BookingNotificationEmailWorker(emailStore,
+                new com.thang.chargeops.notification.email.BookingEmailRenderer(), sender, "noreply@chargeops.test",
+                "http://localhost:5173", "", 1, 5);
+    }
+
+    @Test
+    void cancellationNoticeTargetsOnlyDriverAndReplayPreservesReadState() {
+        UUID requestKey = UUID.randomUUID();
+        cancelInTransaction(requestKey);
+        var notices = cancellationNotices();
+        assertThat(notices).singleElement().satisfies(notice -> {
+            assertThat(notice.getRecipientId()).isEqualTo(driverId);
+            assertThat(notice.getAudience()).isEqualTo(NotificationAudience.DRIVER);
+            assertThat(notice.getCategory()).isEqualTo("booking");
+            assertThat(notice.getActionUrl()).isEqualTo("/bookings/" + bookingId);
+            var command = bookingCommandRepository.findByActor_IdAndOperationAndRequestKey(
+                    driverId, BookingCommandOperation.CANCEL_BOOKING, requestKey).orElseThrow();
+            assertThat(notice.getSourceEventKey()).isEqualTo(command.getId() + ":BOOKING_CANCELLED");
+        });
+        UUID noticeId = notices.getFirst().getId();
+        Instant readAt = NOW.plusSeconds(2);
+        new TransactionTemplate(transactionManager).executeWithoutResult(status -> {
+            var notice = notificationRepository.findById(noticeId).orElseThrow();
+            notice.markRead(readAt);
+            notice.dismiss(readAt);
+        });
+        cancelInTransaction(requestKey);
+        assertThat(cancellationNotices()).singleElement().satisfies(notice -> {
+            assertThat(notice.getId()).isEqualTo(noticeId);
+            assertThat(notice.getReadAt()).isEqualTo(readAt);
+            assertThat(notice.getDismissedAt()).isEqualTo(readAt);
+        });
+    }
+
+    @Test
+    void rollbackAfterNoticeInsertLeavesNoCancellationHistoryOrRefund() {
+        new TransactionTemplate(transactionManager).executeWithoutResult(status -> {
+            service.cancelBooking(bookingId, UUID.randomUUID(),
+                    new CancelBookingRequest(0L, AMOUNT.longValueExact(), POLICY_VERSION));
+            assertThat(cancellationNotices()).hasSize(1);
+            status.setRollbackOnly();
+        });
+        assertThat(cancellationNotices()).isEmpty();
+        assertThat(countRows("notification_outbox", "booking_id", bookingId)).isZero();
+        assertThat(bookingRepository.findById(bookingId)).get()
+                .extracting(com.thang.chargeops.booking.entity.Booking::getStatus)
+                .isEqualTo(BookingStatus.CONFIRMED);
+        assertThat(countRows("booking_commands", "booking_id", bookingId)).isZero();
+        assertThat(countRows("booking_status_history", "booking_id", bookingId)).isZero();
+        assertThat(refundRepository.findByBookingIdOrderByCreatedAtAscIdAsc(bookingId)).isEmpty();
+    }
+
+    @Test
+    void unpaidCancellationStillCreatesNoticeWithoutRefund() {
+        jdbc.update("UPDATE bookings SET status='PENDING', payment_confirmed_at=NULL, "
+                + "free_cancellation_deadline=NULL, check_in_deadline=NULL, expires_at=? WHERE id=?",
+                Timestamp.from(NOW.plusSeconds(600)), bookingId);
+        jdbc.update("UPDATE payments SET status='PENDING', paid_at=NULL WHERE booking_id=?", bookingId);
+        cancelWithoutRefund();
+        assertThat(cancellationNotices()).hasSize(1);
+        assertThat(refundRepository.findByBookingIdOrderByCreatedAtAscIdAsc(bookingId)).isEmpty();
+    }
+
+    @Test
+    void paidCancellationOutsideGraceCreatesNoticeWithoutClaimingRefundSucceeded() {
+        jdbc.update("UPDATE bookings SET free_cancellation_deadline=? WHERE id=?",
+                Timestamp.from(NOW.minusSeconds(1)), bookingId);
+        cancelWithoutRefund();
+        assertThat(cancellationNotices()).singleElement().satisfies(notice ->
+                assertThat(notice.getEventType()).isEqualTo(NotificationEventType.BOOKING_CANCELLED));
+        assertThat(refundRepository.findByBookingIdOrderByCreatedAtAscIdAsc(bookingId)).isEmpty();
+    }
+
+    private void cancelWithoutRefund() {
+        when(policy.calculateRefund(any(), eq(NOW), eq(false))).thenReturn(
+                new CancellationRefundDecision(CancellationRefundTier.NONE, 0, BigDecimal.ZERO,
+                        AMOUNT, NOW.minusSeconds(1)));
+        new TransactionTemplate(transactionManager).executeWithoutResult(status ->
+                service.cancelBooking(bookingId, UUID.randomUUID(),
+                        new CancelBookingRequest(0L, 0L, POLICY_VERSION)));
+    }
+
+    private List<com.thang.chargeops.notification.entity.AppNotification> cancellationNotices() {
+        return notificationRepository.findAll((root, query, cb) -> cb.and(
+                cb.equal(root.get("bookingId"), bookingId),
+                cb.equal(root.get("eventType"), NotificationEventType.BOOKING_CANCELLED)));
     }
 
     @Test
@@ -196,7 +527,7 @@ class BookingCancellationPostgresTest {
                     assertThat(autoDispatchRepository.findRefundIdsByStatus(
                             RefundAutoDispatchStatus.PENDING,
                             org.springframework.data.domain.PageRequest.of(0, 10)
-                    )).containsExactly(refund.getId());
+                    )).contains(refund.getId());
                 });
     }
 
@@ -214,7 +545,7 @@ class BookingCancellationPostgresTest {
                 refundAttemptRepository,
                 autoDispatchRepository,
                 new RefundExecutorRegistry(List.of(new SimulatorRefundExecutor())),
-                new RefundExecutionResultHandler(refundAttemptRepository, refundRepository, paymentRepository),
+                new RefundExecutionResultHandler(refundAttemptRepository, refundRepository, paymentRepository, eventOutboxWriter),
                 Clock.fixed(NOW.plusSeconds(1), ZoneOffset.UTC)
         );
 
@@ -272,7 +603,7 @@ class BookingCancellationPostgresTest {
                 connectorRepository, bookingRepository, paymentRepository, paymentTransactionRepository,
                 refundRepository, refundAttemptRepository, autoDispatchRepository,
                 new RefundExecutorRegistry(List.of(failingExecutor)),
-                new RefundExecutionResultHandler(refundAttemptRepository, refundRepository, paymentRepository),
+                new RefundExecutionResultHandler(refundAttemptRepository, refundRepository, paymentRepository, eventOutboxWriter),
                 Clock.fixed(NOW.plusSeconds(1), ZoneOffset.UTC)
         );
 
@@ -310,6 +641,7 @@ class BookingCancellationPostgresTest {
         assertThat(countRows("booking_commands", "booking_id", bookingId)).isZero();
         assertThat(countRows("booking_status_history", "booking_id", bookingId)).isZero();
         assertThat(refundRepository.findByBookingIdOrderByCreatedAtAscIdAsc(bookingId)).isEmpty();
+        assertThat(cancellationNotices()).isEmpty();
     }
 
     @Test
@@ -341,6 +673,11 @@ class BookingCancellationPostgresTest {
         assertThat(countRows("booking_commands", "booking_id", bookingId)).isEqualTo(1);
         assertThat(countRows("booking_status_history", "booking_id", bookingId)).isEqualTo(1);
         assertThat(refundRepository.findByBookingIdOrderByCreatedAtAscIdAsc(bookingId)).hasSize(1);
+        assertThat(cancellationNotices()).hasSize(1);
+        assertThat(countRows("notification_outbox", "booking_id", bookingId)).isEqualTo(2);
+        assertThat(outboxRepository.findAll().stream().filter(row -> row.getBookingId().equals(bookingId)))
+                .extracting(com.thang.chargeops.notification.outbox.NotificationOutbox::getEventType)
+                .containsExactlyInAnyOrder("BOOKING_CANCELLED", "REFUND_PENDING");
     }
 
     private BookingDetailResponse cancelAfterBarrier(
@@ -380,8 +717,8 @@ class BookingCancellationPostgresTest {
         String paymentCode = "C" + suffix.toUpperCase();
 
         jdbc.update("""
-                INSERT INTO user_profile(id, keycloak_id, email)
-                VALUES (?, ?, ?)
+                INSERT INTO user_profile(id, keycloak_id, email, status)
+                VALUES (?, ?, ?, 'ACTIVE')
                 """, fixtureDriverId, "cancel-" + suffix, "cancel-" + suffix + "@example.test");
         jdbc.update("""
                 INSERT INTO stations(id, owner_id, name, address_line, contact_phone, status)
@@ -390,7 +727,7 @@ class BookingCancellationPostgresTest {
         jdbc.update("""
                 INSERT INTO charge_points(id, station_id, charge_point_code,
                                           provisioning_status, operational_status)
-                VALUES (?, ?, ?, 'PROVISIONED', 'OPERATING')
+                VALUES (?, ?, ?, 'ACTIVE', 'AVAILABLE')
                 """, chargePointId, stationId, "CP-CAN-" + suffix);
         jdbc.update("""
                 INSERT INTO connectors(id, charge_point_id, connector_code, connector_type,

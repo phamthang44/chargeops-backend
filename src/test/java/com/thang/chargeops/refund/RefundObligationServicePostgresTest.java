@@ -90,7 +90,7 @@ class RefundObligationServicePostgresTest {
                 SELECT id,'RFO station %2$s','Test','000','ACTIVE'
                 FROM user_profile WHERE keycloak_id='%1$s';
                 INSERT INTO charge_points(station_id,charge_point_code,provisioning_status,operational_status)
-                SELECT id,'%3$s','PROVISIONED','OPERATING'
+                SELECT id,'%3$s','ACTIVE','AVAILABLE'
                 FROM stations WHERE name='RFO station %2$s';
                 INSERT INTO connectors(charge_point_id,connector_code,connector_type,power_kw,charger_type,runtime_status)
                 SELECT id,'%4$s','CCS2',60,'DC','AVAILABLE'

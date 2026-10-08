@@ -84,6 +84,8 @@ public class BookingServiceFailureService {
     private final BookingEffectiveStatePolicy effectiveState;
     private final Clock applicationClock;
     private final IncidentFinancialEvidenceReader incidentEvidence;
+    private final com.thang.chargeops.notification.outbox.BookingConfirmationOutboxWriter notificationOutbox;
+    private final com.thang.chargeops.notification.outbox.BookingEventOutboxWriter eventOutbox;
 
     // =========================================================================
     // Public Command API
@@ -298,6 +300,8 @@ public class BookingServiceFailureService {
                 evidence
         ));
 
+        if (req.isCancel()) notificationOutbox.recordStationCancelled(command);
+        eventOutbox.recordDecision(decision);
         bookings.flush();
         return response(booking, decision, refund);
     }

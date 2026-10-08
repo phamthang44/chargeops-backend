@@ -102,6 +102,8 @@ public class AdminRefundPolicyService {
     private final RefundObligationService obligations;
     private final Clock clock;
     private final AdminFinanceAccessAudit accessAudit;
+    private final com.thang.chargeops.notification.outbox.BookingConfirmationOutboxWriter notificationOutbox;
+    private final com.thang.chargeops.notification.outbox.BookingEventOutboxWriter eventOutbox;
 
     @Transactional
     public ServiceFailureCommandResponse review(UUID ticketId, UUID escalationId, UUID key,
@@ -149,6 +151,7 @@ public class AdminRefundPolicyService {
         }
         var decision = decisions.saveAndFlush(BookingServiceFailureDecision.admin(decisionId, command, payment,
                 decisionVersion + 1, ticketId, escalationId, request.reason(), request.affectedAt(), now, refund, evidence));
+        eventOutbox.recordDecision(decision);
         bookings.flush();
         return response(booking, decision, refund);
     }
@@ -288,6 +291,7 @@ public class AdminRefundPolicyService {
         if (now.isBefore(booking.getCheckInDeadline())) {
             history.recordUserTransition(command, BookingStatusActorType.ADMIN, BookingStatusReason.ADMIN_POLICY_CANCELLED,
                     now, current -> current.cancel("STATION_FAILURE", now));
+            notificationOutbox.recordStationCancelled(command);
         } else if (!noShow.reconcileLocked(booking, payment, now)) {
             throw new AppException(ServiceFailureErrorCode.RECONCILIATION_REQUIRED);
         }

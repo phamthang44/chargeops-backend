@@ -57,6 +57,72 @@ class NotificationMigrationPostgresTest {
         return id;
     }
 
+    @Test
+    void v56UpgradeKeepsPendingOutboxAndReadDismissedInboxUntouched() {
+        var root = new DriverManagerDataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
+        // Each upgrade scenario owns a database inside this ephemeral Testcontainers instance.
+        String database = "email_upgrade_" + UUID.randomUUID().toString().replace("-", "");
+        new JdbcTemplate(root).execute("CREATE DATABASE " + database);
+        var source = new DriverManagerDataSource(POSTGRES.getJdbcUrl().replace("/" + POSTGRES.getDatabaseName(), "/" + database),
+                POSTGRES.getUsername(), POSTGRES.getPassword());
+        Flyway.configure().dataSource(source).target("56").load().migrate();
+        var jdbc = new JdbcTemplate(source);
+        UUID recipient = user(jdbc), station = UUID.randomUUID(), point = UUID.randomUUID(), connector = UUID.randomUUID(),
+                booking = UUID.randomUUID(), payment = UUID.randomUUID(), receipt = UUID.randomUUID(), event = UUID.randomUUID();
+        String key = receipt + ":BOOKING_CONFIRMED";
+        var occurred = Instant.parse("2026-10-01T00:00:00Z");
+        jdbc.update("INSERT INTO stations(id,owner_id,name,address_line,contact_phone,status,operational_status) VALUES (?,?,'Upgrade','Address','0123456789','ACTIVE','OPERATING')", station, recipient);
+        jdbc.update("INSERT INTO charge_points(id,station_id,charge_point_code,provisioning_status,operational_status) VALUES (?,?,'UPGRADE-CP','ACTIVE','AVAILABLE')", point, station);
+        jdbc.update("INSERT INTO connectors(id,charge_point_id,connector_code,connector_type,power_kw,charger_type,runtime_status) VALUES (?,?,'UPGRADE-CON','CCS2',60,'DC','AVAILABLE')", connector, point);
+        jdbc.update("""
+                INSERT INTO bookings(id,driver_id,connector_id,start_at,end_at,status,total_amount,station_name_snapshot,
+                    station_address_snapshot,charge_point_code_snapshot,connector_code_snapshot)
+                VALUES (?,?,?,CURRENT_TIMESTAMP+INTERVAL '1 hour',CURRENT_TIMESTAMP+INTERVAL '2 hours',
+                    'CONFIRMED',120000,'Upgrade','Address','UPGRADE-CP','UPGRADE-CON')
+                """, booking, recipient, connector);
+        jdbc.update("INSERT INTO payments(id,booking_id,amount,status,method,environment,refund_amount,provider,receiving_account_ref,currency) VALUES (?,?,120000,'PAID','SIMULATOR','SIMULATOR',0,'SIMULATOR','UPGRADE-ACCOUNT','VND')", payment, booking);
+        jdbc.update("INSERT INTO payment_transactions(id,payment_id,provider,receiving_account_ref,transaction_ref,amount,currency,application_classification) VALUES (?,?,'SIMULATOR','UPGRADE-ACCOUNT','UPGRADE-RECEIPT',120000,'VND','APPLIED')", receipt, payment);
+        String payload = """
+                {"eventId":"%s","schemaVersion":1,"eventType":"BOOKING_CONFIRMED","sourceEventKey":"%s",
+                 "bookingId":"%s","stationId":"%s","recipientId":"%s","audience":"DRIVER","occurredAt":"%s"}
+                """.formatted(event, key, booking, station, recipient, occurred);
+        jdbc.update("""
+                INSERT INTO notification_outbox(event_id,source_receipt_id,source_event_key,booking_id,station_id,
+                    recipient_id,audience,event_type,schema_version,payload,occurred_at,next_attempt_at)
+                VALUES (?,?,?,?,?,?,'DRIVER','BOOKING_CONFIRMED',1,CAST(? AS jsonb),?,?)
+                """, event, receipt, key, booking, station, recipient, payload, Timestamp.from(occurred), Timestamp.from(occurred));
+        UUID notice = UUID.randomUUID();
+        jdbc.update("""
+                INSERT INTO app_notifications(id,recipient_id,event_key,source_event_key,audience,event_type,category,
+                    booking_id,station_id,action_type,title,body,action_url,created_at,read_at,dismissed_at)
+                VALUES (?,?,?,?,'DRIVER','BOOKING_CONFIRMED','booking',?,?,'OPEN_BOOKING','Confirmed','Safe',?,?,?,?)
+                """, notice, recipient, key, key, booking, station, "/bookings/" + booking,
+                Timestamp.from(occurred), Timestamp.from(occurred.plusSeconds(60)), Timestamp.from(occurred.plusSeconds(120)));
+        var beforeOutbox = jdbc.queryForMap("SELECT * FROM notification_outbox WHERE event_id = ?", event);
+        var beforeNotice = jdbc.queryForMap("SELECT * FROM app_notifications WHERE id = ?", notice);
+        Flyway.configure().dataSource(source).target("57").load().migrate();
+        UUID sentDelivery = UUID.randomUUID();
+        jdbc.update("""
+                INSERT INTO notification_email_deliveries(delivery_id,event_id,recipient_id,status,attempt_count,send_started_at,sent_at)
+                VALUES (?,?,?,'SENT',1,?,?)
+                """, sentDelivery, event, recipient, Timestamp.from(occurred), Timestamp.from(occurred.plusSeconds(1)));
+        var beforeDelivery = jdbc.queryForMap("SELECT * FROM notification_email_deliveries WHERE delivery_id=?", sentDelivery);
+        Flyway.configure().dataSource(source).load().migrate();
+        var upgradedOutbox = jdbc.queryForMap("SELECT * FROM notification_outbox WHERE event_id = ?", event);
+        assertThat(upgradedOutbox.remove("source_command_id")).isNull();
+        for (String column : java.util.List.of("source_history_id", "source_decision_id", "source_refund_id", "source_attempt_id", "reminder_start_at"))
+            assertThat(upgradedOutbox.remove(column)).isNull();
+        assertThat(upgradedOutbox).isEqualTo(beforeOutbox);
+        assertThat(jdbc.queryForMap("SELECT * FROM app_notifications WHERE id = ?", notice)).isEqualTo(beforeNotice);
+        assertThat(jdbc.queryForMap("SELECT * FROM notification_email_deliveries WHERE delivery_id=?", sentDelivery)).isEqualTo(beforeDelivery);
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> jdbc.update(
+                "UPDATE notification_outbox SET source_receipt_id=NULL WHERE event_id=?", event))
+                .isInstanceOf(org.springframework.dao.DataIntegrityViolationException.class);
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM flyway_schema_history WHERE version='57' AND success", Long.class)).isOne();
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM flyway_schema_history WHERE version='58' AND success", Long.class)).isOne();
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM flyway_schema_history WHERE version='59' AND success", Long.class)).isOne();
+    }
+
     private UUID legacy(JdbcTemplate jdbc, UUID recipient, String key, Timestamp created, Timestamp read) {
         UUID id = UUID.randomUUID();
         jdbc.update("""

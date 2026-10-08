@@ -1,0 +1,11 @@
+<!DOCTYPE html>
+<html lang="vi" th:replace="~{email/layout/email-base :: layout(~{::content})}">
+<body><div th:fragment="content" style="padding:32px;font-family:Arial,sans-serif;color:#242434;line-height:1.6;">
+  <h1 style="font-size:24px;" th:text="${model.heading}"></h1>
+  <p>Xin chào <span th:text="${model.recipientName}"></span>,</p>
+  <p>Booking <strong th:text="${model.bookingCode}"></strong> · <span th:text="${model.stationName}"></span></p>
+  <p th:text="${model.message}"></p>
+  <p>Khung giờ: <span th:text="${model.timeWindowText}"></span><br/>Thời điểm sự kiện: <span th:text="${model.occurredAtText}"></span></p>
+  <p><a th:href="${model.actionUrl}">Xem hồ sơ và trạng thái mới nhất</a></p>
+  <p th:if="${model.supportContact != null and !model.supportContact.isBlank()}">Hỗ trợ: <span th:text="${model.supportContact}"></span></p>
+</div></body></html>

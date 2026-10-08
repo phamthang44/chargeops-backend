@@ -84,7 +84,7 @@ class AdminRefundServiceImplTest {
                 currentProfileProvider, userProfileRepository, connectorRepository,
                 bookingRepository, paymentRepository, paymentTransactionRepository,
                 refundRepository, refundAttemptRepository, executorRegistry, assembler,
-                new RefundExecutionResultHandler(refundAttemptRepository, refundRepository, paymentRepository),
+                new RefundExecutionResultHandler(refundAttemptRepository, refundRepository, paymentRepository, org.mockito.Mockito.mock(com.thang.chargeops.notification.outbox.BookingEventOutboxWriter.class)),
                 Clock.fixed(NOW, ZoneOffset.UTC)
         );
     }
