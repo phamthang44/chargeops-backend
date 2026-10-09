@@ -29,6 +29,8 @@ public final class NotificationI18nKey {
     public static final String REFUND_SUCCEEDED_BODY = "notification.refund.succeeded.body";
 
     // Ticket notifications
+    public static final String TICKET_CREATED_TITLE = "notification.ticket.created.title";
+    public static final String TICKET_CREATED_BODY = "notification.ticket.created.body";
     public static final String TICKET_RESOLVED_TITLE = "notification.ticket.resolved.title";
     public static final String TICKET_RESOLVED_BODY = "notification.ticket.resolved.body";
     public static final String TICKET_ASSIGNED_TITLE = "notification.ticket.assigned.title";

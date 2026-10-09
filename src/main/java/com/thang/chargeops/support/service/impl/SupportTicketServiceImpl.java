@@ -7,7 +7,16 @@ import com.thang.chargeops.exception.AppException;
 import com.thang.chargeops.exception.errorcode.StationErrorCode;
 import com.thang.chargeops.exception.errorcode.TicketErrorCode;
 import com.thang.chargeops.profile.entity.UserProfile;
+import com.thang.chargeops.profile.repository.UserProfileRepository;
 import com.thang.chargeops.profile.support.CurrentProfileProvider;
+import com.thang.chargeops.common.enums.Role;
+import com.thang.chargeops.common.enums.UserStatus;
+import com.thang.chargeops.infra.identity.IdentityRoleService;
+import com.thang.chargeops.notification.entity.AppNotification;
+import com.thang.chargeops.notification.model.NotificationAudience;
+import com.thang.chargeops.notification.model.NotificationContent;
+import com.thang.chargeops.notification.model.NotificationI18nKey;
+import com.thang.chargeops.notification.service.NotificationService;
 import com.thang.chargeops.station.entity.Station;
 import com.thang.chargeops.station.repository.StationRepository;
 import com.thang.chargeops.station.staff.entity.StaffAssignmentStatus;
@@ -72,6 +81,9 @@ public class SupportTicketServiceImpl implements SupportTicketService {
     private final StationStaffAssignmentRepository stationStaffAssignmentRepository;
     private final TicketResponseService ticketResponseAssembler;
     private final TicketAccessPolicy accessPolicy;
+    private final UserProfileRepository userProfileRepository;
+    private final IdentityRoleService identityRoleService;
+    private final NotificationService notificationService;
     public SupportTicketServiceImpl(
             CurrentProfileProvider currentProfileProvider,
             BookingRepository bookingRepository,
@@ -81,7 +93,7 @@ public class SupportTicketServiceImpl implements SupportTicketService {
             Clock clock
     ) {
         this(currentProfileProvider, bookingRepository, stationRepository, ticketRepository,
-                messageRepository, clock, null, null, null);
+                messageRepository, clock, null, null, null, null, null, null);
     }
 
     @Override
@@ -124,7 +136,27 @@ public class SupportTicketServiceImpl implements SupportTicketService {
         messageRepository.saveAndFlush(TicketMessage.create(
                 ticket, reporter, TicketActorKind.REPORTER, request.description(), clock.instant()
         ));
+        if (routedStation == null && notificationService != null
+                && userProfileRepository != null && identityRoleService != null) {
+            notifyActiveAdminsOfPlatformTicket(ticket);
+        }
         return ticketResponseAssembler.toResponse(ticket);
+    }
+
+    private void notifyActiveAdminsOfPlatformTicket(SupportTicket ticket) {
+        String sourceKey = ticket.getId() + ":TICKET_CREATED";
+        var content = new NotificationContent(
+                NotificationI18nKey.format(NotificationI18nKey.TICKET_CREATED_TITLE,
+                        java.util.Map.of("code", ticket.getTicketCode())),
+                NotificationI18nKey.format(NotificationI18nKey.TICKET_CREATED_BODY,
+                        java.util.Map.of("code", ticket.getTicketCode(), "category", ticket.getCategory().name())),
+                clock.instant());
+        for (UserProfile admin : userProfileRepository.findAllByStatusAndDeletedAtIsNull(UserStatus.ACTIVE)) {
+            if (identityRoleService.getRoles(admin.getKeycloakId()).contains(Role.ADMIN)) {
+                notificationService.createTicketCreatedNotice(AppNotification.createdTicket(
+                        ticket, admin.getId(), NotificationAudience.ADMIN, sourceKey, content));
+            }
+        }
     }
 
 

@@ -38,6 +38,11 @@ public class NotificationService {
         persistence.saveIfAbsent(AppNotification.resolvedTicket(ticket, eventKey, content));
     }
 
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void createTicketCreatedNotice(AppNotification notice) {
+        persistence.saveIfAbsent(notice);
+    }
+
     /** Infrastructure for BKG-066; domain producers are wired in that workstream. */
     @Transactional(propagation = Propagation.MANDATORY)
     public void createBookingNotice(Booking booking, NotificationEventType type, String transitionKey,

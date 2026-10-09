@@ -108,6 +108,19 @@ public class AppNotification extends BaseEntity {
         return n;
     }
 
+    public static AppNotification createdTicket(SupportTicket ticket, UUID recipientId,
+                                                NotificationAudience audience, String sourceKey,
+                                                NotificationContent content) {
+        if (ticket.getId() == null || ticket.getStation() != null
+                || audience != NotificationAudience.ADMIN) {
+            throw new AppException(NotificationErrorCode.INVALID_INTENT);
+        }
+        var n = base(recipientId, audience, NotificationEventType.TICKET_CREATED,
+                CATEGORY_TICKET, sourceKey, content);
+        n.setTicketTarget(ticket, NotificationActionType.OPEN_TICKET);
+        return n;
+    }
+
     /** Recipient and resource IDs come from persisted domain objects, never a client request. */
     public static AppNotification driverBooking(Booking booking, NotificationEventType type,
                                                  String transitionKey, NotificationContent content, Instant expiresAt) {

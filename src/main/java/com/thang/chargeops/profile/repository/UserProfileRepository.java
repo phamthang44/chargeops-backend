@@ -12,8 +12,11 @@ import org.springframework.data.repository.query.Param;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import com.thang.chargeops.common.enums.UserStatus;
 
 public interface UserProfileRepository extends JpaRepository<UserProfile, UUID> {
+
+    List<UserProfile> findAllByStatusAndDeletedAtIsNull(UserStatus status);
 
     Optional<UserProfile> findByKeycloakId(String keycloakId);
 

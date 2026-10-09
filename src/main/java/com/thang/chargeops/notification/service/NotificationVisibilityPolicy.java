@@ -175,8 +175,12 @@ public final class NotificationVisibilityPolicy {
         var e = escalation.from(TicketEscalation.class);
         escalation.select(cb.literal(1)).where(cb.equal(e.get(ID), n.get(ESCALATION_ID)),
                 cb.equal(e.get(TICKET).get(ID), n.get(TICKET_ID)));
-        return cb.and(cb.equal(n.get(AUDIENCE), NotificationAudience.ADMIN), cb.exists(escalation),
-                cb.or(cb.equal(n.get(EVENT_TYPE), NotificationEventType.CASE_ESCALATED), cb.equal(n.get(CATEGORY), CATEGORY_FINANCE)));
+        return cb.and(cb.equal(n.get(AUDIENCE), NotificationAudience.ADMIN),
+                cb.or(
+                        cb.and(cb.equal(n.get(EVENT_TYPE), NotificationEventType.CASE_ESCALATED), cb.exists(escalation)),
+                        cb.and(cb.equal(n.get(EVENT_TYPE), NotificationEventType.TICKET_CREATED),
+                                cb.isNull(n.get(STATION_ID)), cb.isNull(n.get(ESCALATION_ID))),
+                        cb.equal(n.get(CATEGORY), CATEGORY_FINANCE)));
     }
 
     private static Predicate nullableSame(CriteriaBuilder cb, Expression<?> left, Expression<?> right) {

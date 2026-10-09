@@ -5,6 +5,13 @@ import com.thang.chargeops.exception.AppException;
 import com.thang.chargeops.common.enums.UserStatus;
 import com.thang.chargeops.exception.errorcode.TicketErrorCode;
 import com.thang.chargeops.profile.support.CurrentProfileProvider;
+import com.thang.chargeops.profile.entity.UserProfile;
+import com.thang.chargeops.profile.repository.UserProfileRepository;
+import com.thang.chargeops.infra.identity.IdentityRoleService;
+import com.thang.chargeops.notification.entity.AppNotification;
+import com.thang.chargeops.notification.model.NotificationContent;
+import com.thang.chargeops.notification.model.NotificationI18nKey;
+import com.thang.chargeops.notification.service.NotificationService;
 import com.thang.chargeops.support.dto.request.EscalateTicketRequest;
 import com.thang.chargeops.support.dto.request.ReviewTicketEscalationRequest;
 import com.thang.chargeops.support.dto.response.TicketEscalationAvailabilityResponse;
@@ -51,6 +58,9 @@ public class TicketEscalationService {
     private final TicketEventRepository events;
     private final TicketMessageRepository messages;
     private final Clock clock;
+    private final UserProfileRepository profiles;
+    private final IdentityRoleService identityRoles;
+    private final NotificationService notifications;
 
     @Transactional(readOnly = true)
     public TicketEscalationsSummaryResponse adminSummary() {
@@ -79,8 +89,26 @@ public class TicketEscalationService {
         if (reporter && !owner && !availability(ticket, actor).canRequest()) {
             throw new AppException(TicketErrorCode.STATE_CONFLICT);
         }
-        return response(escalations.saveAndFlush(
-                TicketEscalation.request(ticket, actor, clock.instant(), request.reason())));
+        TicketEscalation escalation = escalations.saveAndFlush(
+                TicketEscalation.request(ticket, actor, clock.instant(), request.reason()));
+        notifyActiveAdmins(escalation);
+        return response(escalation);
+    }
+
+    private void notifyActiveAdmins(TicketEscalation escalation) {
+        if (profiles == null || identityRoles == null || notifications == null) return;
+        var content = new NotificationContent(
+                NotificationI18nKey.format(NotificationI18nKey.TICKET_ESCALATED_TITLE,
+                        java.util.Map.of("code", escalation.getTicket().getTicketCode())),
+                NotificationI18nKey.format(NotificationI18nKey.TICKET_ESCALATED_BODY,
+                        java.util.Map.of("code", escalation.getTicket().getTicketCode())),
+                escalation.getRequestedAt());
+        for (UserProfile admin : profiles.findAllByStatusAndDeletedAtIsNull(UserStatus.ACTIVE)) {
+            if (identityRoles.getRoles(admin.getKeycloakId()).contains(Role.ADMIN)) {
+                notifications.saveIfAbsent(AppNotification.escalatedCase(
+                        escalation, admin.getId(), content));
+            }
+        }
     }
 
     @Transactional(readOnly = true)

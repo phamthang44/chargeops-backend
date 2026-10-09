@@ -3,6 +3,9 @@ package com.thang.chargeops.support.service.impl;
 import com.thang.chargeops.exception.AppException;
 import com.thang.chargeops.exception.errorcode.TicketErrorCode;
 import com.thang.chargeops.notification.model.NotificationI18nKey;
+import com.thang.chargeops.notification.entity.AppNotification;
+import com.thang.chargeops.notification.model.NotificationAudience;
+import com.thang.chargeops.notification.model.NotificationContent;
 import com.thang.chargeops.profile.entity.UserProfile;
 import com.thang.chargeops.profile.repository.UserProfileRepository;
 import com.thang.chargeops.infra.identity.IdentityRoleService;
@@ -135,7 +138,24 @@ public class TicketWorkflowService {
         t.assign(handler);
         event(t, actor.getId(), platformCase ? ADMIN : kind(t, actor.getId()),
                 before == TicketStatus.OPEN ? "ASSIGNED" : "REASSIGNED", before, oldHandler, request.reason());
+        if (!platformCase && handler.getId().equals(t.getStation().getOwner().getId())) {
+            notifyAssignedHandler(t, handler, NotificationAudience.OWNER);
+        } else if (!platformCase) {
+            notifyAssignedHandler(t, handler, NotificationAudience.STAFF);
+        }
         return saved(t);
+    }
+
+    private void notifyAssignedHandler(SupportTicket ticket, UserProfile handler, NotificationAudience audience) {
+        if (notifications == null) return;
+        String sourceKey = ticket.getId() + ":ASSIGNED:" + handler.getId();
+        var content = new NotificationContent(
+                NotificationI18nKey.format(NotificationI18nKey.TICKET_ASSIGNED_TITLE,
+                        Map.of("code", ticket.getTicketCode())),
+                NotificationI18nKey.format(NotificationI18nKey.TICKET_ASSIGNED_BODY,
+                        Map.of("code", ticket.getTicketCode())),
+                clock.instant());
+        notifications.saveIfAbsent(AppNotification.assignedTicket(ticket, audience, sourceKey, content));
     }
 
     private void requireAssigner(SupportTicket ticket, UUID actorId) {
