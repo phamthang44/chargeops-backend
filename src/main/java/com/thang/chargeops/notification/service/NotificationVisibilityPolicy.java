@@ -135,7 +135,8 @@ public final class NotificationVisibilityPolicy {
         reporter.select(cb.literal(1)).where(cb.equal(rt.get(ID), n.get(TICKET_ID)),
                 cb.equal(rt.get(REPORTER).get(ID), f.recipientId()));
         return cb.and(cb.equal(n.get(AUDIENCE), NotificationAudience.PERSONAL),
-                cb.or(cb.and(cb.equal(n.get(EVENT_TYPE), NotificationEventType.TICKET_RESOLVED), cb.exists(reporter)),
+                cb.or(cb.and(cb.or(cb.equal(n.get(EVENT_TYPE), NotificationEventType.TICKET_RESOLVED),
+                                cb.equal(n.get(EVENT_TYPE), NotificationEventType.TICKET_ASSIGNED)), cb.exists(reporter)),
                     cb.and(cb.equal(n.get(EVENT_TYPE), NotificationEventType.ACCOUNT_NOTICE), cb.isNull(n.get(BOOKING_ID)),
                         cb.isNull(n.get(TICKET_ID)), cb.isNull(n.get(STATION_ID)), cb.isNull(n.get(ESCALATION_ID)), cb.isNull(n.get(REFUND_ID)))));
 

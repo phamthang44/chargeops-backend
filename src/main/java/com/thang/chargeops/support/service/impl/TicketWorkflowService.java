@@ -33,6 +33,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Clock;
 import java.time.Instant;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
 
@@ -111,6 +112,7 @@ public class TicketWorkflowService {
         TicketStatus before = t.getStatus();
         t.assign(actor);
         event(t, actor.getId(), kind(t, actor.getId()), "CLAIMED", before, null, null);
+        notifyReporterOfAssignment(t, null);
         return saved(t);
     }
 
@@ -145,6 +147,7 @@ public class TicketWorkflowService {
         } else if (!platformCase) {
             notifyAssignedHandler(t, handler, NotificationAudience.STAFF);
         }
+        notifyReporterOfAssignment(t, actor);
         return saved(t);
     }
 
@@ -157,6 +160,34 @@ public class TicketWorkflowService {
                         Map.of("code", ticket.getTicketCode())),
                 clock.instant());
         notifications.saveIfAbsent(AppNotification.assignedTicket(ticket, audience, sourceKey, content));
+    }
+
+    /** The reporter learns who now owns their ticket; assigner is omitted on self-claim. */
+    private void notifyReporterOfAssignment(SupportTicket t, UserProfile assigner) {
+        var params = new HashMap<String, Object>();
+        params.put("code", t.getTicketCode());
+        putIfPresent(params, "assignee", displayName(t.getAssignedHandler()));
+        if (assigner != null && !assigner.getId().equals(t.getAssignedHandler().getId())) {
+            putIfPresent(params, "assigner", displayName(assigner));
+        }
+        if (t.getStation() != null) putIfPresent(params, "station", t.getStation().getName());
+        var content = new NotificationContent(
+                NotificationI18nKey.format(NotificationI18nKey.TICKET_ASSIGNED_TITLE,
+                        Map.of("code", t.getTicketCode())),
+                NotificationI18nKey.format(NotificationI18nKey.TICKET_ASSIGNED_BODY, params),
+                clock.instant());
+        notifications.saveIfAbsent(AppNotification.assignedToReporter(
+                t, t.getId() + ":ASSIGNED:" + t.getAssignedHandler().getId(), content));
+    }
+
+    private void putIfPresent(Map<String, Object> params, String key, String value) {
+        if (value != null && !value.isBlank()) params.put(key, value);
+    }
+
+    private String displayName(UserProfile profile) {
+        if (profile == null) return null;
+        if (profile.getDisplayName() != null && !profile.getDisplayName().isBlank()) return profile.getDisplayName();
+        return profile.getEmail();
     }
 
     private void requireAssigner(SupportTicket ticket, UUID actorId) {

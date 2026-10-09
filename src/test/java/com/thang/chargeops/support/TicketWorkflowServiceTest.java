@@ -94,10 +94,14 @@ class TicketWorkflowServiceTest {
         when(currentProfile.requireProfile()).thenReturn(admin);
         when(tickets.findScope(ticketId)).thenReturn(Optional.of(mock(SupportTicketRepository.TicketScope.class)));
         when(tickets.findByIdForUpdate(ticketId)).thenReturn(Optional.of(ticket));
+        when(clock.instant()).thenReturn(now);
         workflow.claim(ticketId, 0);
         assertThat(ticket.getStatus()).isEqualTo(TicketStatus.IN_PROGRESS);
         assertThat(ticket.getAssignedHandler()).isEqualTo(admin);
         verify(events, times(1)).saveAndFlush(any(TicketEvent.class));
+        verify(notifications, times(1)).saveIfAbsent(argThat(n -> n.getRecipientId().equals(reporter.getId())
+                && n.getAudience() == com.thang.chargeops.notification.model.NotificationAudience.PERSONAL
+                && n.getEventType() == com.thang.chargeops.notification.model.NotificationEventType.TICKET_ASSIGNED));
 
         assertThatThrownBy(() -> workflow.claim(ticketId, 0)).isInstanceOf(AppException.class);
         verify(events, times(1)).saveAndFlush(any(TicketEvent.class));
@@ -122,6 +126,9 @@ class TicketWorkflowServiceTest {
 
         verify(notifications).saveIfAbsent(argThat(n -> n.getRecipientId().equals(handler.getId())
                 && n.getAudience() == com.thang.chargeops.notification.model.NotificationAudience.ADMIN
+                && n.getEventType() == com.thang.chargeops.notification.model.NotificationEventType.TICKET_ASSIGNED));
+        verify(notifications).saveIfAbsent(argThat(n -> n.getRecipientId().equals(reporter.getId())
+                && n.getAudience() == com.thang.chargeops.notification.model.NotificationAudience.PERSONAL
                 && n.getEventType() == com.thang.chargeops.notification.model.NotificationEventType.TICKET_ASSIGNED));
     }
 
@@ -471,6 +478,7 @@ class TicketWorkflowServiceTest {
         when(access.canHandle(eq(ticket), any())).thenReturn(true);
         when(tickets.findScope(ticketId)).thenReturn(Optional.of(mock(SupportTicketRepository.TicketScope.class)));
         when(tickets.findByIdForUpdate(ticketId)).thenReturn(Optional.of(ticket));
+        when(clock.instant()).thenReturn(now);
 
         // Staff 1 claims:
         when(currentProfile.requireProfile()).thenReturn(staff1);

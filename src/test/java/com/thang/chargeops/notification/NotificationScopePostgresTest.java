@@ -193,6 +193,16 @@ class NotificationScopePostgresTest {
         }
     }
 
+    @Test void reporterSeesOwnAssignmentNoticeWhileStrangersDoNot() {
+        UUID assigned = notice(driver, "PERSONAL", "TICKET_ASSIGNED", booking, ticket, station, null);
+        actor(driver, "DRIVER");
+        assertThat(inbox.list(1, 20, false).getContent()).extracting("id").containsExactly(assigned);
+        assertThat(inbox.unreadCount()).isEqualTo(1);
+        actor(otherDriver, "DRIVER");
+        assertThat(inbox.list(1, 20, false)).isEmpty();
+        notFound(() -> inbox.markRead(assigned));
+    }
+
     @Test void dismissedExpiredAndQuarantinedRowsStayOutOfFeedAndCount() {
         UUID id = notice(driver, "DRIVER", "BOOKING_REMINDER", booking, null, station, null);
         jdbc.update("UPDATE app_notifications SET expires_at=? WHERE id=?", java.sql.Timestamp.from(NOW), id);

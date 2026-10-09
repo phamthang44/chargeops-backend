@@ -2,6 +2,8 @@ package com.thang.chargeops.support;
 
 import com.thang.chargeops.exception.AppException;
 import com.thang.chargeops.profile.entity.UserProfile;
+import com.thang.chargeops.profile.repository.UserProfileRepository;
+import com.thang.chargeops.notification.service.NotificationService;
 import com.thang.chargeops.profile.support.CurrentProfileProvider;
 import com.thang.chargeops.station.entity.Station;
 import com.thang.chargeops.support.dto.request.EscalateTicketRequest;
@@ -41,6 +43,8 @@ class TicketEscalationServiceTest {
     @Mock TicketEventRepository events;
     @Mock TicketMessageRepository messages;
     @Mock Clock clock;
+    @Mock UserProfileRepository profiles;
+    @Mock NotificationService notifications;
     @InjectMocks TicketEscalationService service;
 
     private final UUID ticketId = UUID.randomUUID();

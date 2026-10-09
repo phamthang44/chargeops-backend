@@ -7,7 +7,6 @@ import com.thang.chargeops.exception.errorcode.TicketErrorCode;
 import com.thang.chargeops.profile.support.CurrentProfileProvider;
 import com.thang.chargeops.profile.entity.UserProfile;
 import com.thang.chargeops.profile.repository.UserProfileRepository;
-import com.thang.chargeops.infra.identity.IdentityRoleService;
 import com.thang.chargeops.notification.entity.AppNotification;
 import com.thang.chargeops.notification.model.NotificationContent;
 import com.thang.chargeops.notification.model.NotificationI18nKey;
@@ -59,7 +58,6 @@ public class TicketEscalationService {
     private final TicketMessageRepository messages;
     private final Clock clock;
     private final UserProfileRepository profiles;
-    private final IdentityRoleService identityRoles;
     private final NotificationService notifications;
 
     @Transactional(readOnly = true)
@@ -102,11 +100,10 @@ public class TicketEscalationService {
                 NotificationI18nKey.format(NotificationI18nKey.TICKET_ESCALATED_BODY,
                         java.util.Map.of("code", escalation.getTicket().getTicketCode())),
                 escalation.getRequestedAt());
-        for (UserProfile admin : profiles.findAllByStatusAndDeletedAtIsNull(UserStatus.ACTIVE)) {
-            if (identityRoles.getRoles(admin.getKeycloakId()).contains(Role.ADMIN)) {
-                notifications.saveIfAbsent(AppNotification.escalatedCase(
-                        escalation, admin.getId(), content));
-            }
+        for (UserProfile admin : profiles.findAllByPrimaryRoleAndStatusAndDeletedAtIsNull(
+                com.thang.chargeops.profile.model.PrimaryRole.ADMIN, UserStatus.ACTIVE)) {
+            notifications.saveIfAbsent(AppNotification.escalatedCase(
+                    escalation, admin.getId(), content));
         }
     }
 

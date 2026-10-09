@@ -231,13 +231,14 @@ class TicketWorkflowPostgresTest {
             .extracting(SupportTicket::getId).contains(ticket.getId());
         assertThat(tickets.findDueAfter(resolved.autoCloseAt(), resolved.autoCloseAt(), ticket.getId(),
             PageRequest.of(0, 100))).extracting(SupportTicket::getId).doesNotContain(ticket.getId());
-        assertThat(jdbc.queryForObject("SELECT count(*) FROM app_notifications WHERE recipient_id = ?", Long.class, reporter.getId())).isEqualTo(1);
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM app_notifications WHERE recipient_id = ?", Long.class, reporter.getId())).isEqualTo(2);
         assertThat(events.events(ticket.getId(), 1, 20).getTotalElements()).isEqualTo(2);
 
         when(currentProfile.requireProfile()).thenReturn(reporter);
         var notices = inbox.list(1, 20, true);
-        assertThat(notices.getTotalElements()).isEqualTo(1);
+        assertThat(notices.getTotalElements()).isEqualTo(2);
         inbox.markRead(notices.getContent().getFirst().id());
+        inbox.markRead(notices.getContent().getLast().id());
         assertThat(inbox.unreadCount()).isZero();
 
         workflow.autoClose(ticket.getId(), resolved.autoCloseAt().minusNanos(1));

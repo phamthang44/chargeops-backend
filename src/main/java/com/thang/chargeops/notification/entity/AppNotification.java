@@ -180,6 +180,18 @@ public class AppNotification extends BaseEntity {
         return n;
     }
 
+    /** Reporter-facing view of an assignment: PERSONAL audience, same TICKET_ASSIGNED event. */
+    public static AppNotification assignedToReporter(SupportTicket ticket, String sourceKey,
+                                                     NotificationContent content) {
+        if (ticket.getId() == null || ticket.getReporter() == null || ticket.getAssignedHandler() == null) {
+            throw new AppException(NotificationErrorCode.INVALID_INTENT);
+        }
+        var n = base(ticket.getReporter().getId(), NotificationAudience.PERSONAL,
+                NotificationEventType.TICKET_ASSIGNED, CATEGORY_TICKET, sourceKey, content);
+        n.setTicketTarget(ticket, NotificationActionType.OPEN_TICKET);
+        return n;
+    }
+
     public static AppNotification escalatedCase(TicketEscalation escalation, UUID adminId,
                                                  NotificationContent content) {
         if (escalation.getId() == null) throw new AppException(NotificationErrorCode.INVALID_INTENT);

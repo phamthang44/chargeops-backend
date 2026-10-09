@@ -1,5 +1,6 @@
 package com.thang.chargeops.support.service.support;
 
+import com.thang.chargeops.common.entity.BaseEntity;
 import com.thang.chargeops.refund.entity.Refund;
 import com.thang.chargeops.refund.repository.RefundRepository;
 import com.thang.chargeops.support.dto.response.TicketFindingResponse;
@@ -86,7 +87,7 @@ public class TicketResponseService {
         List<UUID> bookingIds = expanded.stream()
                 .map(SupportTicket::getBooking)
                 .filter(Objects::nonNull)
-                .map(b -> b.getId())
+                .map(BaseEntity::getId)
                 .filter(Objects::nonNull)
                 .distinct()
                 .toList();
