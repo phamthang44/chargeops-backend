@@ -5,12 +5,17 @@ import com.thang.chargeops.booking.history.BookingStatusHistory;
 import com.thang.chargeops.booking.decision.BookingServiceFailureDecision;
 import com.thang.chargeops.common.enums.BookingStatus;
 import com.thang.chargeops.notification.entity.AppNotification;
+import com.thang.chargeops.notification.event.NotificationHintEvent;
 import com.thang.chargeops.notification.kafka.BookingNotificationEvent;
 import com.thang.chargeops.notification.model.*;
 import com.thang.chargeops.notification.repository.AppNotificationRepository;
+import com.thang.chargeops.profile.entity.UserProfile;
+import com.thang.chargeops.profile.repository.UserProfileRepository;
 import com.thang.chargeops.refund.entity.*;
 import com.thang.chargeops.refund.model.RefundAttemptStatus;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.*;
 import tools.jackson.databind.ObjectMapper;
@@ -18,11 +23,13 @@ import java.time.Instant;
 import java.util.*;
 
 /** Sources are persisted in the caller's domain transaction; network work is deferred. */
-@Service @RequiredArgsConstructor
+@Service @RequiredArgsConstructor @Slf4j
 @Transactional(propagation = Propagation.MANDATORY)
 public class BookingEventOutboxWriter {
     private final AppNotificationRepository notices;
     private final NotificationOutboxRepository outbox;
+    private final UserProfileRepository profiles;
+    private final ApplicationEventPublisher events;
     private final ObjectMapper json = tools.jackson.databind.json.JsonMapper.builder().build();
 
     public void recordHistory(BookingStatusHistory history) {
@@ -86,11 +93,32 @@ public class BookingEventOutboxWriter {
 
     private void enqueue(Booking b, AppNotification notice, UUID historyId, UUID decisionId,
                          UUID refundId, UUID attemptId, Instant reminderStartAt) {
-        notices.insertBookingIntentIfAbsent(notice);
+        if (notices.insertBookingIntentIfAbsent(notice) > 0) {
+            emitCreatedHint(b, notice);
+        }
         if (outbox.existsBySourceEventKeyAndRecipientIdAndAudienceAndChannel(notice.getSourceEventKey(),
                 notice.getRecipientId(), notice.getAudience().name(), "EMAIL")) return;
         var event = new BookingNotificationEvent(UUID.randomUUID(), 1, notice.getEventType(), notice.getSourceEventKey(),
                 b.getId(), notice.getStationId(), notice.getRecipientId(), notice.getAudience(), notice.getCreatedAt());
         outbox.save(NotificationOutbox.sourced(event, json.writeValueAsString(event), historyId, decisionId, refundId, attemptId, reminderStartAt));
+    }
+
+    /**
+     * Publishes the insert hint inside the caller's transaction (delivered AFTER_COMMIT, plan
+     * #69 §4.2). The recipient is resolved without taking a profile lock — the native insert
+     * exists precisely to avoid locking the profile after Connector/Booking/Payment locks:
+     * the Driver is already in the persistence context, the Owner (refund fan-out) is read with
+     * an ordinary PK select. A missing profile drops only the hint, never the committed row.
+     */
+    private void emitCreatedHint(Booking booking, AppNotification notice) {
+        String keycloakId = notice.getAudience() == NotificationAudience.DRIVER
+                ? booking.getDriver().getKeycloakId()
+                : profiles.findById(notice.getRecipientId()).map(UserProfile::getKeycloakId).orElse(null);
+        if (keycloakId == null) {
+            log.warn("Notification hint skipped: no profile for recipient {} ({})",
+                    notice.getRecipientId(), notice.getAudience());
+            return;
+        }
+        events.publishEvent(NotificationHintEvent.created(keycloakId, notice.getSourceEventKey()));
     }
 }

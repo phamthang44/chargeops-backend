@@ -32,8 +32,11 @@ import java.util.regex.Pattern;
  *       The token {@code exp} is copied into the WebSocket session attributes so the session
  *       can be closed exactly at expiry and {@code SUBSCRIBE} can be re-checked.</li>
  *   <li>{@code SUBSCRIBE} — authenticated session, token still valid, and the destination must
- *       match exactly {@code /topic/stations/<uuid>/hardware}. Wildcards ({@code *}, {@code **}),
- *       extra segments, {@code /queue/**}, {@code /user/**} and every other topic are denied.</li>
+ *       match exactly {@code /topic/stations/<uuid>/hardware} or the private hint queue
+ *       {@code /user/queue/notifications}. Wildcards ({@code *}, {@code **}), extra segments,
+ *       {@code /queue/**}, every other {@code /user/queue/*} and every other topic are denied.
+ *       Per-user isolation is enforced by Spring's user-destination resolution (session
+ *       principal), not by the pattern: a subscriber only ever resolves to its own queue.</li>
  *   <li>{@code SEND} — denied for all destinations: clients must never fake a hint.</li>
  *   <li>{@code UNSUBSCRIBE}/{@code DISCONNECT} — allowed session lifecycle.</li>
  *   <li>Heart-beat / transport frames carry no {@link StompCommand} and pass through untouched
@@ -60,6 +63,14 @@ public class StompAuthChannelInterceptor implements ChannelInterceptor {
     private static final Pattern HARDWARE_TOPIC = Pattern.compile(
             "^/topic/stations/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/hardware$"
     );
+
+    /**
+     * Exact-match destination of the private notification hint queue (BKG-071 plan #69 §3).
+     * The frame carries the raw {@code /user/queue/notifications} before
+     * {@code UserDestinationMessageHandler} resolves it against the session principal, so
+     * anchoring here allows the intent without exposing any other user queue.
+     */
+    private static final Pattern NOTIFICATION_USER_QUEUE = Pattern.compile("^/user/queue/notifications$");
 
     private final JwtDecoder jwtDecoder;
     private final JwtRoleConverter jwtRoleConverter;
@@ -119,7 +130,8 @@ public class StompAuthChannelInterceptor implements ChannelInterceptor {
             throw new AccessDeniedException("Access token expired; reconnect with a fresh token");
         }
         String destination = accessor.getDestination();
-        if (destination == null || !HARDWARE_TOPIC.matcher(destination).matches()) {
+        if (destination == null || !(HARDWARE_TOPIC.matcher(destination).matches()
+                || NOTIFICATION_USER_QUEUE.matcher(destination).matches())) {
             throw new AccessDeniedException("Subscription destination is not allowed");
         }
     }

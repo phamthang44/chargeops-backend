@@ -124,6 +124,18 @@ class StompAuthChannelInterceptorTest {
     }
 
     @Test
+    void subscribeToExactNotificationUserQueueIsAllowed() {
+        StompHeaderAccessor accessor = subscribedAccessor(
+                "/user/queue/notifications",
+                Instant.now().plusSeconds(600)
+        );
+
+        Message<?> result = interceptor.preSend(message(accessor), channel);
+
+        assertThat(result).isNotNull();
+    }
+
+    @Test
     void subscribeAfterTokenExpiryIsRejected() {
         StompHeaderAccessor accessor = subscribedAccessor(
                 "/topic/stations/" + STATION_ID + "/hardware",
@@ -157,6 +169,30 @@ class StompAuthChannelInterceptorTest {
                 "/queue/notifications",
                 "/user/queue/receipts",
                 "/topic/bookings/" + STATION_ID
+        );
+
+        for (String destination : deniedDestinations) {
+            StompHeaderAccessor accessor = subscribedAccessor(destination, Instant.now().plusSeconds(600));
+            assertThatThrownBy(() -> interceptor.preSend(message(accessor), channel))
+                    .as("destination %s must be denied", destination)
+                    .isInstanceOf(AccessDeniedException.class);
+        }
+    }
+
+    @Test
+    void subscribeToOtherUserQueuesAndResolvedQueueFormsIsRejected() {
+        // Only the exact raw intent is allowlisted: other user queues, wildcard forms, case
+        // variants and the already-resolved broker queue must all stay fail-closed (plan #69 §3).
+        List<String> deniedDestinations = List.of(
+                "/user/queue/bookings",
+                "/user/queue/notifications/extra",
+                "/user/queue/notifications-user_test",
+                "/queue/notifications-user_test",
+                "/user/queue/*",
+                "/user/queue/**",
+                "/user/queue/Notifications",
+                "/user/queue/ notifications",
+                "/notifications"
         );
 
         for (String destination : deniedDestinations) {

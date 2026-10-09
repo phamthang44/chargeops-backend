@@ -4,6 +4,8 @@ import com.thang.chargeops.exception.AppException;
 import com.thang.chargeops.exception.errorcode.AuthErrorCode;
 import com.thang.chargeops.exception.errorcode.CommonErrorCode;
 import com.thang.chargeops.notification.entity.AppNotification;
+import com.thang.chargeops.notification.event.NotificationHintEvent;
+import com.thang.chargeops.notification.event.NotificationHintKind;
 import com.thang.chargeops.notification.model.*;
 import com.thang.chargeops.notification.repository.AppNotificationRepository;
 import com.thang.chargeops.notification.service.NotificationInboxService;
@@ -21,6 +23,7 @@ import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
+import org.springframework.context.event.EventListener;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
@@ -46,12 +49,25 @@ import static org.mockito.Mockito.when;
 @DataJpaTest(properties = {"spring.jpa.hibernate.ddl-auto=validate", "spring.flyway.enabled=true", "spring.docker.compose.enabled=false"})
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
 @Import({NotificationInboxService.class, NotificationService.class, NotificationPersistenceService.class,
-        NotificationScopePostgresTest.Time.class})
+        NotificationScopePostgresTest.Time.class, NotificationScopePostgresTest.HintCollector.class})
 class NotificationScopePostgresTest {
     static final Instant NOW = Instant.parse("2026-10-07T04:00:00Z");
     @Container @ServiceConnection static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer(
             DockerImageName.parse("postgis/postgis:17-3.5-alpine").asCompatibleSubstituteFor("postgres"));
     @TestConfiguration static class Time { @Bean Clock clock() { return Clock.fixed(NOW, ZoneOffset.UTC); } }
+
+    /** Captures hints as they are published in-transaction (AFTER_COMMIT delivery is proven
+     *  by NotificationHintTransactionIntegrationTest; here we count what the inbox emits). */
+    @TestConfiguration(proxyBeanMethods = false)
+    static class HintCollector {
+        @Bean HintEvents hintEvents() { return new HintEvents(); }
+    }
+    static class HintEvents {
+        private final List<NotificationHintEvent> events = Collections.synchronizedList(new ArrayList<>());
+        @EventListener public void on(NotificationHintEvent event) { events.add(event); }
+        void clear() { events.clear(); }
+        List<NotificationHintEvent> snapshot() { synchronized (events) { return List.copyOf(events); } }
+    }
     @Autowired NotificationInboxService inbox;
     @Autowired NotificationService writer;
     @Autowired AppNotificationRepository notices;
@@ -60,6 +76,7 @@ class NotificationScopePostgresTest {
     @Autowired JdbcTemplate jdbc;
     @Autowired EntityManager em;
     @Autowired PlatformTransactionManager transactions;
+    @Autowired HintEvents hints;
     @MockitoBean CurrentProfileProvider profile;
     UUID owner, otherOwner, driver, otherDriver, staff, admin, station, otherStation, booking, otherBooking, ticket, escalation;
 
@@ -262,6 +279,66 @@ class NotificationScopePostgresTest {
         assertThat(inbox.list(1, 20, false, "owner", null, null).getContent())
                 .extracting("id").containsExactly(ownerNotice);
         assertThat(inbox.unreadCount("owner", null, null)).isEqualTo(1);
+    }
+
+    @Test void readAndDismissHintsFireOnlyOnRealTransitions() {
+        UUID id = notice(driver, "PERSONAL", "TICKET_RESOLVED", booking, ticket, station, null);
+        actor(driver, "DRIVER");
+        hints.clear();
+
+        inbox.markRead(id);
+        assertThat(hints.snapshot()).singleElement().satisfies(h -> {
+            assertThat(h.kind()).isEqualTo(NotificationHintKind.READ);
+            assertThat(h.recipientKeycloakId()).isEqualTo(driver.toString());
+            assertThat(h.ref()).isEqualTo(id.toString());
+        });
+
+        inbox.markRead(id);
+        assertThat(hints.snapshot()).as("a repeated markRead must not re-notify").hasSize(1);
+
+        inbox.dismiss(id, null, null, null);
+        assertThat(hints.snapshot()).hasSize(2);
+        assertThat(hints.snapshot().get(1).kind()).isEqualTo(NotificationHintKind.DISMISSED);
+
+        inbox.dismiss(id, null, null, null);
+        assertThat(hints.snapshot()).as("a repeated dismiss must not re-notify").hasSize(2);
+    }
+
+    @Test void markAllReadEmitsExactlyOneHintOnlyWhenSomethingChanged() {
+        notice(driver, "DRIVER", "BOOKING_CONFIRMED", booking, null, station, null);
+        notice(driver, "DRIVER", "BOOKING_CONFIRMED", booking, null, station, null);
+        actor(driver, "DRIVER");
+        hints.clear();
+
+        inbox.markAllRead("driver", null, null);
+
+        assertThat(hints.snapshot()).singleElement().satisfies(h -> {
+            assertThat(h.kind()).isEqualTo(NotificationHintKind.READ_ALL);
+            assertThat(h.recipientKeycloakId()).isEqualTo(driver.toString());
+            assertThat(h.ref()).isNull();
+            assertThat(h.eventId()).isEqualTo("READ_ALL:" + driver + ":driver|all|all|all");
+        });
+
+        inbox.markAllRead("driver", null, null);
+        assertThat(hints.snapshot()).as("nothing left unread -> no second hint").hasSize(1);
+    }
+
+    @Test void saveIfAbsentEmitsCreatedHintOnlyForTheFirstInsert() {
+        var original = AppNotification.resolvedTicket(tickets.findById(ticket).orElseThrow(),
+                ticket + ":1:RESOLVED",
+                new NotificationContent("Resolved", "Safe reporter response", NOW.minusSeconds(1)));
+        actor(driver, "DRIVER");
+        hints.clear();
+
+        assertThat(writer.saveIfAbsent(original)).isTrue();
+        assertThat(hints.snapshot()).singleElement().satisfies(h -> {
+            assertThat(h.kind()).isEqualTo(NotificationHintKind.CREATED);
+            assertThat(h.recipientKeycloakId()).isEqualTo(driver.toString());
+            assertThat(h.ref()).isEqualTo(ticket + ":1:RESOLVED");
+        });
+
+        assertThat(writer.saveIfAbsent(original)).as("duplicate intent is not a new notice").isFalse();
+        assertThat(hints.snapshot()).hasSize(1);
     }
 
     private UUID user() {
