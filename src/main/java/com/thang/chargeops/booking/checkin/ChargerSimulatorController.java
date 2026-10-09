@@ -14,7 +14,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 
 @RestController
-@Profile({"demo", "test"})
+@Profile({"dev", "demo", "test"})
 @RequestMapping(SystemConstant.API_URL_PATTERN + "internal/connectors")
 @RequiredArgsConstructor
 public class ChargerSimulatorController {
@@ -22,7 +22,7 @@ public class ChargerSimulatorController {
     private final CheckInChallengeService checkInChallengeService;
 
     @PostMapping("/{connectorId}/check-in-challenge")
-    @PreAuthorize("hasAnyRole('ADMIN', 'DRIVER')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'DRIVER', 'OWNER')")
     public ResponseEntity<ApiResult<CheckInChallengeResponse>> checkInChallenge(
             @PathVariable String connectorId
     ) {

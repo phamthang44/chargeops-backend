@@ -17,17 +17,17 @@ class ChargerSimulatorSecurityContractTest {
         Profile profile = ChargerSimulatorController.class.getAnnotation(Profile.class);
 
         assertThat(profile).isNotNull();
-        assertThat(profile.value()).containsExactlyInAnyOrder("demo", "test");
+        assertThat(profile.value()).containsExactlyInAnyOrder("dev", "demo", "test");
     }
 
     @Test
-    void simulatorChallengeRequiresAdminOrDriverRole() throws NoSuchMethodException {
+    void simulatorChallengeRequiresAdminOrDriverOrOwnerRole() throws NoSuchMethodException {
         Method method = ChargerSimulatorController.class
                 .getDeclaredMethod("checkInChallenge", String.class);
         PreAuthorize preAuthorize = method.getAnnotation(PreAuthorize.class);
 
         assertThat(preAuthorize).isNotNull();
-        assertThat(preAuthorize.value()).isEqualTo("hasAnyRole('ADMIN', 'DRIVER')");
+        assertThat(preAuthorize.value()).isEqualTo("hasAnyRole('ADMIN', 'DRIVER', 'OWNER')");
     }
 
     @Test

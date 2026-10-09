@@ -56,6 +56,14 @@ server {
         proxy_set_header Connection $chargeops_connection_upgrade;
     }
 
+    # STOMP WebSocket endpoint
+    location ^~ /ws {
+        proxy_pass http://${API_UPSTREAM};
+        include /etc/nginx/proxy_params;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection $chargeops_connection_upgrade;
+    }
+
     # Web Portal and Vite HMR in dev. This must remain last.
     location / {
         proxy_pass http://${WEB_UPSTREAM};

@@ -66,6 +66,11 @@ public class KeycloakIdentityRoleService implements IdentityRoleService {
                     .flatMap(Optional::stream)
                     .collect(Collectors.toUnmodifiableSet());
         } catch (RestClientException exception) {
+            if (exception instanceof RestClientResponseException responseException
+                    && responseException.getStatusCode().value() == 404) {
+                log.warn("User '{}' does not exist in Keycloak, skipping roles", identityUserId);
+                return Set.of();
+            }
             throw translateException("read realm roles", exception);
         }
     }

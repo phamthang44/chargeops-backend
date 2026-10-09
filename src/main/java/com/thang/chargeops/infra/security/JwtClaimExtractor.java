@@ -6,6 +6,12 @@ import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.stereotype.Component;
 
 import java.util.regex.Pattern;
+import java.util.Collection;
+import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
+import com.thang.chargeops.common.enums.Role;
+import com.thang.chargeops.profile.model.PrimaryRole;
 
 
 @Component
@@ -48,6 +54,37 @@ public class JwtClaimExtractor {
         return hasText(preferredUsername) && !isEmail(preferredUsername)
                 ? preferredUsername
                 : null;
+    }
+
+    public PrimaryRole resolvePrimaryRole(Jwt jwt) {
+        Map<String, Object> realmAccess = jwt.getClaim("realm_access");
+        if (realmAccess == null || !(realmAccess.get("roles") instanceof Collection<?> roles)) {
+            return PrimaryRole.UNKNOWN;
+        }
+        Set<Role> platformRoles = roles.stream()
+                .filter(String.class::isInstance)
+                .map(String.class::cast)
+                .map(String::toUpperCase)
+                .map(value -> {
+                    try { return Role.valueOf(value); }
+                    catch (IllegalArgumentException ignored) { return null; }
+                })
+                .filter(java.util.Objects::nonNull)
+                .collect(Collectors.toSet());
+        if (platformRoles.isEmpty()) return PrimaryRole.UNKNOWN;
+        if (platformRoles.size() > 1) {
+            if (platformRoles.contains(Role.ADMIN)) {
+                return PrimaryRole.ADMIN;
+            }
+            if (platformRoles.contains(Role.OWNER)) {
+                return PrimaryRole.OWNER;
+            }
+            if (platformRoles.contains(Role.STAFF)) {
+                return PrimaryRole.STAFF;
+            }
+            return PrimaryRole.CONFLICT;
+        }
+        return PrimaryRole.valueOf(platformRoles.iterator().next().name());
     }
 
     private boolean isEmail(String value) {

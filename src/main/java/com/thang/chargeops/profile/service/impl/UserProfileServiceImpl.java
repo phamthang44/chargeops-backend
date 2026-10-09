@@ -7,6 +7,7 @@ import com.thang.chargeops.profile.dto.UserProfileResponse;
 import com.thang.chargeops.profile.dto.UserProfileUpdateRequest;
 import com.thang.chargeops.profile.entity.UserProfile;
 import com.thang.chargeops.profile.mapper.UserProfileMapper;
+import com.thang.chargeops.profile.model.PrimaryRole;
 import com.thang.chargeops.profile.repository.UserProfileRepository;
 import com.thang.chargeops.profile.service.UserProfileService;
 import lombok.RequiredArgsConstructor;
@@ -20,6 +21,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.sql.SQLException;
 import java.util.List;
 import java.util.UUID;
+import java.time.Instant;
 
 @Service
 @RequiredArgsConstructor
@@ -77,13 +79,15 @@ public class UserProfileServiceImpl implements UserProfileService {
         String keycloakId = jwtClaimExtractor.requireSubject(jwt);
         String email = jwtClaimExtractor.requireEmail(jwt);
         String displayName = jwtClaimExtractor.getDisplayName(jwt);
+        var primaryRole = jwtClaimExtractor.resolvePrimaryRole(jwt);
 
         return userProfileRepository.findByKeycloakId(keycloakId)
-                .map(profile -> syncProfileFromJwt(profile, email, displayName))
-                .orElseGet(() -> createOrLoadProfile(keycloakId, email, displayName));
+                .map(profile -> syncProfileFromJwt(profile, email, displayName, primaryRole))
+                .orElseGet(() -> createOrLoadProfile(keycloakId, email, displayName, primaryRole));
     }
 
-    private UserProfile createOrLoadProfile(String keycloakId, String email, String displayName) {
+    private UserProfile createOrLoadProfile(String keycloakId, String email, String displayName,
+                                            PrimaryRole primaryRole) {
         int insertedRows;
         try {
             insertedRows = userProfileRepository.insertProfileIfAbsent(keycloakId, email, displayName);
@@ -96,10 +100,10 @@ public class UserProfileServiceImpl implements UserProfileService {
 
         log.info("Profile bootstrap completed: profileId={}, keycloakId={}, created={}",
                 profile.getId(), keycloakId, insertedRows == 1);
-        return syncProfileFromJwt(profile, email, displayName);
+        return syncProfileFromJwt(profile, email, displayName, primaryRole);
     }
 
-    private UserProfile syncProfileFromJwt(UserProfile profile, String email, String displayName) {
+    private UserProfile syncProfileFromJwt(UserProfile profile, String email, String displayName, PrimaryRole primaryRole) {
         if (!email.equals(profile.getEmail())) {
             profile.setEmail(email);
         }
@@ -107,6 +111,8 @@ public class UserProfileServiceImpl implements UserProfileService {
         if (!hasText(profile.getDisplayName()) && hasText(displayName)) {
             profile.setDisplayName(displayName);
         }
+        profile.setPrimaryRole(primaryRole);
+        profile.setRoleSyncedAt(Instant.now());
         return profile;
     }
 
