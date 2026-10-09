@@ -2,6 +2,7 @@ package com.thang.chargeops.booking.controller;
 
 import com.thang.chargeops.booking.dto.filter.OwnerActiveBookingFilter;
 import com.thang.chargeops.booking.dto.filter.OwnerBookingFilter;
+import com.thang.chargeops.booking.dto.filter.BookingWindowMode;
 import com.thang.chargeops.booking.dto.response.*;
 import com.thang.chargeops.booking.service.OwnerBookingService;
 import com.thang.chargeops.booking.service.BookingServiceFailureService;
@@ -63,9 +64,13 @@ public class OwnerBookingController {
             @RequestParam(required = false) UUID connectorId,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant from,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant to,
-            @RequestParam(required = false) BookingStatus status) {
-        var result = ownerBookingService.getOwnerBookings(
-                new OwnerBookingFilter(stationId, connectorId, from, to, status), page, size);
+            @RequestParam(required = false) BookingStatus status,
+            @RequestParam(defaultValue = "OVERLAP") BookingWindowMode windowMode,
+            @RequestParam(required = false) String sort) {
+        var filter = new OwnerBookingFilter(stationId, connectorId, from, to, status, windowMode);
+        var result = sort == null
+                ? ownerBookingService.getOwnerBookings(filter, page, size)
+                : ownerBookingService.getOwnerBookings(filter, page, size, sort);
         return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(ApiResult.successPage(result));
     }
 
@@ -75,9 +80,10 @@ public class OwnerBookingController {
             @RequestParam(required = false) UUID connectorId,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant from,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant to,
-            @RequestParam(required = false) BookingStatus status) {
+            @RequestParam(required = false) BookingStatus status,
+            @RequestParam(defaultValue = "OVERLAP") BookingWindowMode windowMode) {
         var result = ownerBookingService.getOwnerBookingSummary(
-                new OwnerBookingFilter(stationId, connectorId, from, to, status));
+                new OwnerBookingFilter(stationId, connectorId, from, to, status, windowMode));
         return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(ApiResult.success(result));
     }
 

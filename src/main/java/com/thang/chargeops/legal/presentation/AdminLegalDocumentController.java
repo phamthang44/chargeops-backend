@@ -42,6 +42,7 @@ public class AdminLegalDocumentController {
             @RequestParam(required = false) LegalDocType docType,
             @RequestParam(required = false) TargetAudience audience,
             @RequestParam(required = false) Boolean active,
+            @RequestParam(required = false) String locale,
             @PageableDefault(size = 10, sort = "updatedAt", direction = Sort.Direction.DESC) Pageable pageable
     ) {
         LegalDocumentFilter filter = LegalDocumentFilter.builder()
@@ -49,6 +50,7 @@ public class AdminLegalDocumentController {
                 .docType(docType)
                 .audience(audience)
                 .active(active)
+                .locale(locale)
                 .build();
 
         Page<LegalDocumentSummaryResponse> page = legalDocumentService.searchDocuments(filter, pageable);

@@ -9,6 +9,11 @@ public record LegalDocumentFilter(
         String search,
         LegalDocType docType,
         TargetAudience audience,
-        Boolean active
+        Boolean active,
+        String locale
 ) {
+    public LegalDocumentFilter(String search, LegalDocType docType,
+                               TargetAudience audience, Boolean active) {
+        this(search, docType, audience, active, null);
+    }
 }

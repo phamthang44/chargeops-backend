@@ -46,12 +46,22 @@ public class OwnerBookingServiceImpl implements OwnerBookingService {
 
     @Override
     public Page<OwnerBookingListItemResponse> getOwnerBookings(OwnerBookingFilter filter, int page, int size) {
+        return getOwnerBookings(filter, page, size, "startAt,desc");
+    }
+
+    @Override
+    public Page<OwnerBookingListItemResponse> getOwnerBookings(OwnerBookingFilter filter, int page, int size, String sort) {
         validatePaging(page, size); validateWindow(filter);
         UUID ownerId = currentProfileProvider.requireProfileId();
         Instant evaluatedAt = applicationClock.instant();
         scopeValidator.validate(ownerId, filter.stationId(), null, filter.connectorId());
+        Sort.Direction direction = switch (sort) {
+            case "startAt,asc", "startTime,asc" -> Sort.Direction.ASC;
+            case "startAt,desc", "startTime,desc" -> Sort.Direction.DESC;
+            default -> throw new AppException(CommonErrorCode.INVALID_REQUEST, "Unsupported booking sort");
+        };
         Pageable pageable = PageRequest.of(page - 1, size,
-                Sort.by(Sort.Order.desc("startAt"), Sort.Order.desc("id")));
+                Sort.by(new Sort.Order(direction, "startAt"), new Sort.Order(direction, "id")));
         return readRepository.findAll(predicateFactory.forList(ownerId, filter, evaluatedAt), pageable)
                 .map(booking -> mapper.toListItem(booking, evaluatedAt));
     }

@@ -24,7 +24,7 @@ Không chạy các câu lệnh riêng lẻ. Script không đổi `system_configs
 ## Hành vi khi chạy lại
 
 - Upsert theo `slug`: cập nhật các trường nội dung, loại, đối tượng, phiên bản,
-  ngôn ngữ của 15 tài liệu trong danh mục. **Nội dung đã sửa qua Admin ở cùng
+  ngôn ngữ của 23 tài liệu trong danh mục. **Nội dung đã sửa qua Admin ở cùng
   slug sẽ bị ghi đè bằng nội dung trong script.**
 - Không tạo trùng slug; không thay ID, thời điểm/người tạo, ngày hiệu lực,
   trạng thái `is_active` hoặc `deleted_at` của bản ghi đã có.
@@ -36,7 +36,7 @@ Không chạy các câu lệnh riêng lẻ. Script không đổi `system_configs
   Ghi dữ liệu được khóa trong transaction; đọc vẫn được phép. Nếu không lấy
   được khóa trong 10 giây, script báo lỗi để chạy lại khi phù hợp.
 
-## Danh mục 15 tài liệu
+## Danh mục hiện hành 23 tài liệu (17 VI + 6 EN)
 
 | Slug | Nội dung | Đối tượng |
 |---|---|---|
@@ -49,12 +49,67 @@ Không chạy các câu lệnh riêng lẻ. Script không đổi `system_configs
 | cancellation-and-refund-policy | Hủy, ân hạn và hoàn tiền | ALL |
 | qr-check-in-and-no-show-policy | QR, đến muộn, vắng mặt | ALL |
 | payment-reconciliation-policy | Thu tiền, thiếu/thừa/đến muộn | ALL |
+| payment-reconciliation-policy-en | Booking and payment (English) | ALL |
+| cancellation-and-refund-policy-en | Cancellation and refunds (English) | ALL |
 | station-incident-and-support-policy | Ticket, lỗi trạm, tranh chấp | ALL |
+| qr-check-in-and-no-show-policy-en | Check-in and no-show (English) | ALL |
+| station-incident-and-support-policy-en | Station failure/responsibility (English) | ALL |
+| refund-attempts-and-owner-ledger-policy | Nghĩa vụ hoàn, retry và sổ Owner | ALL |
+| refund-attempts-and-owner-ledger-policy-en | Refund attempts and Owner ledger (English) | ALL |
+| booking-faq-and-glossary | FAQ và thuật ngữ Booking | ALL |
+| booking-faq-and-glossary-en | Booking FAQ and glossary (English) | ALL |
 | station-discovery-and-eligibility-policy | Điều kiện tìm kiếm và đặt chỗ | ALL |
 | license-lifecycle-and-renewal-policy | Hiệu lực, gia hạn và đình chỉ | OWNER |
 | station-staff-access-policy | Phân công và quyền nhân viên | OWNER |
 | station-equipment-operation-policy | Trụ/cổng, công suất và bảo trì | OWNER |
-| owner-payout-and-adjustment-policy | Chi trả và điều chỉnh chủ trạm | OWNER |
+| owner-payout-and-adjustment-policy | Sổ đối soát/hoàn Simulator; giữ slug cũ, không payout | OWNER |
+
+## BKG-067 — Hoàn tất nội dung 09/10/2026
+
+Đủ 6 chủ đề/12 nguồn Published. Bốn body pilot giữ revision
+`bkg067-2026-10-08-r1`; tám body mới dùng `bkg067-2026-10-09-r1`,
+VI/EN cùng rule IDs và baseline. Check-in/incident VI dùng slug cũ; EN có slug
+riêng. Refund/FAQ thêm cặp slug VI/EN. Slug Owner payout cũ giữ ổn định,
+đồng bộ body ledger mới và audience OWNER; không cung cấp payout.
+
+Web legal mock có cùng 23 body seed; mobile terms fallback VI/EN đã đồng bộ
+quy tắc, legal service chỉ nhận payload đúng locale. DB chưa có English
+terms/privacy; ứng dụng dùng fallback tương ứng khi thiếu slug hoặc locale.
+Không đổi schema UNIQUE(slug), không seed system_configs hoặc policy_chunks.
+
+**Kiểm chứng PostgreSQL 17 tạm PASS:** 23 hàng (17 VI + 6 EN), replay không
+đổi dữ liệu/audit, giữ ID/creation/effective/inactive/deleted khi ghi đè Admin
+edit, không chạm hàng ngoài catalog. Server tạm đã dừng. **Chưa áp seed lên DB
+ứng dụng/chưa đọc publication API live.** Review và backup Admin edits trước
+chạy; không suy trạng thái Published trong Vault là legal active trên DB.
+
+Checkpoint và giới hạn: Vault
+`Booking/66-bkg-067-policy-content-completion.vi.md`. Người dùng tự phụ trách
+Dify integration; các script RAG pilot không tự gửi corpus mở rộng.
+
+## Lịch sử BKG-067 — pilot song ngữ 08/10/2026
+
+Nguồn chuẩn hai chủ đề thanh toán/hủy nằm trong
+`docs/ChargeOps/Knowledge/Published/`: mỗi chủ đề có bản `.vi.md` và
+`-en-version.md`, cùng `doc_id`, revision `bkg067-2026-10-08-r1` và mã luật.
+Hai body VI hiện có cùng hai body EN mới trong seed được đồng bộ từ các file
+này, bỏ YAML frontmatter và đổi wikilink thành nhãn văn bản để legal UI đọc được.
+Khi đổi nguồn, cập nhật cả hai locale và body seed trong cùng thay đổi; không
+import toàn bộ seed SQL vào Dify. Đây là đồng bộ biên tập, chưa có generator.
+
+`version` của pilot là revision nội dung, không phải `policyVersion` mà server
+trả để gửi `acceptedPolicyVersion`. Những tài liệu chưa cập nhật vẫn giữ 4.9.0.
+Seed sửa thêm copy tài chính cũ ở terms, quy chế vận hành, incident/support,
+staff access và slug Owner payout: Owner nhận trách nhiệm/thử lại khi đủ quyền,
+Staff chỉ bằng chứng, Admin tài chính trong exact escalated case; hiện tại chỉ
+Simulator, không payout hoặc ví rút tiền. Slug Owner cũ được giữ để tránh gãy link.
+
+**Đã kiểm tra trên PostgreSQL 17 tạm:** 17 hàng (15 VI + 2 EN); bốn body pilot
+có revision đúng; replay không đổi hàng/audit; Admin edit được seed ghi đè nhưng
+giữ ID, audit tạo, ngày hiệu lực, inactive/soft-delete; hàng ngoài catalog giữ
+nguyên. Server test đã dừng. **Chưa chạy lên DB ứng dụng.** Khi công bố vào DB,
+kiểm tra active/effective/deleted riêng từng locale; chạy seed không tự bật lại
+EN đã ẩn. Evidence đầy đủ trong Vault `Booking/62-bkg-067-bilingual-knowledge-pilot-checkpoint.vi.md`.
 
 Các chuyên đề vận hành dùng `OPERATIONAL_REGULATION`; tài liệu vòng đời license
 dùng `LICENSE_AGREEMENT`. Giữ `OWNER` theo enum Java hiện tại. `doc_type` là nhóm
@@ -75,8 +130,8 @@ nhưng T17 và API chi tiết kiểm tra từng cổng với công suất trụ;
 Thiết kế Booking v4.9 cũng được ưu tiên trước các ghi chú QR tĩnh/no-show cũ.
 
 Để sửa/bổ sung văn bản, chỉnh **script thủ công**, giữ slug ổn định, thêm mục nguồn
-và cập nhật bảng danh mục này. Giữ các giá trị enum hợp lệ. `4.9.0` trong seed là
-phiên bản nền nghiệp vụ; bảng hiện tại lưu một bản hiện hành cho mỗi slug, không
+và cập nhật bảng danh mục này. Giữ các giá trị enum hợp lệ. `4.9.0` là phiên bản
+nền nghiệp vụ; tài liệu BKG-067 đã sửa dùng revision biên tập riêng. Bảng hiện tại lưu một bản hiện hành cho mỗi slug, không
 cung cấp lịch sử phiên bản bất biến. Nếu sửa quy tắc định lượng, phải đối chiếu
 nguồn `system_configs` và policy thực thi; đổi câu chữ không tự thay đổi nghiệp vụ.
 

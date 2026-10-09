@@ -1,6 +1,7 @@
 package com.thang.chargeops.booking;
 
 import com.thang.chargeops.booking.dto.filter.StationOperationalBookingFilter;
+import com.thang.chargeops.booking.dto.filter.BookingWindowMode;
 import com.thang.chargeops.booking.entity.Booking;
 import com.thang.chargeops.booking.policy.BookingEffectiveStatePolicy;
 import com.thang.chargeops.booking.repository.StationOperationalBookingReadRepository;
@@ -155,6 +156,31 @@ class StationOperationalBookingPostgresTest {
         List<UUID> foundIds = page.getContent().stream().map(Booking::getId).toList();
         assertThat(foundIds).containsExactly(bInside);
         assertThat(foundIds).doesNotContain(bAbutLeft, bAbutRight);
+    }
+
+    @Test
+    void startInWindowCountsOnlyStartsAtAssignedStation() {
+        Instant from = Instant.parse("2026-09-28T17:00:00Z");
+        Instant to = Instant.parse("2026-09-29T17:00:00Z");
+        UUID overnight = insertBooking(connectorA1Id, BookingStatus.COMPLETED,
+                from.minusSeconds(1800), from.plusSeconds(1800), null, null);
+        UUID atStart = insertBooking(connectorA1Id, BookingStatus.COMPLETED,
+                from, from.plusSeconds(3600), null, null);
+        UUID beforeEnd = insertBooking(connectorA2Id, BookingStatus.COMPLETED,
+                to.minusSeconds(1800), to.plusSeconds(1800), null, null);
+        UUID atEnd = insertBooking(connectorA2Id, BookingStatus.COMPLETED,
+                to, to.plusSeconds(3600), null, null);
+        UUID foreign = insertBooking(connectorBId, BookingStatus.COMPLETED,
+                from, from.plusSeconds(3600), null, null);
+
+        var filter = new StationOperationalBookingFilter(null, from, to, BookingWindowMode.START_IN_WINDOW);
+        var spec = predicateFactory.forStation(stationAId, filter);
+        var page = readRepository.findAll(spec, PageRequest.of(0, 1));
+        assertThat(page.getTotalElements()).isEqualTo(2);
+        var ids = readRepository.findAll(spec, PageRequest.of(0, 10))
+                .getContent().stream().map(Booking::getId).toList();
+        assertThat(ids).containsExactlyInAnyOrder(atStart, beforeEnd)
+                .doesNotContain(overnight, atEnd, foreign);
     }
 
     @Test

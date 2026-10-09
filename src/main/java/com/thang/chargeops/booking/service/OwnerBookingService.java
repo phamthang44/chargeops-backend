@@ -9,6 +9,7 @@ import java.util.UUID;
 
 public interface OwnerBookingService {
     Page<OwnerBookingListItemResponse> getOwnerBookings(OwnerBookingFilter filter, int page, int size);
+    Page<OwnerBookingListItemResponse> getOwnerBookings(OwnerBookingFilter filter, int page, int size, String sort);
     BookingSummaryResponse getOwnerBookingSummary(OwnerBookingFilter filter);
     Page<OperationalBookingResponse> getOwnerActiveBookingsFor(OwnerActiveBookingFilter filter, int page, int size);
     OwnerBookingDetailResponse getOwnerBooking(UUID bookingId);

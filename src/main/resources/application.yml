@@ -115,6 +115,16 @@ management:
         http.server.requests: 10s
 
 app:
+  assistant:
+    dify:
+      enabled: ${DIFY_ENABLED:false}
+      base-url: ${DIFY_BASE_URL:https://api.dify.ai/v1}
+      api-key: ${DIFY_API_KEY:}
+      connect-timeout-seconds: ${DIFY_CONNECT_TIMEOUT_SECONDS:5}
+      read-timeout-seconds: ${DIFY_READ_TIMEOUT_SECONDS:60}
+      requests-per-minute: ${DIFY_REQUESTS_PER_MINUTE:3}
+      requests-per-day: ${DIFY_REQUESTS_PER_DAY:10}
+      total-requests-per-day: ${DIFY_TOTAL_REQUESTS_PER_DAY:30}
   search:
     enabled: ${ELASTICSEARCH_ENABLED:true}
     reindex-on-startup: ${ELASTICSEARCH_REINDEX_ON_STARTUP:true}

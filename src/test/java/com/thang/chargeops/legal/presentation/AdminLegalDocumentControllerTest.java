@@ -9,6 +9,7 @@ import com.thang.chargeops.legal.dto.LegalDocumentDetailResponse;
 import com.thang.chargeops.legal.dto.LegalDocumentSummaryResponse;
 import com.thang.chargeops.legal.dto.UpdateLegalDocumentRequest;
 import com.thang.chargeops.legal.service.LegalDocumentService;
+import com.thang.chargeops.legal.repository.specs.LegalDocumentFilter;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
@@ -28,6 +29,8 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.verify;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -63,6 +66,16 @@ class AdminLegalDocumentControllerTest {
         mockMvc.perform(get("/api/v1/admin/legal-documents"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data[0].slug").value("terms-of-service"));
+    }
+
+    @Test
+    void listForwardsLocaleAndAdminVisibilityFilter() throws Exception {
+        when(legalDocumentService.searchDocuments(any(), any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of()));
+        mockMvc.perform(get("/api/v1/admin/legal-documents").param("locale", "vi").param("active", "false"))
+                .andExpect(status().isOk());
+        verify(legalDocumentService).searchDocuments(argThat((LegalDocumentFilter filter) ->
+                "vi".equals(filter.locale()) && Boolean.FALSE.equals(filter.active())), any(Pageable.class));
     }
 
     @Test

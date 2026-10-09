@@ -8,6 +8,7 @@ import org.springframework.data.jpa.domain.Specification;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 
 public final class LegalDocumentSpecification {
 
@@ -86,6 +87,11 @@ public final class LegalDocumentSpecification {
 
             if (filter.active() != null) {
                 predicates.add(cb.equal(root.get("active"), filter.active()));
+            }
+
+            if (hasText(filter.locale())) {
+                predicates.add(cb.equal(cb.lower(root.get("locale")),
+                        filter.locale().trim().toLowerCase(Locale.ROOT)));
             }
 
             return cb.and(predicates.toArray(Predicate[]::new));

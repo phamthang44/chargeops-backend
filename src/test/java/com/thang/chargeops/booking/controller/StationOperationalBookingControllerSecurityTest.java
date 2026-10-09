@@ -3,6 +3,7 @@ package com.thang.chargeops.booking.controller;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.thang.chargeops.booking.dto.filter.StationOperationalBookingFilter;
+import com.thang.chargeops.booking.dto.filter.BookingWindowMode;
 import com.thang.chargeops.booking.dto.response.OperationalBookingResponse;
 import com.thang.chargeops.booking.service.StationOperationalBookingService;
 import com.thang.chargeops.common.enums.BookingStatus;
@@ -38,6 +39,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
@@ -93,6 +95,23 @@ class StationOperationalBookingControllerSecurityTest {
         mockMvc.perform(get("/api/v1/stations/{stationId}/bookings", STATION_ID))
                 .andExpect(status().isOk())
                 .andExpect(header().string("Cache-Control", "no-store"));
+    }
+
+    @Test
+    @WithMockUser(username = "active-staff")
+    void explicitStartWindowReachesStationReadService() throws Exception {
+        when(stationOperationalBookingService.getOperationalBookings(
+                eq(STATION_ID), any(StationOperationalBookingFilter.class), eq(1), eq(5)))
+                .thenReturn(Page.empty());
+        mockMvc.perform(get("/api/v1/stations/{stationId}/bookings", STATION_ID)
+                        .param("from", "2026-10-08T17:00:00Z")
+                        .param("to", "2026-10-09T17:00:00Z")
+                        .param("windowMode", "START_IN_WINDOW")
+                        .param("size", "5"))
+                .andExpect(status().isOk());
+        var filter = org.mockito.ArgumentCaptor.forClass(StationOperationalBookingFilter.class);
+        verify(stationOperationalBookingService).getOperationalBookings(eq(STATION_ID), filter.capture(), eq(1), eq(5));
+        assertThat(filter.getValue().windowMode()).isEqualTo(BookingWindowMode.START_IN_WINDOW);
     }
 
     @Test

@@ -1,6 +1,8 @@
 package com.thang.chargeops.booking.controller;
 
 import com.thang.chargeops.booking.dto.filter.OwnerBookingFilter;
+import com.thang.chargeops.booking.dto.filter.BookingWindowMode;
+import com.thang.chargeops.booking.dto.response.BookingSummaryResponse;
 import com.thang.chargeops.booking.service.OwnerBookingService;
 import com.thang.chargeops.exception.GlobalHandlerError;
 import com.thang.chargeops.infra.security.RestAccessDeniedHandler;
@@ -25,6 +27,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
@@ -75,6 +78,36 @@ class OwnerBookingControllerSecurityTest {
         mockMvc.perform(get("/api/v1/owner/bookings"))
                 .andExpect(status().isOk())
                 .andExpect(header().string("Cache-Control", "no-store"));
+    }
+
+    @Test
+    @WithMockUser(roles = "OWNER")
+    void todaySummaryAndUpcomingListPassExplicitWindowAndSort() throws Exception {
+        when(ownerBookingService.getOwnerBookingSummary(any(OwnerBookingFilter.class)))
+                .thenReturn(new BookingSummaryResponse(0, 0, 0, 0, 0, 0, 0, 0));
+        when(ownerBookingService.getOwnerBookings(any(OwnerBookingFilter.class), eq(1), eq(5), eq("startAt,asc")))
+                .thenReturn(Page.empty());
+
+        mockMvc.perform(get("/api/v1/owner/bookings/summary")
+                        .param("from", "2026-10-08T17:00:00Z")
+                        .param("to", "2026-10-09T17:00:00Z")
+                        .param("windowMode", "START_IN_WINDOW"))
+                .andExpect(status().isOk());
+        mockMvc.perform(get("/api/v1/owner/bookings")
+                        .param("from", "2026-10-09T08:00:00Z")
+                        .param("windowMode", "START_IN_WINDOW")
+                        .param("sort", "startAt,asc")
+                        .param("page", "1")
+                        .param("size", "5"))
+                .andExpect(status().isOk());
+
+        var summaryFilter = org.mockito.ArgumentCaptor.forClass(OwnerBookingFilter.class);
+        verify(ownerBookingService).getOwnerBookingSummary(summaryFilter.capture());
+        assertThat(summaryFilter.getValue().windowMode()).isEqualTo(BookingWindowMode.START_IN_WINDOW);
+        assertThat(summaryFilter.getValue().from()).isEqualTo(java.time.Instant.parse("2026-10-08T17:00:00Z"));
+        var listFilter = org.mockito.ArgumentCaptor.forClass(OwnerBookingFilter.class);
+        verify(ownerBookingService).getOwnerBookings(listFilter.capture(), eq(1), eq(5), eq("startAt,asc"));
+        assertThat(listFilter.getValue().windowMode()).isEqualTo(BookingWindowMode.START_IN_WINDOW);
     }
 
     @Test

@@ -2,6 +2,7 @@ package com.thang.chargeops.booking;
 
 import com.thang.chargeops.booking.dto.filter.OwnerActiveBookingFilter;
 import com.thang.chargeops.booking.dto.filter.OwnerBookingFilter;
+import com.thang.chargeops.booking.dto.filter.BookingWindowMode;
 import com.thang.chargeops.booking.entity.Booking;
 import com.thang.chargeops.booking.policy.BookingEffectiveStatePolicy;
 import com.thang.chargeops.booking.repository.OwnerBookingReadRepository;
@@ -151,6 +152,31 @@ class OwnerBookingRepositoryPostgresTest {
         List<UUID> foundIds = page.getContent().stream().map(Booking::getId).toList();
         assertThat(foundIds).containsExactly(bOverlap);
         assertThat(foundIds).doesNotContain(bAbutLeft, bAbutRight);
+    }
+
+    @Test
+    void startInWindowUsesVietnamDayBoundariesWithoutCountingOvernightStarts() {
+        Instant from = Instant.parse("2026-09-28T17:00:00Z");
+        Instant to = Instant.parse("2026-09-29T17:00:00Z");
+        UUID overnight = insertBooking(ownerAId, connectorA1Id, BookingStatus.COMPLETED,
+                from.minusSeconds(1800), from.plusSeconds(1800), null, null);
+        UUID atStart = insertBooking(ownerAId, connectorA1Id, BookingStatus.COMPLETED,
+                from, from.plusSeconds(3600), null, null);
+        UUID beforeEnd = insertBooking(ownerAId, connectorA2Id, BookingStatus.COMPLETED,
+                to.minusSeconds(1800), to.plusSeconds(1800), null, null);
+        UUID atEnd = insertBooking(ownerAId, connectorA2Id, BookingStatus.COMPLETED,
+                to, to.plusSeconds(3600), null, null);
+        UUID otherOwner = insertBooking(ownerBId, connectorBId, BookingStatus.COMPLETED,
+                from, from.plusSeconds(3600), null, null);
+
+        var filter = new OwnerBookingFilter(null, null, from, to, null, BookingWindowMode.START_IN_WINDOW);
+        var matches = readRepository.findAll(predicateFactory.forList(ownerAId, filter, NOW), PageRequest.of(0, 1));
+
+        assertThat(matches.getTotalElements()).isEqualTo(2);
+        var ids = readRepository.findAll(predicateFactory.forList(ownerAId, filter, NOW), PageRequest.of(0, 10))
+                .getContent().stream().map(Booking::getId).toList();
+        assertThat(ids).containsExactlyInAnyOrder(atStart, beforeEnd)
+                .doesNotContain(overnight, atEnd, otherOwner);
     }
 
     @Test

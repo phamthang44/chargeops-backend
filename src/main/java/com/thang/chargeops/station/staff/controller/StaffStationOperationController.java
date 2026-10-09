@@ -3,6 +3,7 @@ package com.thang.chargeops.station.staff.controller;
 import com.thang.chargeops.station.staff.service.StaffStationOperationService;
 
 import com.thang.chargeops.booking.dto.filter.StationOperationalBookingFilter;
+import com.thang.chargeops.booking.dto.filter.BookingWindowMode;
 import com.thang.chargeops.booking.dto.response.OperationalBookingResponse;
 import com.thang.chargeops.booking.service.StationOperationalBookingService;
 import com.thang.chargeops.common.constant.SystemConstant;
@@ -50,10 +51,11 @@ public class StaffStationOperationController {
             @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size,
             @RequestParam(required = false) UUID connectorId,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant from,
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant to) {
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant to,
+            @RequestParam(defaultValue = "OVERLAP") BookingWindowMode windowMode) {
         service.overview(stationId);
         Page<OperationalBookingResponse> result = bookings.getOperationalBookings(
-                stationId, new StationOperationalBookingFilter(connectorId, from, to), page, size);
+                stationId, new StationOperationalBookingFilter(connectorId, from, to, windowMode), page, size);
         return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(ApiResult.successPage(result));
     }
 

@@ -25,6 +25,8 @@ import java.util.UUID;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.verify;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -67,6 +69,24 @@ class LegalDocumentControllerTest {
                 .andExpect(jsonPath("$.data[0].slug").value("terms-of-service"))
                 .andExpect(jsonPath("$.data[0].title").value("Điều khoản dịch vụ"))
                 .andExpect(jsonPath("$.data[0].targetAudience").value("ALL"));
+    }
+
+    @Test
+    void localeIsForwardedAndPublicActiveFilterCannotBeOverridden() throws Exception {
+        when(legalDocumentService.searchDocuments(any(LegalDocumentFilter.class), any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of()));
+        mockMvc.perform(get("/api/v1/legal-documents").param("locale", "en").param("active", "false"))
+                .andExpect(status().isOk());
+        verify(legalDocumentService).searchDocuments(argThat(filter ->
+                "en".equals(filter.locale()) && Boolean.TRUE.equals(filter.active())), any(Pageable.class));
+    }
+
+    @Test
+    void omittedLocaleKeepsMultilingualListing() throws Exception {
+        when(legalDocumentService.searchDocuments(any(LegalDocumentFilter.class), any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of()));
+        mockMvc.perform(get("/api/v1/legal-documents")).andExpect(status().isOk());
+        verify(legalDocumentService).searchDocuments(argThat(filter -> filter.locale() == null), any(Pageable.class));
     }
 
     @Test

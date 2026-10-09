@@ -59,7 +59,9 @@ class LegalDocumentSearchIntegrationTest {
         sessions.inTransaction(session -> {
             session.createNativeMutationQuery("TRUNCATE TABLE legal_documents").executeUpdate();
             session.persist(document("vi-policy", "Chính sách hoàn tiền"));
-            session.persist(document("en-policy", "Refund policy"));
+            var english = document("en-policy", "Refund policy");
+            english.setLocale("en");
+            session.persist(english);
             session.persist(document("other", "Thiết bị trạm sạc"));
             session.persist(document("literal", "Mức hoàn 100%_!"));
             session.persist(document("slug-only-refund", "Quy tắc giao dịch"));
@@ -132,6 +134,19 @@ class LegalDocumentSearchIntegrationTest {
         assertThat(slugOnlyIndex).isGreaterThanOrEqualTo(0);
         assertThat(enPolicyIndex).isLessThan(slugOnlyIndex);
         assertThat(keywordDocIndex).isLessThan(slugOnlyIndex);
+    }
+
+    @Test
+    void filtersLocaleWithoutMixingTranslationsOrChangingVisibility() {
+        assertThat(search(new LegalDocumentFilter(null, null, TargetAudience.DRIVER, true, "en")))
+                .containsExactly("en-policy");
+        assertThat(search(new LegalDocumentFilter(null, null, TargetAudience.DRIVER, true, "vi")))
+                .hasSize(6).doesNotContain("en-policy", "owner", "inactive", "deleted");
+        assertThat(search(new LegalDocumentFilter("refund", null, TargetAudience.DRIVER, true, " EN ")))
+                .containsExactly("en-policy");
+        assertThat(search(new LegalDocumentFilter(null, null, TargetAudience.DRIVER, true, "  ")))
+                .hasSize(7);
+        assertThat(search(new LegalDocumentFilter(null, null, null, true, "fr"))).isEmpty();
     }
 
     @Test

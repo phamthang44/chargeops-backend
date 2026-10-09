@@ -1,6 +1,7 @@
 package com.thang.chargeops.booking.repository.specs;
 
 import com.thang.chargeops.booking.dto.filter.OwnerActiveBookingFilter;
+import com.thang.chargeops.booking.dto.filter.BookingWindowMode;
 import com.thang.chargeops.booking.dto.filter.OwnerBookingFilter;
 import com.thang.chargeops.booking.entity.Booking;
 import com.thang.chargeops.common.enums.BookingStatus;
@@ -55,8 +56,13 @@ public class OwnerBookingPredicateFactory {
         result.add(cb.equal(station.get("owner").get("id"), ownerId));
         if (filter.stationId() != null) result.add(cb.equal(station.get("id"), filter.stationId()));
         if (filter.connectorId() != null) result.add(cb.equal(connector.get("id"), filter.connectorId()));
-        if (filter.from() != null) result.add(cb.greaterThan(root.get("endAt"), filter.from()));
-        if (filter.to() != null) result.add(cb.lessThan(root.get("startAt"), filter.to()));
+        if (filter.windowMode() == BookingWindowMode.START_IN_WINDOW) {
+            if (filter.from() != null) result.add(cb.greaterThanOrEqualTo(root.get("startAt"), filter.from()));
+            if (filter.to() != null) result.add(cb.lessThan(root.get("startAt"), filter.to()));
+        } else {
+            if (filter.from() != null) result.add(cb.greaterThan(root.get("endAt"), filter.from()));
+            if (filter.to() != null) result.add(cb.lessThan(root.get("startAt"), filter.to()));
+        }
         return result;
     }
 

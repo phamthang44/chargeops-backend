@@ -20,6 +20,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
 
 import java.time.Clock;
@@ -79,6 +80,26 @@ class OwnerBookingServiceTest {
         verify(applicationClock, times(1)).instant();
         verify(scopeValidator).validate(OWNER_ID, STATION_ID, null, null);
         verify(mapper).toListItem(booking, NOW);
+    }
+
+    @Test
+    void upcomingSortUsesAscendingStartAndStableIdTieBreaker() {
+        OwnerBookingFilter filter = new OwnerBookingFilter(STATION_ID, null, NOW, null,
+                com.thang.chargeops.common.enums.BookingStatus.CONFIRMED,
+                com.thang.chargeops.booking.dto.filter.BookingWindowMode.START_IN_WINDOW);
+        when(predicateFactory.forList(OWNER_ID, filter, NOW)).thenReturn(specification);
+        when(readRepository.findAll(eq(specification), any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of()));
+
+        service.getOwnerBookings(filter, 1, 5, "startTime,asc");
+
+        var pageable = org.mockito.ArgumentCaptor.forClass(Pageable.class);
+        verify(readRepository).findAll(eq(specification), pageable.capture());
+        assertThat(pageable.getValue().getPageSize()).isEqualTo(5);
+        assertThat(pageable.getValue().getSort().getOrderFor("startAt").getDirection())
+                .isEqualTo(Sort.Direction.ASC);
+        assertThat(pageable.getValue().getSort().getOrderFor("id").getDirection())
+                .isEqualTo(Sort.Direction.ASC);
     }
 
     @Test

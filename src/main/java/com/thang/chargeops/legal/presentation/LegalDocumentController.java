@@ -34,12 +34,14 @@ public class LegalDocumentController {
             @RequestParam(required = false) String search,
             @RequestParam(required = false) LegalDocType docType,
             @RequestParam(required = false) TargetAudience audience,
+            @RequestParam(required = false) String locale,
             @PageableDefault(size = 10, sort = "updatedAt", direction = Sort.Direction.DESC) Pageable pageable
     ) {
         LegalDocumentFilter filter = LegalDocumentFilter.builder()
                 .search(search)
                 .docType(docType)
                 .audience(audience)
+                .locale(locale)
                 .active(Boolean.TRUE)
                 .build();
 
