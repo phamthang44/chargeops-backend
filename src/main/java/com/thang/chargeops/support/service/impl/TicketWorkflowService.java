@@ -138,7 +138,9 @@ public class TicketWorkflowService {
         t.assign(handler);
         event(t, actor.getId(), platformCase ? ADMIN : kind(t, actor.getId()),
                 before == TicketStatus.OPEN ? "ASSIGNED" : "REASSIGNED", before, oldHandler, request.reason());
-        if (!platformCase && handler.getId().equals(t.getStation().getOwner().getId())) {
+        if (platformCase) {
+            notifyAssignedHandler(t, handler, NotificationAudience.ADMIN);
+        } else if (handler.getId().equals(t.getStation().getOwner().getId())) {
             notifyAssignedHandler(t, handler, NotificationAudience.OWNER);
         } else if (!platformCase) {
             notifyAssignedHandler(t, handler, NotificationAudience.STAFF);

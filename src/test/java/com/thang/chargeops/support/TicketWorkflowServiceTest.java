@@ -104,6 +104,28 @@ class TicketWorkflowServiceTest {
     }
 
     @Test
+    void assigningPlatformTicketNotifiesAdminHandler() {
+        UserProfile handler = UserProfile.builder().status(UserStatus.ACTIVE)
+                .keycloakId("handler-kc").email("handler@example.test").build();
+        handler.setId(UUID.randomUUID());
+        var scope = mock(SupportTicketRepository.TicketScope.class);
+        when(scope.getStationId()).thenReturn(null);
+        when(currentProfile.requireProfile()).thenReturn(admin);
+        when(tickets.findScope(ticketId)).thenReturn(Optional.of(scope));
+        when(tickets.findByIdForUpdate(ticketId)).thenReturn(Optional.of(ticket));
+        when(access.hasRole("ADMIN")).thenReturn(true);
+        when(profiles.findById(handler.getId())).thenReturn(Optional.of(handler));
+        when(identityRoles.getRoles("handler-kc")).thenReturn(Set.of(Role.ADMIN));
+        when(clock.instant()).thenReturn(now);
+
+        workflow.assign(ticketId, new AssignTicketRequest(0L, handler.getId(), "Route platform ticket"));
+
+        verify(notifications).saveIfAbsent(argThat(n -> n.getRecipientId().equals(handler.getId())
+                && n.getAudience() == com.thang.chargeops.notification.model.NotificationAudience.ADMIN
+                && n.getEventType() == com.thang.chargeops.notification.model.NotificationEventType.TICKET_ASSIGNED));
+    }
+
+    @Test
     void resolveCreatesNoticeAndExactDeadlineThenReporterCanConfirm() {
         when(access.canHandle(eq(ticket), eq(admin.getId()))).thenReturn(true);
         ticket.assign(admin);

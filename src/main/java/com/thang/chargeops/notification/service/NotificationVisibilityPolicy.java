@@ -157,7 +157,8 @@ public final class NotificationVisibilityPolicy {
         var ob = financialOwner.from(Booking.class);
         financialOwner.select(cb.literal(1)).where(cb.equal(ob.get(ID), n.get(BOOKING_ID)), cb.equal(ob.get(FINANCIAL_OWNER_ID), f.recipientId()));
         return cb.and(cb.equal(n.get(AUDIENCE), NotificationAudience.OWNER), cb.exists(ownerStation),
-                cb.or(cb.equal(n.get(EVENT_TYPE), NotificationEventType.TICKET_ASSIGNED), cb.exists(financialOwner)));
+                cb.or(n.get(EVENT_TYPE).in(NotificationEventType.TICKET_CREATED, NotificationEventType.TICKET_ASSIGNED),
+                        cb.exists(financialOwner)));
 
     }
 
@@ -178,6 +179,8 @@ public final class NotificationVisibilityPolicy {
         return cb.and(cb.equal(n.get(AUDIENCE), NotificationAudience.ADMIN),
                 cb.or(
                         cb.and(cb.equal(n.get(EVENT_TYPE), NotificationEventType.CASE_ESCALATED), cb.exists(escalation)),
+                        cb.and(cb.equal(n.get(EVENT_TYPE), NotificationEventType.TICKET_ASSIGNED),
+                                cb.isNull(n.get(STATION_ID))),
                         cb.and(cb.equal(n.get(EVENT_TYPE), NotificationEventType.TICKET_CREATED),
                                 cb.isNull(n.get(STATION_ID)), cb.isNull(n.get(ESCALATION_ID))),
                         cb.equal(n.get(CATEGORY), CATEGORY_FINANCE)));

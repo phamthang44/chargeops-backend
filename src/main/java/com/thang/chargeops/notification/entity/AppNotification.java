@@ -111,8 +111,9 @@ public class AppNotification extends BaseEntity {
     public static AppNotification createdTicket(SupportTicket ticket, UUID recipientId,
                                                 NotificationAudience audience, String sourceKey,
                                                 NotificationContent content) {
-        if (ticket.getId() == null || ticket.getStation() != null
-                || audience != NotificationAudience.ADMIN) {
+        if (ticket.getId() == null
+                || (audience == NotificationAudience.ADMIN) != (ticket.getStation() == null)
+                || (audience != NotificationAudience.ADMIN && audience != NotificationAudience.OWNER)) {
             throw new AppException(NotificationErrorCode.INVALID_INTENT);
         }
         var n = base(recipientId, audience, NotificationEventType.TICKET_CREATED,
@@ -167,8 +168,10 @@ public class AppNotification extends BaseEntity {
 
     public static AppNotification assignedTicket(SupportTicket ticket, NotificationAudience audience,
                                                    String sourceKey, NotificationContent content) {
-        if (ticket.getId() == null || ticket.getStation() == null || ticket.getAssignedHandler() == null
-                || (audience != NotificationAudience.OWNER && audience != NotificationAudience.STAFF)) {
+        if (ticket.getId() == null || ticket.getAssignedHandler() == null
+                || (audience != NotificationAudience.OWNER && audience != NotificationAudience.STAFF
+                    && audience != NotificationAudience.ADMIN)
+                || (audience == NotificationAudience.ADMIN) != (ticket.getStation() == null)) {
             throw new AppException(NotificationErrorCode.INVALID_INTENT);
         }
         var n = base(ticket.getAssignedHandler().getId(), audience, NotificationEventType.TICKET_ASSIGNED,

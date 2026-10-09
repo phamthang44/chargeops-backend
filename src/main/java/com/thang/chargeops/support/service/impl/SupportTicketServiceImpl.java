@@ -65,7 +65,7 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 
 @Service
-@RequiredArgsConstructor(onConstructor_ = @Autowired)
+@RequiredArgsConstructor
 public class SupportTicketServiceImpl implements SupportTicketService {
     private static final ZoneId STATION_ZONE = ZoneId.of(SystemConstant.SYSTEM_REGION_TIMEZONE);
     private static final DateTimeFormatter CODE_DATE = DateTimeFormatter.BASIC_ISO_DATE;
@@ -84,6 +84,7 @@ public class SupportTicketServiceImpl implements SupportTicketService {
     private final UserProfileRepository userProfileRepository;
     private final IdentityRoleService identityRoleService;
     private final NotificationService notificationService;
+
     @Override
     @Transactional
     public TicketResponse create(CreateTicketRequest request) {
@@ -126,6 +127,8 @@ public class SupportTicketServiceImpl implements SupportTicketService {
         ));
         if (routedStation == null) {
             notifyActiveAdminsOfPlatformTicket(ticket);
+        } else {
+            notifyStationOwnerOfTicket(ticket);
         }
         return ticketResponseAssembler.toResponse(ticket);
     }
@@ -144,6 +147,18 @@ public class SupportTicketServiceImpl implements SupportTicketService {
                         ticket, admin.getId(), NotificationAudience.ADMIN, sourceKey, content));
             }
         }
+    }
+
+    private void notifyStationOwnerOfTicket(SupportTicket ticket) {
+        String sourceKey = ticket.getId() + ":TICKET_CREATED";
+        var content = new NotificationContent(
+                NotificationI18nKey.format(NotificationI18nKey.TICKET_CREATED_TITLE,
+                        java.util.Map.of("code", ticket.getTicketCode())),
+                NotificationI18nKey.format(NotificationI18nKey.TICKET_CREATED_BODY,
+                        java.util.Map.of("code", ticket.getTicketCode(), "category", ticket.getCategory().name())),
+                clock.instant());
+        notificationService.createTicketCreatedNotice(AppNotification.createdTicket(
+                ticket, ticket.getStation().getOwner().getId(), NotificationAudience.OWNER, sourceKey, content));
     }
 
 
