@@ -5,6 +5,10 @@ import com.thang.chargeops.booking.repository.BookingRepository;
 import com.thang.chargeops.exception.AppException;
 import com.thang.chargeops.profile.entity.UserProfile;
 import com.thang.chargeops.profile.support.CurrentProfileProvider;
+import com.thang.chargeops.profile.repository.UserProfileRepository;
+import com.thang.chargeops.infra.identity.IdentityRoleService;
+import com.thang.chargeops.notification.service.NotificationService;
+import com.thang.chargeops.support.service.TicketAccessPolicy;
 import com.thang.chargeops.station.entity.ChargePoint;
 import com.thang.chargeops.station.entity.Connector;
 import com.thang.chargeops.station.entity.Station;
@@ -64,6 +68,10 @@ class SupportTicketServiceTest {
     @Mock TicketMessageRepository messageRepository;
     @Mock StationStaffAssignmentRepository stationStaffAssignmentRepository;
     @Mock TicketResponseService ticketResponseAssembler;
+    @Mock TicketAccessPolicy accessPolicy;
+    @Mock UserProfileRepository userProfileRepository;
+    @Mock IdentityRoleService identityRoleService;
+    @Mock NotificationService notificationService;
 
     private SupportTicketServiceImpl service;
     private UserProfile reporter;
@@ -72,7 +80,8 @@ class SupportTicketServiceTest {
     void setUp() {
         service = new SupportTicketServiceImpl(currentProfileProvider, bookingRepository, stationRepository,
                 ticketRepository, messageRepository, Clock.fixed(NOW, ZoneOffset.UTC),
-                stationStaffAssignmentRepository, ticketResponseAssembler, null);
+                stationStaffAssignmentRepository, ticketResponseAssembler, accessPolicy,
+                userProfileRepository, identityRoleService, notificationService);
         reporter = UserProfile.builder().email("driver@example.test").displayName("Driver").build();
         reporter.setId(REPORTER_ID);
         when(currentProfileProvider.requireProfile()).thenReturn(reporter);

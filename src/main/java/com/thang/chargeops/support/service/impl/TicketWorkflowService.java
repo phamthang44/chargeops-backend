@@ -147,7 +147,6 @@ public class TicketWorkflowService {
     }
 
     private void notifyAssignedHandler(SupportTicket ticket, UserProfile handler, NotificationAudience audience) {
-        if (notifications == null) return;
         String sourceKey = ticket.getId() + ":ASSIGNED:" + handler.getId();
         var content = new NotificationContent(
                 NotificationI18nKey.format(NotificationI18nKey.TICKET_ASSIGNED_TITLE,

@@ -96,7 +96,6 @@ public class TicketEscalationService {
     }
 
     private void notifyActiveAdmins(TicketEscalation escalation) {
-        if (profiles == null || identityRoles == null || notifications == null) return;
         var content = new NotificationContent(
                 NotificationI18nKey.format(NotificationI18nKey.TICKET_ESCALATED_TITLE,
                         java.util.Map.of("code", escalation.getTicket().getTicketCode())),

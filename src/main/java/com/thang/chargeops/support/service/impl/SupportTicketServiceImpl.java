@@ -84,18 +84,6 @@ public class SupportTicketServiceImpl implements SupportTicketService {
     private final UserProfileRepository userProfileRepository;
     private final IdentityRoleService identityRoleService;
     private final NotificationService notificationService;
-    public SupportTicketServiceImpl(
-            CurrentProfileProvider currentProfileProvider,
-            BookingRepository bookingRepository,
-            StationRepository stationRepository,
-            SupportTicketRepository ticketRepository,
-            TicketMessageRepository messageRepository,
-            Clock clock
-    ) {
-        this(currentProfileProvider, bookingRepository, stationRepository, ticketRepository,
-                messageRepository, clock, null, null, null, null, null, null);
-    }
-
     @Override
     @Transactional
     public TicketResponse create(CreateTicketRequest request) {
@@ -136,8 +124,7 @@ public class SupportTicketServiceImpl implements SupportTicketService {
         messageRepository.saveAndFlush(TicketMessage.create(
                 ticket, reporter, TicketActorKind.REPORTER, request.description(), clock.instant()
         ));
-        if (routedStation == null && notificationService != null
-                && userProfileRepository != null && identityRoleService != null) {
+        if (routedStation == null) {
             notifyActiveAdminsOfPlatformTicket(ticket);
         }
         return ticketResponseAssembler.toResponse(ticket);

@@ -2,6 +2,9 @@ package com.thang.chargeops.support;
 
 import com.thang.chargeops.profile.entity.UserProfile;
 import com.thang.chargeops.profile.support.CurrentProfileProvider;
+import com.thang.chargeops.profile.repository.UserProfileRepository;
+import com.thang.chargeops.infra.identity.IdentityRoleService;
+import com.thang.chargeops.notification.service.NotificationService;
 import com.thang.chargeops.support.dto.response.TicketEscalationLookupResponse;
 import com.thang.chargeops.support.entity.SupportTicket;
 import com.thang.chargeops.support.entity.TicketEscalation;
@@ -36,7 +39,9 @@ class TicketEscalationIdentityContractTest {
         when(escalations.findByTicket_IdAndResolvedAtIsNull(ticketId)).thenReturn(Optional.of(escalation));
         var service = new TicketEscalationService(profiles, access, tickets, escalations,
                 mock(TicketFindingRepository.class), mock(TicketEventRepository.class),
-                mock(TicketMessageRepository.class), Clock.systemUTC());
+                mock(TicketMessageRepository.class), Clock.systemUTC(),
+                mock(UserProfileRepository.class), mock(IdentityRoleService.class),
+                mock(NotificationService.class));
 
         var response = service.get(ticketId);
         assertThat(response.ticketId()).isEqualTo(ticketId);
