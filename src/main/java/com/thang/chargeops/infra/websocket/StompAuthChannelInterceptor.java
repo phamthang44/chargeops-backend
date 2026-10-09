@@ -72,6 +72,13 @@ public class StompAuthChannelInterceptor implements ChannelInterceptor {
      */
     private static final Pattern NOTIFICATION_USER_QUEUE = Pattern.compile("^/user/queue/notifications$");
 
+    /**
+     * Exact-match destination of the ticket messages topic (/topic/tickets/{ticketId}/messages).
+     */
+    private static final Pattern TICKET_MESSAGES_TOPIC = Pattern.compile(
+            "^/topic/tickets/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/messages$"
+    );
+
     private final JwtDecoder jwtDecoder;
     private final JwtRoleConverter jwtRoleConverter;
 
@@ -131,8 +138,11 @@ public class StompAuthChannelInterceptor implements ChannelInterceptor {
         }
         String destination = accessor.getDestination();
         if (destination == null || !(HARDWARE_TOPIC.matcher(destination).matches()
-                || NOTIFICATION_USER_QUEUE.matcher(destination).matches())) {
+                || NOTIFICATION_USER_QUEUE.matcher(destination).matches()
+                || TICKET_MESSAGES_TOPIC.matcher(destination).matches())) {
+            log.warn("STOMP SUBSCRIBE denied for destination: {}", destination);
             throw new AccessDeniedException("Subscription destination is not allowed");
         }
+        log.info("STOMP SUBSCRIBE allowed for destination: {}", destination);
     }
 }

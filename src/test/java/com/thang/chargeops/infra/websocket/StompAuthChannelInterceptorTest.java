@@ -136,6 +136,18 @@ class StompAuthChannelInterceptorTest {
     }
 
     @Test
+    void subscribeToExactTicketMessagesTopicIsAllowed() {
+        StompHeaderAccessor accessor = subscribedAccessor(
+                "/topic/tickets/" + UUID.randomUUID() + "/messages",
+                Instant.now().plusSeconds(600)
+        );
+
+        Message<?> result = interceptor.preSend(message(accessor), channel);
+
+        assertThat(result).isNotNull();
+    }
+
+    @Test
     void subscribeAfterTokenExpiryIsRejected() {
         StompHeaderAccessor accessor = subscribedAccessor(
                 "/topic/stations/" + STATION_ID + "/hardware",

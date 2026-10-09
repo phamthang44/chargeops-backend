@@ -9,9 +9,7 @@ import com.thang.chargeops.exception.errorcode.TicketErrorCode;
 import com.thang.chargeops.profile.entity.UserProfile;
 import com.thang.chargeops.profile.repository.UserProfileRepository;
 import com.thang.chargeops.profile.support.CurrentProfileProvider;
-import com.thang.chargeops.common.enums.Role;
 import com.thang.chargeops.common.enums.UserStatus;
-import com.thang.chargeops.infra.identity.IdentityRoleService;
 import com.thang.chargeops.notification.entity.AppNotification;
 import com.thang.chargeops.notification.model.NotificationAudience;
 import com.thang.chargeops.notification.model.NotificationContent;
@@ -29,6 +27,7 @@ import com.thang.chargeops.support.dto.response.TicketDetailResponse;
 import com.thang.chargeops.support.entity.SupportTicket;
 import com.thang.chargeops.support.entity.TicketMessage;
 import com.thang.chargeops.support.model.TicketActorKind;
+import com.thang.chargeops.support.event.TicketMessageCreatedEvent;
 import com.thang.chargeops.support.model.TicketCategory;
 import com.thang.chargeops.support.model.TicketListScope;
 import com.thang.chargeops.support.model.TicketStatus;
@@ -39,7 +38,7 @@ import com.thang.chargeops.support.service.TicketAccessPolicy;
 import com.thang.chargeops.support.service.support.TicketResponseService;
 import com.thang.chargeops.support.specification.SupportTicketSpecifications;
 import lombok.RequiredArgsConstructor;
-import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
@@ -82,8 +81,8 @@ public class SupportTicketServiceImpl implements SupportTicketService {
     private final TicketResponseService ticketResponseAssembler;
     private final TicketAccessPolicy accessPolicy;
     private final UserProfileRepository userProfileRepository;
-    private final IdentityRoleService identityRoleService;
     private final NotificationService notificationService;
+    private final ApplicationEventPublisher eventPublisher;
 
     @Override
     @Transactional
@@ -141,15 +140,17 @@ public class SupportTicketServiceImpl implements SupportTicketService {
                 NotificationI18nKey.format(NotificationI18nKey.TICKET_CREATED_BODY,
                         java.util.Map.of("code", ticket.getTicketCode(), "category", ticket.getCategory().name())),
                 clock.instant());
-        for (UserProfile admin : userProfileRepository.findAllByStatusAndDeletedAtIsNull(UserStatus.ACTIVE)) {
-            if (identityRoleService.getRoles(admin.getKeycloakId()).contains(Role.ADMIN)) {
-                notificationService.createTicketCreatedNotice(AppNotification.createdTicket(
-                        ticket, admin.getId(), NotificationAudience.ADMIN, sourceKey, content));
-            }
+        for (UserProfile admin : userProfileRepository.findAllByPrimaryRoleAndStatusAndDeletedAtIsNull(
+                com.thang.chargeops.profile.model.PrimaryRole.ADMIN, UserStatus.ACTIVE)) {
+            notificationService.createTicketCreatedNotice(AppNotification.createdTicket(
+                    ticket, admin.getId(), NotificationAudience.ADMIN, sourceKey, content));
         }
     }
 
     private void notifyStationOwnerOfTicket(SupportTicket ticket) {
+        if (ticket.getStation() == null || ticket.getStation().getOwner() == null) {
+            return;
+        }
         String sourceKey = ticket.getId() + ":TICKET_CREATED";
         var content = new NotificationContent(
                 NotificationI18nKey.format(NotificationI18nKey.TICKET_CREATED_TITLE,
@@ -282,18 +283,21 @@ public class SupportTicketServiceImpl implements SupportTicketService {
 
         TicketMessage message = TicketMessage.create(
                 ticket, author, authorKind, request.body(), clock.instant(), clientMessageId);
+        TicketMessageResponse response;
         if (clientMessageId == null) {
             // Messages without a client key are allowed, but cannot be replayed safely.
-            return ticketResponseAssembler.toMessageResponse(messageRepository.saveAndFlush(message));
+            response = ticketResponseAssembler.toMessageResponse(messageRepository.saveAndFlush(message));
+        } else {
+            // The unique index remains the final duplicate guard. ON CONFLICT avoids
+            // aborting the PostgresSQL transaction before we read the original message.
+            messageRepository.insertIgnoreDuplicate(ticketId, author.getId(), authorKind.name(),
+                    message.getBody(), message.getCreatedAt(), clientMessageId);
+            response = messageRepository.findByAuthor_IdAndClientMessageId(author.getId(), clientMessageId)
+                    .map(ticketResponseAssembler::toMessageResponse)
+                    .orElseThrow(() -> new IllegalStateException("Ticket message was not found after insert or replay"));
         }
-
-        // The unique index remains the final duplicate guard. ON CONFLICT avoids
-        // aborting the PostgresSQL transaction before we read the original message.
-        messageRepository.insertIgnoreDuplicate(ticketId, author.getId(), authorKind.name(),
-                message.getBody(), message.getCreatedAt(), clientMessageId);
-        return messageRepository.findByAuthor_IdAndClientMessageId(author.getId(), clientMessageId)
-                .map(ticketResponseAssembler::toMessageResponse)
-                .orElseThrow(() -> new IllegalStateException("Ticket message was not found after insert or replay"));
+        eventPublisher.publishEvent(new TicketMessageCreatedEvent(ticketId, response));
+        return response;
     }
 
     private void prepareReply(SupportTicket ticket, UserProfile author,

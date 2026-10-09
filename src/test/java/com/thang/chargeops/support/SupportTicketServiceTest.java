@@ -6,7 +6,6 @@ import com.thang.chargeops.exception.AppException;
 import com.thang.chargeops.profile.entity.UserProfile;
 import com.thang.chargeops.profile.support.CurrentProfileProvider;
 import com.thang.chargeops.profile.repository.UserProfileRepository;
-import com.thang.chargeops.infra.identity.IdentityRoleService;
 import com.thang.chargeops.notification.service.NotificationService;
 import com.thang.chargeops.support.service.TicketAccessPolicy;
 import com.thang.chargeops.station.entity.ChargePoint;
@@ -70,8 +69,8 @@ class SupportTicketServiceTest {
     @Mock TicketResponseService ticketResponseAssembler;
     @Mock TicketAccessPolicy accessPolicy;
     @Mock UserProfileRepository userProfileRepository;
-    @Mock IdentityRoleService identityRoleService;
     @Mock NotificationService notificationService;
+    @Mock org.springframework.context.ApplicationEventPublisher eventPublisher;
 
     private SupportTicketServiceImpl service;
     private UserProfile reporter;
@@ -81,7 +80,7 @@ class SupportTicketServiceTest {
         service = new SupportTicketServiceImpl(currentProfileProvider, bookingRepository, stationRepository,
                 ticketRepository, messageRepository, Clock.fixed(NOW, ZoneOffset.UTC),
                 stationStaffAssignmentRepository, ticketResponseAssembler, accessPolicy,
-                userProfileRepository, identityRoleService, notificationService);
+                userProfileRepository, notificationService, eventPublisher);
         reporter = UserProfile.builder().email("driver@example.test").displayName("Driver").build();
         reporter.setId(REPORTER_ID);
         when(currentProfileProvider.requireProfile()).thenReturn(reporter);
