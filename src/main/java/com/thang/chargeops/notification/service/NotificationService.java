@@ -7,6 +7,7 @@ import com.thang.chargeops.support.repository.SupportTicketRepository;
 import com.thang.chargeops.booking.entity.Booking;
 import com.thang.chargeops.refund.entity.Refund;
 import com.thang.chargeops.refund.entity.RefundAttempt;
+import com.thang.chargeops.station.entity.Station;
 import com.thang.chargeops.notification.model.*;
 import java.util.Map;
 import java.util.Objects;
@@ -78,6 +79,49 @@ public class NotificationService {
         };
         String body = NotificationI18nKey.format(bodyKey, Map.of("code", refund.getBooking().getBookingCode()));
         persistence.saveIfAbsent(AppNotification.refundOutcome(refund, attempt, audience, type, new NotificationContent(title, body, at)));
+    }
+
+    /** Admin-facing notice that a new station registration awaits moderation. */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void createStationSubmittedNotice(Station station, UUID adminRecipientId, Instant at) {
+        String ownerName = station.getOwner().getDisplayName() != null ? station.getOwner().getDisplayName() : "";
+        String title = NotificationI18nKey.format(NotificationI18nKey.STATION_SUBMITTED_TITLE,
+                Map.of("stationName", station.getName()));
+        String body = NotificationI18nKey.format(NotificationI18nKey.STATION_SUBMITTED_BODY,
+                Map.of("ownerName", ownerName,
+                        "stationName", station.getName(),
+                        "stationCode", station.getStationCode()));
+        var content = new NotificationContent(title, body, at);
+        String sourceKey = station.getId() + ":SUBMITTED:" + adminRecipientId;
+        persistence.saveIfAbsent(AppNotification.stationSubmitted(station, adminRecipientId, sourceKey, content));
+    }
+
+    /** Owner-facing decision notice (approved / rejected / changes requested). */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void createStationDecisionNotice(Station station, NotificationEventType type, Instant at, String reason) {
+        UUID ownerRecipientId = station.getOwner().getId();
+        String titleKey = switch (type) {
+            case STATION_APPROVED -> NotificationI18nKey.STATION_APPROVED_TITLE;
+            case STATION_REJECTED -> NotificationI18nKey.STATION_REJECTED_TITLE;
+            case STATION_CHANGES_REQUESTED -> NotificationI18nKey.STATION_CHANGES_REQUESTED_TITLE;
+            default -> throw new AppException(NotificationErrorCode.UNSUPPORTED_EVENT);
+        };
+        String bodyKey = switch (type) {
+            case STATION_APPROVED -> NotificationI18nKey.STATION_APPROVED_BODY;
+            case STATION_REJECTED -> NotificationI18nKey.STATION_REJECTED_BODY;
+            case STATION_CHANGES_REQUESTED -> NotificationI18nKey.STATION_CHANGES_REQUESTED_BODY;
+            default -> throw new AppException(NotificationErrorCode.UNSUPPORTED_EVENT);
+        };
+        Map<String, Object> params = new java.util.HashMap<>();
+        params.put("stationName", station.getName());
+        if (reason != null && !reason.isBlank()) {
+            params.put("reason", reason);
+        }
+        String title = NotificationI18nKey.format(titleKey, Map.of("stationName", station.getName()));
+        String body = NotificationI18nKey.format(bodyKey, params);
+        var content = new NotificationContent(title, body, at);
+        String sourceKey = station.getId() + ":" + type.name();
+        persistence.saveIfAbsent(AppNotification.stationDecision(station, type, ownerRecipientId, sourceKey, content));
     }
 
     @Transactional(propagation = Propagation.MANDATORY)

@@ -6,6 +6,8 @@ import com.thang.chargeops.common.enums.StationStatusEventType;
 import com.thang.chargeops.exception.AppException;
 import com.thang.chargeops.exception.errorcode.ApprovalErrorCode;
 import com.thang.chargeops.exception.errorcode.StationErrorCode;
+import com.thang.chargeops.notification.model.NotificationEventType;
+import com.thang.chargeops.notification.service.NotificationService;
 import com.thang.chargeops.profile.entity.UserProfile;
 import com.thang.chargeops.profile.support.CurrentProfileProvider;
 import com.thang.chargeops.station.dto.station.request.RejectStationRequest;
@@ -43,6 +45,7 @@ public class StationLifecycleUseCase {
     private final StationApprovalPolicy stationApprovalPolicy;
     private final LicenseRepository licenseRepository;
     private final StationOperatingScheduleRepository scheduleRepository;
+    private final NotificationService notificationService;
 
     @Transactional(readOnly = true)
     public StationApprovalDetailResponse getApprovalDetail(UUID stationId) {
@@ -85,6 +88,12 @@ public class StationLifecycleUseCase {
                 admin,
                 null
         );
+        notificationService.createStationDecisionNotice(
+                station,
+                NotificationEventType.STATION_APPROVED,
+                Instant.now(),
+                null
+        );
         log.info(
                 LogConstant.SERVICE_LOG_FORMAT,
                 LogConstant.ACTION_SUCCESS,
@@ -116,6 +125,12 @@ public class StationLifecycleUseCase {
                 StationStatusEventType.REJECTED,
                 previousStatus,
                 admin,
+                request.getReason()
+        );
+        notificationService.createStationDecisionNotice(
+                station,
+                NotificationEventType.STATION_REJECTED,
+                Instant.now(),
                 request.getReason()
         );
         log.info(

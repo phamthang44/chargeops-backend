@@ -37,6 +37,20 @@ public final class NotificationI18nKey {
     public static final String TICKET_ASSIGNED_BODY = "notification.ticket.assigned.body";
     public static final String TICKET_ESCALATED_TITLE = "notification.ticket.escalated.title";
     public static final String TICKET_ESCALATED_BODY = "notification.ticket.escalated.body";
+    public static final String TICKET_CLOSED_TITLE = "notification.ticket.closed.title";
+    public static final String TICKET_CLOSED_BODY = "notification.ticket.closed.body";
+    public static final String TICKET_REOPENED_TITLE = "notification.ticket.reopened.title";
+    public static final String TICKET_REOPENED_BODY = "notification.ticket.reopened.body";
+
+    // Station approval notifications
+    public static final String STATION_SUBMITTED_TITLE = "notification.station.submitted.title";
+    public static final String STATION_SUBMITTED_BODY = "notification.station.submitted.body";
+    public static final String STATION_APPROVED_TITLE = "notification.station.approved.title";
+    public static final String STATION_APPROVED_BODY = "notification.station.approved.body";
+    public static final String STATION_REJECTED_TITLE = "notification.station.rejected.title";
+    public static final String STATION_REJECTED_BODY = "notification.station.rejected.body";
+    public static final String STATION_CHANGES_REQUESTED_TITLE = "notification.station.changes_requested.title";
+    public static final String STATION_CHANGES_REQUESTED_BODY = "notification.station.changes_requested.body";
 
     private NotificationI18nKey() {
     }

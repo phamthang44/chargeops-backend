@@ -9,7 +9,10 @@ import com.thang.chargeops.exception.AppException;
 import com.thang.chargeops.exception.errorcode.ProfileErrorCode;
 import com.thang.chargeops.location.entity.AdministrativeWard;
 import com.thang.chargeops.location.service.AdministrativeLocationService;
+import com.thang.chargeops.notification.service.NotificationService;
 import com.thang.chargeops.profile.entity.UserProfile;
+import com.thang.chargeops.profile.model.PrimaryRole;
+import com.thang.chargeops.profile.repository.UserProfileRepository;
 import com.thang.chargeops.profile.support.CurrentProfileProvider;
 import com.thang.chargeops.station.dto.station.request.RegisterStationRequest;
 import com.thang.chargeops.station.dto.station.response.StationCreatedResponse;
@@ -32,6 +35,8 @@ public class StationRegistrationUseCase {
     private final CurrentProfileProvider currentProfileProvider;
     private final AdministrativeLocationService administrativeLocationService;
     private final StationStatusHistoryService stationStatusHistoryService;
+    private final NotificationService notificationService;
+    private final UserProfileRepository userProfileRepository;
 
     @Transactional
     public StationCreatedResponse create(RegisterStationRequest request) {
@@ -72,6 +77,7 @@ public class StationRegistrationUseCase {
                 owner,
                 null
         );
+        notifyActiveAdmins(savedStation, owner);
         log.info(
                 LogConstant.SERVICE_LOG_FORMAT,
                 LogConstant.ACTION_SUCCESS,
@@ -85,5 +91,17 @@ public class StationRegistrationUseCase {
 
     private String formatStationCode(long sequence) {
         return "ST-%04d".formatted(sequence);
+    }
+
+    private void notifyActiveAdmins(Station station, UserProfile submitter) {
+        java.util.List<UserProfile> admins = userProfileRepository
+                .findAllByPrimaryRoleAndStatusAndDeletedAtIsNull(PrimaryRole.ADMIN, UserStatus.ACTIVE);
+        java.time.Instant now = java.time.Instant.now();
+        for (UserProfile admin : admins) {
+            if (admin.getId().equals(submitter.getId())) {
+                continue;
+            }
+            notificationService.createStationSubmittedNotice(station, admin.getId(), now);
+        }
     }
 }

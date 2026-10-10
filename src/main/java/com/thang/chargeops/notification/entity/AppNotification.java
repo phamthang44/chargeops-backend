@@ -10,6 +10,7 @@ import com.thang.chargeops.refund.model.RefundAttemptStatus;
 import com.thang.chargeops.notification.model.*;
 import com.thang.chargeops.support.entity.SupportTicket;
 import com.thang.chargeops.support.entity.TicketEscalation;
+import com.thang.chargeops.station.entity.Station;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Table;
@@ -202,6 +203,43 @@ public class AppNotification extends BaseEntity {
         return n;
     }
 
+    public static AppNotification ticketLifecycle(SupportTicket ticket, UUID recipientId,
+                                                   NotificationAudience audience,
+                                                   NotificationEventType type,
+                                                   String sourceKey,
+                                                   NotificationContent content) {
+        if (ticket.getId() == null || recipientId == null || audience == null || type == null) {
+            throw new AppException(NotificationErrorCode.INVALID_INTENT);
+        }
+        var n = base(recipientId, audience, type, CATEGORY_TICKET, sourceKey, content);
+        n.setTicketTarget(ticket, NotificationActionType.OPEN_TICKET);
+        return n;
+    }
+
+    /** Admin-facing notice that a new station registration awaits moderation. */
+    public static AppNotification stationSubmitted(Station station, UUID adminRecipientId,
+                                                   String sourceKey, NotificationContent content) {
+        if (station.getId() == null || adminRecipientId == null) {
+            throw new AppException(NotificationErrorCode.INVALID_INTENT);
+        }
+        var n = base(adminRecipientId, NotificationAudience.ADMIN, NotificationEventType.STATION_SUBMITTED,
+                CATEGORY_STATION, sourceKey, content);
+        n.setStationTarget(station);
+        return n;
+    }
+
+    /** Owner-facing decision notice (approved / rejected / changes requested). */
+    public static AppNotification stationDecision(Station station, NotificationEventType type,
+                                                  UUID ownerRecipientId, String sourceKey,
+                                                  NotificationContent content) {
+        if (station.getId() == null || ownerRecipientId == null || !isStationDecisionEvent(type)) {
+            throw new AppException(NotificationErrorCode.INVALID_INTENT);
+        }
+        var n = base(ownerRecipientId, NotificationAudience.OWNER, type, CATEGORY_STATION, sourceKey, content);
+        n.setStationTarget(station);
+        return n;
+    }
+
     private static AppNotification base(UUID recipient, NotificationAudience audience, NotificationEventType type,
                                         String category, String key, NotificationContent content) {
         if (recipient == null || audience == null || type == null || content == null
@@ -236,10 +274,24 @@ public class AppNotification extends BaseEntity {
         actionUrl = BOOKING_PATH + bookingId;
     }
 
+    private void setStationTarget(Station station) {
+        stationId = station.getId();
+        actionType = NotificationActionType.OPEN_STATION;
+        actionUrl = STATION_PATH + stationId;
+    }
+
     private static boolean isBookingEvent(NotificationEventType type) {
         if (type == null) return false;
         return switch (type) {
             case BOOKING_CONFIRMED, BOOKING_CANCELLED, BOOKING_NO_SHOW, BOOKING_COMPLETED, BOOKING_REMINDER -> true;
+            default -> false;
+        };
+    }
+
+    private static boolean isStationDecisionEvent(NotificationEventType type) {
+        if (type == null) return false;
+        return switch (type) {
+            case STATION_APPROVED, STATION_REJECTED, STATION_CHANGES_REQUESTED -> true;
             default -> false;
         };
     }
