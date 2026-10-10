@@ -102,6 +102,8 @@ services:
       KC_DB_URL: jdbc:postgresql://postgres:5432/${KC_DB_NAME:-keycloak}
       KC_DB_USERNAME: ${POSTGRES_USER:-chargeops}
       KC_DB_PASSWORD: ${POSTGRES_PASSWORD:-chargeops}
+      KC_HOSTNAME: ${KEYCLOAK_PUBLIC_URL:-https://thang.tail704409.ts.net}
+      KC_HOSTNAME_BACKCHANNEL_DYNAMIC: "true"
       KC_HOSTNAME_STRICT: "false"
       KC_PROXY_HEADERS: xforwarded
     volumes:
@@ -140,6 +142,15 @@ services:
       - DIFY_REQUESTS_PER_MINUTE=${DIFY_REQUESTS_PER_MINUTE:-3}
       - DIFY_REQUESTS_PER_DAY=${DIFY_REQUESTS_PER_DAY:-10}
       - DIFY_TOTAL_REQUESTS_PER_DAY=${DIFY_TOTAL_REQUESTS_PER_DAY:-30}
+      # BKG-069 demo keeps Kafka optional. The demo compose does not define a
+      # broker, so disable the transport/listener and its Actuator indicator.
+      - BOOKING_NOTIFICATION_KAFKA_ENABLED=false
+      - BOOKING_NOTIFICATION_CONSUMER_ENABLED=false
+      - MANAGEMENT_HEALTH_KAFKA_ENABLED=false
+      - REFUND_AUTO_EXECUTION_INITIAL_DELAY_MS=5000
+      - REFUND_AUTO_EXECUTION_FIXED_DELAY_MS=5000
+      - SMTP_HOST=mailpit
+      - SMTP_PORT=1025
       - DATABASE_URL=jdbc:postgresql://postgres:5432/${POSTGRES_DB:-chargeops}
       - POSTGRES_USER=${POSTGRES_USER:-chargeops}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-chargeops}

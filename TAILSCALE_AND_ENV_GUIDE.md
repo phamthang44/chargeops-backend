@@ -43,7 +43,7 @@ Script sẽ:
 3. Xóa cấu hình Funnel nhiều path/cổng cũ bằng `tailscale funnel reset`.
 4. Tạo đúng một Funnel `443 → http://127.0.0.1:8088`.
 
-Local gateway cũng dùng được mà không cần Tailscale:
+Local gateway cũng dùng được mà không cần Tailscale (chỉ cho API test nội bộ):
 
 ```text
 http://localhost:8088
@@ -51,6 +51,12 @@ http://localhost:8088/api/v1/stations
 http://localhost:8088/realms/chargeops/.well-known/openid-configuration
 http://localhost:8088/grafana/
 ```
+
+> ⚠️ **BẮT BUỘC CHO GOOGLE OAUTH**:
+> Tuyệt đối **KHÔNG dùng `http://localhost:8088`** để kiểm thử đăng nhập Google (Social Login).
+> Google Cloud Console chỉ đăng ký Authorized redirect URI với domain HTTPS:
+> `https://thang.tail704409.ts.net/realms/chargeops/broker/google/endpoint`
+> Do đó, mọi client và agent phải truy cập qua `https://thang.tail704409.ts.net`. Truy cập qua port 8088 sẽ gây lỗi `redirect_uri_mismatch` từ Google.
 
 ## Public URLs
 

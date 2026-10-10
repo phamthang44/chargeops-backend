@@ -3,9 +3,20 @@ map $http_x_forwarded_proto $chargeops_forwarded_proto {
     ""      $scheme;
 }
 
+map $http_x_forwarded_host $chargeops_forwarded_host {
+    default $http_x_forwarded_host;
+    ""      $http_host;
+}
+
 map $http_upgrade $chargeops_connection_upgrade {
     default upgrade;
     ""      close;
+}
+
+map $http_origin $chargeops_ws_origin {
+    default $http_origin;
+    ""      https://$chargeops_forwarded_host;
+    "null"  https://$chargeops_forwarded_host;
 }
 
 server {
@@ -62,6 +73,7 @@ server {
         include /etc/nginx/proxy_params;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection $chargeops_connection_upgrade;
+        proxy_set_header Origin $chargeops_ws_origin;
     }
 
     # Web Portal and Vite HMR in dev. This must remain last.

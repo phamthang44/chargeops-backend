@@ -114,3 +114,22 @@ Toàn bộ tài liệu kiến trúc, đặc tả nghiệp vụ, API contract và
    git commit -m "docs(<scope>): <mô tả thay đổi rõ ràng>"
    git push origin main
    ```
+
+---
+
+## 🌐 Public Domain & Authentication Invariant (BẮT BUỘC CHO MỌI AGENT)
+
+1. **Public Origin Chuẩn Duy Nhất**: Hệ thống sử dụng domain Tailscale Funnel HTTPS:
+   ```text
+   https://thang.tail704409.ts.net
+   ```
+   cho toàn bộ client (Web Portal, Driver Mobile, Keycloak Auth & Realm, Google OAuth Broker Callback, Backend API, WebSocket, Grafana).
+2. **Tuyệt đối KHÔNG dùng `http://localhost:8088` hoặc bất kỳ URL cổng 8088 nào** làm redirect URI, OAuth callback, issuer URI hoặc client URL.
+   - Cổng `8088` (`127.0.0.1:8088`) chỉ là port lắng nghe cục bộ của container NGINX Gateway trên máy host để Tailscale Funnel map vào (`443 -> 8088`). Client bên ngoài hay agent không bao giờ gọi hay cấu hình trực tiếp cổng này.
+3. **Google Cloud Console OAuth Contract**:
+   - Authorized Redirect URI trên Google Cloud Console được đăng ký bắt đầu bằng:
+     ```text
+     https://thang.tail704409.ts.net/realms/chargeops/broker/google/endpoint
+     ```
+   - Bất kỳ URL redirect nào trả về chứa `8088` đều vi phạm contract của Google và gây lỗi `redirect_uri_mismatch`. Keycloak container luôn được cố định `KC_HOSTNAME: https://thang.tail704409.ts.net`.
+
