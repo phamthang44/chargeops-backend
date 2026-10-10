@@ -1,6 +1,5 @@
 package com.thang.chargeops.notification.outbox;
 
-import com.thang.chargeops.booking.entity.Booking;
 import com.thang.chargeops.booking.repository.BookingRepository;
 import com.thang.chargeops.common.enums.*;
 import com.thang.chargeops.payment.repository.PaymentRepository;

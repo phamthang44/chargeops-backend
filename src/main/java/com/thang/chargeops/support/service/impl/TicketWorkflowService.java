@@ -11,6 +11,8 @@ import com.thang.chargeops.profile.repository.UserProfileRepository;
 import com.thang.chargeops.infra.identity.IdentityRoleService;
 import com.thang.chargeops.common.enums.Role;
 import com.thang.chargeops.common.enums.UserStatus;
+import com.thang.chargeops.notification.model.NotificationEventType;
+import com.thang.chargeops.profile.model.PrimaryRole;
 import com.thang.chargeops.profile.support.CurrentProfileProvider;
 import com.thang.chargeops.notification.service.NotificationService;
 import com.thang.chargeops.station.staff.entity.StaffAssignmentStatus;
@@ -253,6 +255,7 @@ public class TicketWorkflowService {
             throw new AppException(TicketErrorCode.STATE_CONFLICT);
         t.close("REPORTER_CONFIRMED");
         event(t, actorId, REPORTER, "REPORTER_CONFIRMED", TicketStatus.RESOLVED, oldHandler, reason);
+        notifyTicketClosed(t, reason);
     }
 
     private void continueAfterResolution(SupportTicket t, UUID actorId, UUID oldHandler, String reason) {
@@ -262,6 +265,7 @@ public class TicketWorkflowService {
         } else if (actorId.equals(oldHandler) && eligible(t, actorId)) {
             t.continueWork(t.getAssignedHandler());
             event(t, actorId, kind(t, actorId), "HANDLER_CONTINUED", TicketStatus.RESOLVED, oldHandler, reason);
+            notifyTicketReopened(t, reason);
         } else {
             throw new AppException(TicketErrorCode.ACCESS_DENIED);
         }
@@ -272,6 +276,7 @@ public class TicketWorkflowService {
         UserProfile handler = oldHandler != null && eligibleHandler(t) ? t.getAssignedHandler() : null;
         t.continueWork(handler);
         event(t, reporter, REPORTER, "REPORTER_CONTINUED", TicketStatus.RESOLVED, oldHandler, reason);
+        notifyTicketReopened(t, reason);
     }
 
     private boolean eligibleHandler(SupportTicket t) {
@@ -301,6 +306,78 @@ public class TicketWorkflowService {
             "/tickets/" + t.getId(), clock.instant());
     }
 
+    private void notifyTicketClosed(SupportTicket t, String reason) {
+        String sourceKey = t.getId() + ":" + t.getResolutionCycle() + ":CLOSED";
+        var params = new HashMap<String, Object>();
+        params.put("code", t.getTicketCode());
+        if (reason != null && !reason.isBlank()) {
+            params.put("reason", reason);
+        }
+        var content = new NotificationContent(
+                NotificationI18nKey.format(NotificationI18nKey.TICKET_CLOSED_TITLE, Map.of("code", t.getTicketCode())),
+                NotificationI18nKey.format(NotificationI18nKey.TICKET_CLOSED_BODY, params),
+                clock.instant());
+
+        UserProfile handler = t.getAssignedHandler();
+        if (handler != null) {
+            NotificationAudience audience = t.getStation() == null
+                    ? NotificationAudience.ADMIN
+                    : (handler.getId().equals(t.getStation().getOwner().getId()) ? NotificationAudience.OWNER : NotificationAudience.STAFF);
+            notifications.saveIfAbsent(AppNotification.ticketLifecycle(
+                    t, handler.getId(), audience, NotificationEventType.TICKET_CLOSED, sourceKey + ":HANDLER", content));
+        }
+
+        if (t.getStation() != null) {
+            UserProfile owner = t.getStation().getOwner();
+            if (owner != null && (handler == null || !owner.getId().equals(handler.getId()))) {
+                notifications.saveIfAbsent(AppNotification.ticketLifecycle(
+                        t, owner.getId(), NotificationAudience.OWNER, NotificationEventType.TICKET_CLOSED, sourceKey + ":OWNER", content));
+            }
+        } else if (handler == null) {
+            for (UserProfile admin : profiles.findAllByPrimaryRoleAndStatusAndDeletedAtIsNull(
+                    PrimaryRole.ADMIN, UserStatus.ACTIVE)) {
+                notifications.saveIfAbsent(AppNotification.ticketLifecycle(
+                        t, admin.getId(), NotificationAudience.ADMIN, NotificationEventType.TICKET_CLOSED, sourceKey + ":" + admin.getId(), content));
+            }
+        }
+    }
+
+    private void notifyTicketReopened(SupportTicket t, String reason) {
+        String sourceKey = t.getId() + ":" + t.getResolutionCycle() + ":REOPENED";
+        var params = new HashMap<String, Object>();
+        params.put("code", t.getTicketCode());
+        if (reason != null && !reason.isBlank()) {
+            params.put("reason", reason);
+        }
+        var content = new NotificationContent(
+                NotificationI18nKey.format(NotificationI18nKey.TICKET_REOPENED_TITLE, Map.of("code", t.getTicketCode())),
+                NotificationI18nKey.format(NotificationI18nKey.TICKET_REOPENED_BODY, params),
+                clock.instant());
+
+        UserProfile handler = t.getAssignedHandler();
+        if (handler != null) {
+            NotificationAudience audience = t.getStation() == null
+                    ? NotificationAudience.ADMIN
+                    : (handler.getId().equals(t.getStation().getOwner().getId()) ? NotificationAudience.OWNER : NotificationAudience.STAFF);
+            notifications.saveIfAbsent(AppNotification.ticketLifecycle(
+                    t, handler.getId(), audience, NotificationEventType.TICKET_REOPENED, sourceKey + ":HANDLER", content));
+        }
+
+        if (t.getStation() != null) {
+            UserProfile owner = t.getStation().getOwner();
+            if (owner != null && (handler == null || !owner.getId().equals(handler.getId()))) {
+                notifications.saveIfAbsent(AppNotification.ticketLifecycle(
+                        t, owner.getId(), NotificationAudience.OWNER, NotificationEventType.TICKET_REOPENED, sourceKey + ":OWNER", content));
+            }
+        } else if (handler == null) {
+            for (UserProfile admin : profiles.findAllByPrimaryRoleAndStatusAndDeletedAtIsNull(
+                    PrimaryRole.ADMIN, UserStatus.ACTIVE)) {
+                notifications.saveIfAbsent(AppNotification.ticketLifecycle(
+                        t, admin.getId(), NotificationAudience.ADMIN, NotificationEventType.TICKET_REOPENED, sourceKey + ":" + admin.getId(), content));
+            }
+        }
+    }
+
     @Transactional
     public boolean autoClose(UUID id, Instant now) {
         SupportTicket t = locked(id, null);
@@ -309,6 +386,7 @@ public class TicketWorkflowService {
         UUID oldHandler = t.getAssignedHandler() == null ? null : t.getAssignedHandler().getId();
         t.close("AUTO_CLOSED_NO_RESPONSE");
         event(t, null, "SYSTEM", "AUTO_CLOSED_NO_RESPONSE", TicketStatus.RESOLVED, oldHandler, null);
+        notifyTicketClosed(t, "Auto-closed: no response from reporter");
         tickets.saveAndFlush(t);
         return true;
     }
