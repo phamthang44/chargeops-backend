@@ -4,9 +4,13 @@ import com.thang.chargeops.common.constant.SystemConstant;
 import com.thang.chargeops.common.enums.UserStatus;
 import com.thang.chargeops.common.response.ApiResult;
 import com.thang.chargeops.profile.dto.AdminUserProfileResponse;
+import com.thang.chargeops.profile.dto.AdminUserStatusRequest;
+import com.thang.chargeops.profile.dto.AdminUserStatusResponse;
 import com.thang.chargeops.profile.dto.AdminUserSummaryResponse;
 import com.thang.chargeops.profile.model.PrimaryRole;
 import com.thang.chargeops.profile.service.AdminUserQueryService;
+import com.thang.chargeops.profile.service.AdminUserStatusService;
+import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import lombok.RequiredArgsConstructor;
@@ -15,7 +19,9 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -32,6 +38,7 @@ import java.util.UUID;
 public class AdminUserController {
 
     private final AdminUserQueryService adminUsers;
+    private final AdminUserStatusService adminUserStatus;
 
     @GetMapping
     public ResponseEntity<ApiResult<List<AdminUserProfileResponse>>> list(
@@ -57,5 +64,14 @@ public class AdminUserController {
     public ResponseEntity<ApiResult<AdminUserProfileResponse>> detail(@PathVariable UUID profileId) {
         return ResponseEntity.ok().cacheControl(CacheControl.noStore())
                 .body(ApiResult.success(adminUsers.detail(profileId)));
+    }
+
+    /** UM-02: suspend/resume DRIVERS + STAFF (UM-00 §6). */
+    @PatchMapping("/{profileId}/status")
+    public ResponseEntity<ApiResult<AdminUserStatusResponse>> updateStatus(
+            @PathVariable UUID profileId,
+            @Valid @RequestBody AdminUserStatusRequest request) {
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore())
+                .body(ApiResult.success(adminUserStatus.updateStatus(profileId, request)));
     }
 }

@@ -81,6 +81,8 @@ public class StompAuthChannelInterceptor implements ChannelInterceptor {
 
     private final JwtDecoder jwtDecoder;
     private final JwtRoleConverter jwtRoleConverter;
+    private final com.thang.chargeops.profile.repository.UserProfileRepository userProfileRepository;
+    private final WebSocketSessionRegistry sessionRegistry;
 
     @Override
     public Message<?> preSend(Message<?> message, MessageChannel channel) {
@@ -116,6 +118,9 @@ public class StompAuthChannelInterceptor implements ChannelInterceptor {
             throw new AccessDeniedException("STOMP CONNECT token rejected");
         }
         accessor.setUser(new JwtAuthenticationToken(jwt, jwtRoleConverter.convert(jwt)));
+        // UM-02: account gate — suspended/deleted không được mở STOMP session.
+        requireActiveAccount(jwt.getSubject());
+        sessionRegistry.bindSubject(accessor.getSessionId(), jwt.getSubject());
         Instant expiresAt = jwt.getExpiresAt();
         if (expiresAt != null) {
             Map<String, Object> sessionAttributes = accessor.getSessionAttributes();
@@ -129,6 +134,10 @@ public class StompAuthChannelInterceptor implements ChannelInterceptor {
     private void authorizeSubscribe(StompHeaderAccessor accessor) {
         if (accessor.getUser() == null) {
             throw new AccessDeniedException("STOMP SUBSCRIBE requires an authenticated session");
+        }
+        // UM-02: re-check account status tại SUBSCRIBE (token có thể sống qua suspend).
+        if (accessor.getUser() instanceof JwtAuthenticationToken jwtAuth) {
+            requireActiveAccount(jwtAuth.getToken().getSubject());
         }
         Map<String, Object> sessionAttributes = accessor.getSessionAttributes();
         if (sessionAttributes != null
@@ -144,5 +153,13 @@ public class StompAuthChannelInterceptor implements ChannelInterceptor {
             throw new AccessDeniedException("Subscription destination is not allowed");
         }
         log.info("STOMP SUBSCRIBE allowed for destination: {}", destination);
+    }
+
+    /** UM-02: fail-closed khi profile không tồn tại hoặc SUSPENDED/soft-deleted. */
+    private void requireActiveAccount(String subject) {
+        userProfileRepository.findByKeycloakId(subject)
+                .filter(profile -> profile.getDeletedAt() == null
+                        && profile.getStatus() == com.thang.chargeops.common.enums.UserStatus.ACTIVE)
+                .orElseThrow(() -> new AccessDeniedException("Account is suspended or inactive"));
     }
 }

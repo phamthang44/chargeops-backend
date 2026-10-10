@@ -116,12 +116,22 @@ class WebSocketHardwarePathIntegrationTest {
     @Autowired
     private PlatformTransactionManager transactionManager;
 
+    @Autowired
+    private org.springframework.jdbc.core.JdbcTemplate jdbcTemplate;
+
     private StandardWebSocketClient webSocketClient;
     private WebSocketStompClient stompClient;
     private ThreadPoolTaskScheduler taskScheduler;
 
     @BeforeEach
     void setUpClient() {
+        // UM-02: CONNECT fail-closed — seed an ACTIVE profile for the test subject.
+        jdbcTemplate.update("""
+                INSERT INTO user_profile(id, keycloak_id, email, display_name, status, created_at, updated_at)
+                VALUES (?, ?, ?, ?, 'ACTIVE', now(), now())
+                ON CONFLICT (keycloak_id) DO NOTHING
+                """,
+                UUID.randomUUID(), "ws-test-user", "ws-test@test.local", "WS Test");
         TOKEN_TTL_SECONDS.set(300);
         taskScheduler = new ThreadPoolTaskScheduler();
         taskScheduler.setPoolSize(1);

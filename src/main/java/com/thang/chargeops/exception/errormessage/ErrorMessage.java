@@ -80,7 +80,8 @@ public final class ErrorMessage {
                         RefundErrorMessage.templates(),
                         TicketErrorMessage.templates(),
                         PayoutErrorMessage.templates(),
-                        NotificationErrorMessage.templates()
+                        NotificationErrorMessage.templates(),
+                        UserErrorMessage.templates()
                 )
                 .flatMap(List::stream)
                 .collect(toUnmodifiableMap(Template::key, Function.identity()));

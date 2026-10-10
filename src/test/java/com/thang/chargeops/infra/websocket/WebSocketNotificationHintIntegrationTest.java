@@ -43,6 +43,7 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
@@ -118,12 +119,24 @@ class WebSocketNotificationHintIntegrationTest {
     @Autowired
     private PlatformTransactionManager transactionManager;
 
+    @Autowired
+    private org.springframework.jdbc.core.JdbcTemplate jdbcTemplate;
+
     private StandardWebSocketClient webSocketClient;
     private WebSocketStompClient stompClient;
     private ThreadPoolTaskScheduler taskScheduler;
 
     @BeforeEach
     void setUpClient() {
+        // UM-02: CONNECT fail-closed — seed ACTIVE profiles for both test principals.
+        for (String subject : List.of("hint-user-a", "hint-user-b")) {
+            jdbcTemplate.update("""
+                    INSERT INTO user_profile(id, keycloak_id, email, display_name, status, created_at, updated_at)
+                    VALUES (?, ?, ?, ?, 'ACTIVE', now(), now())
+                    ON CONFLICT (keycloak_id) DO NOTHING
+                    """,
+                    UUID.randomUUID(), subject, subject + "@test.local", subject);
+        }
         taskScheduler = new ThreadPoolTaskScheduler();
         taskScheduler.setPoolSize(1);
         taskScheduler.setDaemon(true);

@@ -47,6 +47,7 @@ public class SecurityConfig {
     private final RestAccessDeniedHandler accessDeniedHandler;
     private final UserProfileRepository userProfileRepository;
     private final CurrentActorContext currentActorContext;
+    private final tools.jackson.databind.ObjectMapper objectMapper;
 
     @Value("${spring.security.oauth2.resourceserver.jwt.issuer-uri}")
     private String issuerUri;
@@ -78,7 +79,7 @@ public class SecurityConfig {
                 .oauth2ResourceServer(oauth -> oauth
                         .jwt(jwt -> jwt.jwtAuthenticationConverter(jwtAuthenticationConverter())))
                 .addFilterAfter(
-                        new CurrentActorFilter(userProfileRepository, currentActorContext),
+                        new CurrentActorFilter(userProfileRepository, currentActorContext, objectMapper),
                         BearerTokenAuthenticationFilter.class
                 )
                 .exceptionHandling(ex -> ex

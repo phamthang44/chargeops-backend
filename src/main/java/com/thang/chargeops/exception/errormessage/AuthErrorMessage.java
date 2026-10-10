@@ -15,6 +15,8 @@ public final class AuthErrorMessage {
             template("error.auth.accessDenied", "You do not have permission to access this resource");
     public static final ErrorMessage.Template EMAIL_CLAIM_MISSING =
             template("error.auth.emailClaimMissing", "Email is missing from the authenticated token");
+    public static final ErrorMessage.Template ACCOUNT_SUSPENDED =
+            template("error.auth.accountSuspended", "Account is suspended or no longer active");
 
     private AuthErrorMessage() {
     }
@@ -25,7 +27,8 @@ public final class AuthErrorMessage {
                 TOKEN_EXPIRED,
                 TOKEN_INVALID,
                 ACCESS_DENIED,
-                EMAIL_CLAIM_MISSING
+                EMAIL_CLAIM_MISSING,
+                ACCOUNT_SUSPENDED
         );
     }
 }

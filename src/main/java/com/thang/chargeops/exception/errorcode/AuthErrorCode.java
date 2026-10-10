@@ -13,7 +13,8 @@ public enum AuthErrorCode implements BaseErrorCode {
     TOKEN_EXPIRED(HttpStatus.UNAUTHORIZED, "AUTH_002", AuthErrorMessage.TOKEN_EXPIRED),
     TOKEN_INVALID(HttpStatus.UNAUTHORIZED, "AUTH_003", AuthErrorMessage.TOKEN_INVALID),
     ACCESS_DENIED(HttpStatus.FORBIDDEN, "AUTH_004", AuthErrorMessage.ACCESS_DENIED),
-    EMAIL_CLAIM_MISSING(HttpStatus.BAD_REQUEST, "AUTH_005", AuthErrorMessage.EMAIL_CLAIM_MISSING);
+    EMAIL_CLAIM_MISSING(HttpStatus.BAD_REQUEST, "AUTH_005", AuthErrorMessage.EMAIL_CLAIM_MISSING),
+    ACCOUNT_SUSPENDED(HttpStatus.FORBIDDEN, "AUTH_006", AuthErrorMessage.ACCOUNT_SUSPENDED);
 
     private final HttpStatus httpStatus;
     private final String code;

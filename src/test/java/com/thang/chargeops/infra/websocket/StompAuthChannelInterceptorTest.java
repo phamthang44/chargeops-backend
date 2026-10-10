@@ -1,6 +1,9 @@
 package com.thang.chargeops.infra.websocket;
 
+import com.thang.chargeops.common.enums.UserStatus;
 import com.thang.chargeops.infra.security.JwtRoleConverter;
+import com.thang.chargeops.profile.entity.UserProfile;
+import com.thang.chargeops.profile.repository.UserProfileRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -21,11 +24,13 @@ import java.time.Instant;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.function.Consumer;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -40,11 +45,67 @@ class StompAuthChannelInterceptorTest {
     @Mock
     private MessageChannel channel;
 
+    @Mock
+    private UserProfileRepository userProfileRepository;
+
+    @Mock
+    private WebSocketSessionRegistry sessionRegistry;
+
     private StompAuthChannelInterceptor interceptor;
 
     @BeforeEach
     void setUp() {
-        interceptor = new StompAuthChannelInterceptor(jwtDecoder, new JwtRoleConverter());
+        interceptor = new StompAuthChannelInterceptor(
+                jwtDecoder, new JwtRoleConverter(), userProfileRepository, sessionRegistry);
+        mockActiveProfile("user-1");
+    }
+
+    private void mockActiveProfile(String subject) {
+        UserProfile profile = mock(UserProfile.class);
+        org.mockito.Mockito.lenient().when(profile.getDeletedAt()).thenReturn(null);
+        org.mockito.Mockito.lenient().when(profile.getStatus()).thenReturn(UserStatus.ACTIVE);
+        org.mockito.Mockito.lenient().when(userProfileRepository.findByKeycloakId(subject))
+                .thenReturn(Optional.of(profile));
+    }
+
+    @Test
+    void connectWithSuspendedProfileIsRejected() {
+        UserProfile suspended = mock(UserProfile.class);
+        when(suspended.getDeletedAt()).thenReturn(null);
+        when(suspended.getStatus()).thenReturn(UserStatus.SUSPENDED);
+        when(userProfileRepository.findByKeycloakId("user-1")).thenReturn(Optional.of(suspended));
+        when(jwtDecoder.decode(VALID_TOKEN)).thenReturn(jwt(Instant.now().plusSeconds(600)));
+
+        StompHeaderAccessor accessor = accessor(StompCommand.CONNECT, a -> {
+            a.setNativeHeader("Authorization", "Bearer " + VALID_TOKEN);
+            a.setSessionAttributes(new HashMap<>());
+        });
+
+        assertThatThrownBy(() -> interceptor.preSend(message(accessor), channel))
+                .isInstanceOf(AccessDeniedException.class)
+                .hasMessageContaining("suspended");
+    }
+
+    @Test
+    void subscribeWithSuspendedProfilePrincipalIsRejected() {
+        Jwt jwt = jwt(Instant.now().plusSeconds(600));
+        StompHeaderAccessor accessor = accessor(StompCommand.SUBSCRIBE, a -> {
+            a.setDestination("/topic/stations/" + STATION_ID + "/hardware");
+            a.setUser(new JwtAuthenticationToken(jwt, List.of()));
+            Map<String, Object> attributes = new HashMap<>();
+            attributes.put(StompAuthChannelInterceptor.SESSION_ATTR_TOKEN_EXPIRES_AT,
+                    jwt.getExpiresAt().toEpochMilli());
+            a.setSessionAttributes(attributes);
+        });
+
+        UserProfile suspended = mock(UserProfile.class);
+        when(suspended.getDeletedAt()).thenReturn(null);
+        when(suspended.getStatus()).thenReturn(UserStatus.SUSPENDED);
+        when(userProfileRepository.findByKeycloakId("user-1")).thenReturn(Optional.of(suspended));
+
+        assertThatThrownBy(() -> interceptor.preSend(message(accessor), channel))
+                .isInstanceOf(AccessDeniedException.class)
+                .hasMessageContaining("suspended");
     }
 
     // --- CONNECT ---

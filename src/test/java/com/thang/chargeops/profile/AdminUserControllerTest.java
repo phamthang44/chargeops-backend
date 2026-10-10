@@ -4,7 +4,9 @@ import com.thang.chargeops.exception.GlobalHandlerError;
 import com.thang.chargeops.infra.security.RestAccessDeniedHandler;
 import com.thang.chargeops.infra.security.RestAuthenticationEntryPoint;
 import com.thang.chargeops.profile.controller.AdminUserController;
+import com.thang.chargeops.profile.dto.AdminUserStatusResponse;
 import com.thang.chargeops.profile.service.AdminUserQueryService;
+import com.thang.chargeops.profile.service.AdminUserStatusService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
@@ -30,6 +32,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -39,6 +42,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class AdminUserControllerTest {
     @Autowired MockMvc mockMvc;
     @MockitoBean AdminUserQueryService adminUsers;
+    @MockitoBean AdminUserStatusService adminUserStatus;
     @MockitoBean RestAuthenticationEntryPoint authenticationEntryPoint;
     @MockitoBean RestAccessDeniedHandler accessDeniedHandler;
 
@@ -113,5 +117,63 @@ class AdminUserControllerTest {
                 .thenReturn(new PageImpl<>(List.of(), PageRequest.of(0, 20), 0));
         mockMvc.perform(get("/api/v1/admin/users").param("status", "SUSPENDED"))
                 .andExpect(status().isOk());
+    }
+
+    // --- PATCH status (UM-02) ---
+
+    @Test
+    @WithMockUser(roles = "ADMIN")
+    void adminSuspendsDriverAndReturnsSnapshot() throws Exception {
+        var profileId = java.util.UUID.randomUUID();
+        var commandId = java.util.UUID.randomUUID();
+        when(adminUserStatus.updateStatus(eq(profileId), any())).thenReturn(
+                new AdminUserStatusResponse(profileId, "SUSPENDED", 1L, true, commandId));
+        mockMvc.perform(patch("/api/v1/admin/users/" + profileId + "/status")
+                        .contentType("application/json")
+                        .content("""
+                                {"status":"SUSPENDED","expectedVersion":0,"reason":"Vi phạm","commandId":"%s"}
+                                """.formatted(commandId)))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Cache-Control", "no-store"))
+                .andExpect(jsonPath("$.data.status").value("SUSPENDED"))
+                .andExpect(jsonPath("$.data.changed").value(true))
+                .andExpect(jsonPath("$.data.version").value(1));
+    }
+
+    @Test
+    @WithMockUser(roles = "ADMIN")
+    void patchStatusRejectsBlankReason() throws Exception {
+        var profileId = java.util.UUID.randomUUID();
+        mockMvc.perform(patch("/api/v1/admin/users/" + profileId + "/status")
+                        .contentType("application/json")
+                        .content("""
+                                {"status":"SUSPENDED","expectedVersion":0,"reason":"  ","commandId":"%s"}
+                                """.formatted(java.util.UUID.randomUUID())))
+                .andExpect(status().isBadRequest());
+        verifyNoInteractions(adminUserStatus);
+    }
+
+    @Test
+    @WithMockUser(roles = "ADMIN")
+    void patchStatusRejectsMissingFields() throws Exception {
+        var profileId = java.util.UUID.randomUUID();
+        mockMvc.perform(patch("/api/v1/admin/users/" + profileId + "/status")
+                        .contentType("application/json")
+                        .content("{\"status\":\"SUSPENDED\"}"))
+                .andExpect(status().isBadRequest());
+        verifyNoInteractions(adminUserStatus);
+    }
+
+    @Test
+    @WithMockUser(roles = "DRIVER")
+    void driverCannotPatchStatus() throws Exception {
+        var profileId = java.util.UUID.randomUUID();
+        mockMvc.perform(patch("/api/v1/admin/users/" + profileId + "/status")
+                        .contentType("application/json")
+                        .content("""
+                                {"status":"SUSPENDED","expectedVersion":0,"reason":"x","commandId":"%s"}
+                                """.formatted(java.util.UUID.randomUUID())))
+                .andExpect(status().isForbidden());
+        verifyNoInteractions(adminUserStatus);
     }
 }

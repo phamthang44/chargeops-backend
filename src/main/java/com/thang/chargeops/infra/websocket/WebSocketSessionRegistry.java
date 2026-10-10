@@ -24,6 +24,8 @@ import java.util.concurrent.ConcurrentHashMap;
 public class WebSocketSessionRegistry {
 
     private final ConcurrentHashMap<String, WebSocketSession> sessions = new ConcurrentHashMap<>();
+    /** UM-02: sessionId → Keycloak subject, bound at STOMP CONNECT (best-effort only). */
+    private final ConcurrentHashMap<String, String> sessionSubjects = new ConcurrentHashMap<>();
 
     public WebSocketHandlerDecoratorFactory decoratorFactory() {
         return this::decorate;
@@ -33,6 +35,25 @@ public class WebSocketSessionRegistry {
         return new TrackingHandlerDecorator(handler);
     }
 
+    /** UM-02: liên kết STOMP session với subject để có thể đóng theo user khi suspend. */
+    public void bindSubject(String sessionId, String subject) {
+        if (sessionId != null && subject != null) {
+            sessionSubjects.put(sessionId, subject);
+        }
+    }
+
+    /** UM-02: best-effort đóng mọi session của user (gọi từ suspend worker/API). */
+    public void closeSessionsByPrincipal(String subject, String reason) {
+        if (subject == null) {
+            return;
+        }
+        sessionSubjects.forEach((sessionId, boundSubject) -> {
+            if (subject.equals(boundSubject)) {
+                closeSession(sessionId, reason);
+            }
+        });
+    }
+
     /**
      * Closes the session at token expiry. Failures are logged and swallowed: the client is
      * expected to reconnect with a fresh token regardless, and the SUBSCRIBE-side expiry check
@@ -40,6 +61,7 @@ public class WebSocketSessionRegistry {
      */
     public void closeSession(String sessionId, String reason) {
         WebSocketSession session = sessions.remove(sessionId);
+        sessionSubjects.remove(sessionId);
         if (session == null || !session.isOpen()) {
             return;
         }
@@ -73,12 +95,14 @@ public class WebSocketSessionRegistry {
         @Override
         public void afterConnectionClosed(WebSocketSession session, CloseStatus closeStatus) throws Exception {
             sessions.remove(session.getId());
+            sessionSubjects.remove(session.getId());
             super.afterConnectionClosed(session, closeStatus);
         }
 
         @Override
         public void handleTransportError(WebSocketSession session, Throwable exception) throws Exception {
             sessions.remove(session.getId());
+            sessionSubjects.remove(session.getId());
             super.handleTransportError(session, exception);
         }
     }
