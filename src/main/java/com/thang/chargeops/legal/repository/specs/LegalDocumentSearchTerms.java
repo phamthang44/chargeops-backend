@@ -34,8 +34,8 @@ final class LegalDocumentSearchTerms {
         if (term == null) {
             return "";
         }
-        return term.replace("!", "!!")
-                .replace("%", "!%")
-                .replace("_", "!_");
+        return term.replace("\\", "\\\\")
+                .replace("%", "\\%")
+                .replace("_", "\\_");
     }
 }

@@ -39,23 +39,23 @@ public final class LegalDocumentSpecification {
 
                 // Match in any of: title, summary, eyebrow, slug, keywords
                 List<Predicate> matches = new ArrayList<>();
-                matches.add(cb.like(titleExpr, pattern, '!'));
-                matches.add(cb.like(summaryExpr, pattern, '!'));
-                matches.add(cb.like(eyebrowExpr, pattern, '!'));
-                matches.add(cb.like(slugExpr, pattern, '!'));
-                matches.add(cb.like(keywordsExpr, pattern, '!'));
+                matches.add(cb.like(titleExpr, pattern, '\\'));
+                matches.add(cb.like(summaryExpr, pattern, '\\'));
+                matches.add(cb.like(eyebrowExpr, pattern, '\\'));
+                matches.add(cb.like(slugExpr, pattern, '\\'));
+                matches.add(cb.like(keywordsExpr, pattern, '\\'));
                 predicates.add(cb.or(matches.toArray(Predicate[]::new)));
 
                 // Relevance Ranking (only applied to content queries, not count queries)
                 if (query.getResultType() != Long.class && query.getResultType() != long.class) {
                     Predicate titleExactMatch = cb.equal(titleExpr, normalizedSearch);
-                    Predicate titleContainsMatch = cb.like(titleExpr, pattern, '!');
+                    Predicate titleContainsMatch = cb.like(titleExpr, pattern, '\\');
 
                     // Exact keyword match: checks if array contains exact keyword delimited by ' | '
                     Expression<String> keywordsDelimited = cb.function("array_to_string", String.class, root.get("keywords"), cb.literal(" | "));
                     Expression<String> keywordsDelimitedLower = cb.lower(cb.function("unaccent", String.class, keywordsDelimited));
                     Expression<String> fullKeywordString = cb.concat(cb.literal(" | "), cb.concat(keywordsDelimitedLower, cb.literal(" | ")));
-                    Predicate exactKeywordMatch = cb.like(fullKeywordString, exactKeywordPattern, '!');
+                    Predicate exactKeywordMatch = cb.like(fullKeywordString, exactKeywordPattern, '\\');
 
                     Expression<Integer> rank = cb.<Integer>selectCase()
                             .when(titleExactMatch, 1)
