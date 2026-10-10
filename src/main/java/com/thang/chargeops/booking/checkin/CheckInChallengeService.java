@@ -10,6 +10,8 @@ public interface CheckInChallengeService {
 
     String create(String connectorId);
 
+    IssuedCheckInChallenge getOrCreate(String connectorId);
+
     UUID resolve(String token);
 
     ResolvedCheckInChallenge resolveWithExpiry(String token);

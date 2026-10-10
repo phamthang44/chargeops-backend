@@ -39,23 +39,24 @@ class CheckInChallengeRepositoryTest {
 
     @Test
     void compareAndDelete_returnsTrueWhenMatched() {
-        when(redisTemplate.execute(any(RedisScript.class), eq(List.of("checkin:challenge:" + token)), eq(connectorId.toString())))
+        when(redisTemplate.execute(any(RedisScript.class), eq(List.of("checkin:challenge:" + token, "checkin:connector:" + connectorId)), eq(connectorId.toString())))
                 .thenReturn(1L);
 
         boolean result = repository.compareAndDelete(token, connectorId);
 
         assertThat(result).isTrue();
         ArgumentCaptor<RedisScript<Long>> scriptCaptor = redisScriptCaptor();
-        verify(redisTemplate).execute(scriptCaptor.capture(), eq(List.of("checkin:challenge:" + token)), eq(connectorId.toString()));
+        verify(redisTemplate).execute(scriptCaptor.capture(), eq(List.of("checkin:challenge:" + token, "checkin:connector:" + connectorId)), eq(connectorId.toString()));
         assertThat(scriptCaptor.getValue().getScriptAsString())
                 .contains("redis.call('get', KEYS[1])")
                 .contains("if val == ARGV[1]")
-                .contains("redis.call('del', KEYS[1])");
+                .contains("redis.call('del', KEYS[1])")
+                .contains("redis.call('del', KEYS[2])");
     }
 
     @Test
     void compareAndDelete_returnsFalseWhenMismatch() {
-        when(redisTemplate.execute(any(RedisScript.class), eq(List.of("checkin:challenge:" + token)), eq(connectorId.toString())))
+        when(redisTemplate.execute(any(RedisScript.class), eq(List.of("checkin:challenge:" + token, "checkin:connector:" + connectorId)), eq(connectorId.toString())))
                 .thenReturn(0L);
 
         boolean result = repository.compareAndDelete(token, connectorId);
@@ -65,7 +66,7 @@ class CheckInChallengeRepositoryTest {
 
     @Test
     void compareAndDelete_returnsFalseWhenNotFoundOrExpired() {
-        when(redisTemplate.execute(any(RedisScript.class), eq(List.of("checkin:challenge:" + token)), eq(connectorId.toString())))
+        when(redisTemplate.execute(any(RedisScript.class), eq(List.of("checkin:challenge:" + token, "checkin:connector:" + connectorId)), eq(connectorId.toString())))
                 .thenReturn(-1L);
 
         boolean result = repository.compareAndDelete(token, connectorId);
@@ -116,6 +117,31 @@ class CheckInChallengeRepositoryTest {
         Optional<Long> ttl = repository.getRemainingTtlSeconds(token);
 
         assertThat(ttl).isEmpty();
+    }
+
+    @Test
+    void getOrCreate_reusesExistingTokenWhenValid() {
+        String existingToken = "existing-token-abc";
+        when(redisTemplate.execute(any(RedisScript.class), eq(List.of("checkin:connector:" + connectorId, "checkin:challenge:")),
+                eq(connectorId.toString()), eq(token), eq("60"), eq("5")))
+                .thenReturn(List.of(existingToken, "42"));
+
+        IssuedCheckInChallenge result = repository.getOrCreate(connectorId, token, Duration.ofSeconds(60));
+
+        assertThat(result.token()).isEqualTo(existingToken);
+        assertThat(result.expiresInSeconds()).isEqualTo(42L);
+    }
+
+    @Test
+    void getOrCreate_createsNewTokenWhenNoActiveToken() {
+        when(redisTemplate.execute(any(RedisScript.class), eq(List.of("checkin:connector:" + connectorId, "checkin:challenge:")),
+                eq(connectorId.toString()), eq(token), eq("60"), eq("5")))
+                .thenReturn(List.of(token, "60"));
+
+        IssuedCheckInChallenge result = repository.getOrCreate(connectorId, token, Duration.ofSeconds(60));
+
+        assertThat(result.token()).isEqualTo(token);
+        assertThat(result.expiresInSeconds()).isEqualTo(60L);
     }
 
     @SuppressWarnings({"unchecked", "rawtypes"})

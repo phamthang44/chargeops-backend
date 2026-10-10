@@ -8,6 +8,7 @@ import com.thang.chargeops.booking.checkin.CheckInChallengeRepository;
 import com.thang.chargeops.station.repository.ConnectorRepository;
 import com.thang.chargeops.station.policy.CheckInChallengePolicy;
 import com.thang.chargeops.booking.checkin.CheckInChallengeServiceImpl;
+import com.thang.chargeops.booking.checkin.IssuedCheckInChallenge;
 import com.thang.chargeops.booking.checkin.ResolvedCheckInChallenge;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -24,6 +25,7 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
@@ -54,15 +56,14 @@ class CheckInChallengeServiceImplTest {
     @Test
     void create_successWhenConnectorExists() {
         when(connectorRepository.findById(connectorId)).thenReturn(Optional.of(connector));
+        when(checkInChallengeRepository.getOrCreate(eq(connectorId), anyString(), eq(Duration.ofSeconds(60))))
+                .thenReturn(new IssuedCheckInChallenge("mock-token-123", 60L));
 
         String token = service.create(connectorId.toString());
 
-
         verify(checkInChallengePolicy).requireCanIssue(eq(connector), any());
-        assertThat(token).isNotBlank();
-        ArgumentCaptor<String> tokenCaptor = ArgumentCaptor.forClass(String.class);
-        verify(checkInChallengeRepository).save(tokenCaptor.capture(), eq(connectorId), eq(Duration.ofSeconds(60)));
-        assertThat(tokenCaptor.getValue()).isEqualTo(token);
+        assertThat(token).isEqualTo("mock-token-123");
+        verify(checkInChallengeRepository).getOrCreate(eq(connectorId), anyString(), eq(Duration.ofSeconds(60)));
     }
 
     @Test

@@ -26,10 +26,10 @@ public class ChargerSimulatorController {
     public ResponseEntity<ApiResult<CheckInChallengeResponse>> checkInChallenge(
             @PathVariable String connectorId
     ) {
-        String challengeToken = checkInChallengeService.create(connectorId);
+        IssuedCheckInChallenge challenge = checkInChallengeService.getOrCreate(connectorId);
         CheckInChallengeResponse response = new CheckInChallengeResponse(
-                challengeToken,
-                CheckInChallengeService.CHALLENGE_TTL_SECONDS
+                challenge.token(),
+                challenge.expiresInSeconds()
         );
         return ResponseEntity.ok()
                 .cacheControl(CacheControl.noStore())

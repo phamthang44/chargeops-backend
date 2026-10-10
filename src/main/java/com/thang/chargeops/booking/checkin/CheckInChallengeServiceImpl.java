@@ -22,7 +22,7 @@ public class CheckInChallengeServiceImpl implements CheckInChallengeService {
     private final CheckInChallengePolicy checkInChallengePolicy;
 
     @Override
-    public String create(String connectorId) {
+    public IssuedCheckInChallenge getOrCreate(String connectorId) {
         if (connectorId == null || connectorId.isBlank()) {
             throw new AppException(StationErrorCode.CONNECTOR_NOT_FOUND, connectorId);
         }
@@ -37,9 +37,13 @@ public class CheckInChallengeServiceImpl implements CheckInChallengeService {
         Connector connector = requireConnector(convertedConnectorId);
         checkInChallengePolicy.requireCanIssue(connector, Instant.now());
 
-        String token = UUID.randomUUID().toString();
-        checkInChallengeRepository.save(token, convertedConnectorId, CHALLENGE_TTL);
-        return token;
+        String generatedToken = UUID.randomUUID().toString();
+        return checkInChallengeRepository.getOrCreate(convertedConnectorId, generatedToken, CHALLENGE_TTL);
+    }
+
+    @Override
+    public String create(String connectorId) {
+        return getOrCreate(connectorId).token();
     }
 
     @Override

@@ -36,7 +36,8 @@ class ChargerSimulatorControllerTest {
 
     @Test
     void checkInChallenge_returnsSuccessWithTtl60AndNoHardwareId() {
-        when(checkInChallengeService.create(connectorId)).thenReturn(challengeToken);
+        when(checkInChallengeService.getOrCreate(connectorId))
+                .thenReturn(new IssuedCheckInChallenge(challengeToken, 60L));
 
         ResponseEntity<ApiResult<CheckInChallengeResponse>> responseEntity = controller.checkInChallenge(connectorId);
 
@@ -54,6 +55,6 @@ class ChargerSimulatorControllerTest {
         // Verification: Token is an opaque UUID, no hardware ID or MAC address leaked
         assertThat(data.challengeToken()).doesNotContain(connectorId);
 
-        verify(checkInChallengeService).create(connectorId);
+        verify(checkInChallengeService).getOrCreate(connectorId);
     }
 }
