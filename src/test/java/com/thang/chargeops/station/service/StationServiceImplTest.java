@@ -11,7 +11,9 @@ import com.thang.chargeops.exception.errorcode.StationErrorCode;
 import com.thang.chargeops.exception.errormessage.StationErrorMessage;
 import com.thang.chargeops.location.entity.AdministrativeWard;
 import com.thang.chargeops.location.service.AdministrativeLocationService;
+import com.thang.chargeops.notification.service.NotificationService;
 import com.thang.chargeops.profile.entity.UserProfile;
+import com.thang.chargeops.profile.repository.UserProfileRepository;
 import com.thang.chargeops.profile.support.CurrentProfileProvider;
 import com.thang.chargeops.station.dto.station.request.RegisterStationRequest;
 import com.thang.chargeops.station.dto.station.request.RejectStationRequest;
@@ -87,6 +89,12 @@ class StationServiceImplTest {
     private StationStatusHistoryService stationStatusHistoryService;
 
     @Mock
+    private NotificationService notificationService;
+
+    @Mock
+    private UserProfileRepository userProfileRepository;
+
+    @Mock
     private StationApprovalPolicy stationApprovalPolicy;
 
     @Mock
@@ -123,7 +131,9 @@ class StationServiceImplTest {
                         stationMapper,
                         currentProfileProvider,
                         administrativeLocationService,
-                        stationStatusHistoryService
+                        stationStatusHistoryService,
+                        notificationService,
+                        userProfileRepository
                 ),
                 new StationLifecycleUseCase(
                         stationRepository,
@@ -132,7 +142,8 @@ class StationServiceImplTest {
                         stationStatusHistoryService,
                         stationApprovalPolicy,
                         licenseRepository,
-                        stationOperatingScheduleRepository
+                        stationOperatingScheduleRepository,
+                        notificationService
                 ),
                 new OwnerStationUseCase(
                         stationRepository,
