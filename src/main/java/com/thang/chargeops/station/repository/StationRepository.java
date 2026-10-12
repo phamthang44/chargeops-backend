@@ -64,8 +64,12 @@ public interface StationRepository extends JpaRepository<Station, UUID>, JpaSpec
                            s.name AS name,
                            s.addressLine AS addressLine,
                            s.contactPhone AS contactPhone,
-                           province.fullName AS provinceName,
-                           ward.fullName AS wardName,
+                           CASE WHEN :lang = 'en'
+                                THEN COALESCE(NULLIF(province.fullNameEn, ''), province.fullName)
+                                ELSE province.fullName END AS provinceName,
+                           CASE WHEN :lang = 'en'
+                                THEN COALESCE(NULLIF(ward.fullNameEn, ''), ward.fullName)
+                                ELSE ward.fullName END AS wardName,
                            s.plannedChargePointCount AS plannedChargePointCount,
                            s.status AS status,
                            s.operationalStatus AS operationalStatus,
@@ -109,6 +113,7 @@ public interface StationRepository extends JpaRepository<Station, UUID>, JpaSpec
     Page<OwnerStationSummaryProjection> findOwnerStationSummaries(
             @Param("ownerId") UUID ownerId,
             @Param("at") Instant at,
+            @Param("lang") String lang,
             Pageable pageable
     );
 
@@ -118,7 +123,9 @@ public interface StationRepository extends JpaRepository<Station, UUID>, JpaSpec
                            s.stationCode AS stationCode,
                            s.name AS name,
                            COALESCE(NULLIF(owner.displayName, ''), owner.email) AS ownerDisplayName,
-                           province.fullName AS provinceName,
+                           CASE WHEN :lang = 'en'
+                                THEN COALESCE(NULLIF(province.fullNameEn, ''), province.fullName)
+                                ELSE province.fullName END AS provinceName,
                            s.plannedChargePointCount AS plannedChargePointCount,
                            s.createdAt AS submittedAt
                     FROM Station s
@@ -135,6 +142,7 @@ public interface StationRepository extends JpaRepository<Station, UUID>, JpaSpec
     )
     Page<StationApprovalSummaryProjection> findStationApprovalSummaries(
             @Param("status") StationStatus status,
+            @Param("lang") String lang,
             Pageable pageable
     );
 

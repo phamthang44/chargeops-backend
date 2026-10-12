@@ -7,6 +7,7 @@ import com.thang.chargeops.exception.AppException;
 import com.thang.chargeops.exception.errorcode.CommonErrorCode;
 import com.thang.chargeops.exception.errorcode.ProfileErrorCode;
 import com.thang.chargeops.exception.errorcode.StationErrorCode;
+import com.thang.chargeops.location.i18n.LocationNames;
 import com.thang.chargeops.location.service.AdministrativeLocationService;
 import com.thang.chargeops.profile.entity.UserProfile;
 import com.thang.chargeops.profile.support.CurrentProfileProvider;
@@ -91,7 +92,8 @@ public class OwnerStationRegistrationUseCase {
         var ward = station.getWard();
         return new OwnerStationRegistrationResponse(station.getId(), station.getStationCode(), station.getName(),
                 station.getAddressLine(), station.getDescription(), ward.getProvinceCode(), ward.getCode(),
-                ward.getProvince().getFullName(), ward.getFullName(), station.getLatitude(), station.getLongitude(),
+                LocationNames.provinceFullName(ward.getProvince()), LocationNames.wardFullName(ward),
+                station.getLatitude(), station.getLongitude(),
                 station.getContactPhone(), station.getPlannedChargePointCount(), station.getStatus(), station.getVersion());
     }
 }

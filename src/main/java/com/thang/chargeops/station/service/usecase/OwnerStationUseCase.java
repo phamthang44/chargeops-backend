@@ -25,6 +25,7 @@ import com.thang.chargeops.station.repository.StationOperationalStatusEventRepos
 import com.thang.chargeops.station.repository.StationRepository;
 import com.thang.chargeops.station.service.support.StationEffectiveStateResolver;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.i18n.LocaleContextHolder;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -105,6 +106,7 @@ public class OwnerStationUseCase {
                 stationRepository.findOwnerStationSummaries(
                         owner.getId(),
                         now,
+                        LocaleContextHolder.getLocale().getLanguage(),
                         pageable
                 );
 

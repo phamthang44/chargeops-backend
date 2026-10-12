@@ -1,6 +1,7 @@
 package com.thang.chargeops.location.dto;
 
 import com.thang.chargeops.location.entity.AdministrativeProvince;
+import com.thang.chargeops.location.i18n.LocationNames;
 
 public record AdministrativeProvinceResponse(
         String code,
@@ -10,8 +11,8 @@ public record AdministrativeProvinceResponse(
     public static AdministrativeProvinceResponse from(AdministrativeProvince province) {
         return new AdministrativeProvinceResponse(
                 province.getCode(),
-                province.getName(),
-                province.getFullName()
+                LocationNames.provinceName(province),
+                LocationNames.provinceFullName(province)
         );
     }
 }

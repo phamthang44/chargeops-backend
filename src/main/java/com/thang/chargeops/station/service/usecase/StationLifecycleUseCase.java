@@ -23,6 +23,7 @@ import com.thang.chargeops.station.repository.StationRepository;
 import com.thang.chargeops.station.service.StationStatusHistoryService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.i18n.LocaleContextHolder;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -148,6 +149,7 @@ public class StationLifecycleUseCase {
         Page<StationApprovalSummaryProjection> stations =
                 stationRepository.findStationApprovalSummaries(
                         StationStatus.PENDING_APPROVAL,
+                        LocaleContextHolder.getLocale().getLanguage(),
                         pageable
                 );
         return stations.map(stationMapper::toStationApprovalSummaryResponse);

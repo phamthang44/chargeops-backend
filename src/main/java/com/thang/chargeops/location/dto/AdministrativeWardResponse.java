@@ -1,6 +1,7 @@
 package com.thang.chargeops.location.dto;
 
 import com.thang.chargeops.location.entity.AdministrativeWard;
+import com.thang.chargeops.location.i18n.LocationNames;
 
 public record AdministrativeWardResponse(
         String code,
@@ -12,8 +13,8 @@ public record AdministrativeWardResponse(
         return new AdministrativeWardResponse(
                 ward.getCode(),
                 ward.getProvinceCode(),
-                ward.getName(),
-                ward.getFullName()
+                LocationNames.wardName(ward),
+                LocationNames.wardFullName(ward)
         );
     }
 }

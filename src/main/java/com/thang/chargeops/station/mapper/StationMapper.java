@@ -45,11 +45,11 @@ public interface StationMapper {
     )
     @Mapping(
             target = "provinceName",
-            source = "station.ward.province.fullName"
+            expression = "java(com.thang.chargeops.location.i18n.LocationNames.provinceFullName(station.getWard().getProvince()))"
     )
     @Mapping(
             target = "wardName",
-            source = "station.ward.fullName"
+            expression = "java(com.thang.chargeops.location.i18n.LocationNames.wardFullName(station.getWard()))"
     )
     @Mapping(
             target = "submittedAt",
@@ -93,8 +93,8 @@ public interface StationMapper {
     @Mapping(target = "submittedAt", source = "createdAt")
     StationCreatedResponse toStationCreatedResponse(Station station);
 
-    @Mapping(target = "provinceName", source = "station.ward.province.fullName")
-    @Mapping(target = "wardName", source = "station.ward.fullName")
+    @Mapping(target = "provinceName", expression = "java(com.thang.chargeops.location.i18n.LocationNames.provinceFullName(station.getWard().getProvince()))")
+    @Mapping(target = "wardName", expression = "java(com.thang.chargeops.location.i18n.LocationNames.wardFullName(station.getWard()))")
     @Mapping(target = "ownerId", source = "station.owner.id")
     @Mapping(target = "ownerDisplayName", expression = "java(resolveOwnerName(station.getOwner()))")
     @Mapping(target = "ownerEmail", source = "station.owner.email")
@@ -122,11 +122,11 @@ public interface StationMapper {
     )
     @Mapping(
             target = "provinceName",
-            source = "station.ward.province.fullName"
+            expression = "java(com.thang.chargeops.location.i18n.LocationNames.provinceFullName(station.getWard().getProvince()))"
     )
     @Mapping(
             target = "wardName",
-            source = "station.ward.fullName"
+            expression = "java(com.thang.chargeops.location.i18n.LocationNames.wardFullName(station.getWard()))"
     )
     @Mapping(
             target = "assets",
