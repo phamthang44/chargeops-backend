@@ -207,7 +207,14 @@ public class StationAssetUploadServiceImpl implements StationAssetUploadService 
         if (!StringUtils.hasText(originalName)) {
             return UUID.randomUUID() + ".jpg";
         }
-        return UUID.randomUUID() + "-" + originalName.trim().replaceAll("\\s+", "_");
+        // Extract simple filename across both Unix and Windows path separators to prevent path traversal (e.g. ../../evil.png or C:\boot.ini)
+        int lastSeparator = Math.max(originalName.lastIndexOf('/'), originalName.lastIndexOf('\\'));
+        String fileNameOnly = lastSeparator >= 0 ? originalName.substring(lastSeparator + 1) : originalName;
+        String sanitized = fileNameOnly.trim().replaceAll("[^a-zA-Z0-9._-]", "_");
+        if (sanitized.isBlank()) {
+            return UUID.randomUUID() + ".jpg";
+        }
+        return UUID.randomUUID() + "-" + sanitized;
     }
 
     private String requireUploadedValue(java.util.Optional<String> value, String message) {
