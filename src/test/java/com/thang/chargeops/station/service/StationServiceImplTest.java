@@ -64,6 +64,7 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
@@ -344,6 +345,7 @@ class StationServiceImplTest {
         when(stationRepository.findOwnerStationSummaries(
                 eq(ownerId),
                 any(Instant.class),
+                anyString(),
                 any(Pageable.class)
         ))
                 .thenReturn(stationPage);
@@ -367,6 +369,7 @@ class StationServiceImplTest {
         verify(stationRepository).findOwnerStationSummaries(
                 eq(ownerId),
                 any(Instant.class),
+                anyString(),
                 pageableCaptor.capture()
         );
         Pageable requestedPage = pageableCaptor.getValue();
@@ -402,6 +405,7 @@ class StationServiceImplTest {
 
         when(stationRepository.findStationApprovalSummaries(
                 eq(StationStatus.PENDING_APPROVAL),
+                anyString(),
                 any(Pageable.class)
         )).thenReturn(stationPage);
         when(stationMapper.toStationApprovalSummaryResponse(station)).thenReturn(expected);
@@ -411,6 +415,7 @@ class StationServiceImplTest {
         ArgumentCaptor<Pageable> pageableCaptor = ArgumentCaptor.forClass(Pageable.class);
         verify(stationRepository).findStationApprovalSummaries(
                 eq(StationStatus.PENDING_APPROVAL),
+                anyString(),
                 pageableCaptor.capture()
         );
         Pageable requestedPage = pageableCaptor.getValue();
