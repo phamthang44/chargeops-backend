@@ -25,8 +25,8 @@ class LegalDocumentSearchTermsTest {
 
     @Test
     void escapesLikeWildcardsAndTheEscapeCharacter() {
-        assertThat(LegalDocumentSearchTerms.containsPattern("100%_!"))
-                .isEqualTo("%100!%!_!!%");
+        assertThat(LegalDocumentSearchTerms.containsPattern("100%_\\"))
+                .isEqualTo("%100\\%\\_\\\\%");
     }
 
     @Test
