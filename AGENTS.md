@@ -119,17 +119,8 @@ Toàn bộ tài liệu kiến trúc, đặc tả nghiệp vụ, API contract và
 
 ## 🌐 Public Domain & Authentication Invariant (BẮT BUỘC CHO MỌI AGENT)
 
-1. **Public Origin Chuẩn Duy Nhất**: Hệ thống sử dụng domain Tailscale Funnel HTTPS:
-   ```text
-   https://thang.tail704409.ts.net
-   ```
-   cho toàn bộ client (Web Portal, Driver Mobile, Keycloak Auth & Realm, Google OAuth Broker Callback, Backend API, WebSocket, Grafana).
-2. **Tuyệt đối KHÔNG dùng `http://localhost:8088` hoặc bất kỳ URL cổng 8088 nào** làm redirect URI, OAuth callback, issuer URI hoặc client URL.
-   - Cổng `8088` (`127.0.0.1:8088`) chỉ là port lắng nghe cục bộ của container NGINX Gateway trên máy host để Tailscale Funnel map vào (`443 -> 8088`). Client bên ngoài hay agent không bao giờ gọi hay cấu hình trực tiếp cổng này.
-3. **Google Cloud Console OAuth Contract**:
-   - Authorized Redirect URI trên Google Cloud Console được đăng ký bắt đầu bằng:
-     ```text
-     https://thang.tail704409.ts.net/realms/chargeops/broker/google/endpoint
-     ```
-   - Bất kỳ URL redirect nào trả về chứa `8088` đều vi phạm contract của Google và gây lỗi `redirect_uri_mismatch`. Keycloak container luôn được cố định `KC_HOSTNAME: https://thang.tail704409.ts.net`.
-
+1. **Public Portal/Auth Origin**: `https://chargeops.online` serves the Web Portal, Backend API, Keycloak issuer/realm, Google OAuth broker callback, WebSocket, and Grafana through the Cloudflare Tunnel gateway.
+2. **Driver Web Preview**: `https://driver.chargeops.online` routes through the same Tunnel gateway to the local Driver Web preview on port `8082`. Port `8082` is a local upstream only; never use localhost or this port in public redirect URIs, issuer URLs, or OAuth callbacks.
+3. **Google Cloud Console OAuth Contract**: The authorized callback is `https://chargeops.online/realms/chargeops/broker/google/endpoint`.
+4. **Native Driver app**: Keep the native callback scheme `chargeops://auth/callback`; its API and Keycloak issuer use the public Portal/Auth origin above.
+5. Prior Tailscale Funnel settings and scripts are retained as rollback/reference material. They are not the active public-origin contract.

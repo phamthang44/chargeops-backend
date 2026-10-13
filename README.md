@@ -9,21 +9,20 @@ ChargeOps Backend is an enterprise-grade backend system powering an end-to-end e
 
 ## 🌐 Public Domain & Authentication Invariant
 
-The entire platform operates under a single canonical HTTPS public domain enabled by Tailscale Funnel:
+The platform uses Cloudflare Tunnel with a portal/auth origin and a separate Driver Web preview:
 
 ```text
-https://thang.tail704409.ts.net
+https://chargeops.online
+https://driver.chargeops.online
 ```
 
 > [!IMPORTANT]
 > **Production & Integration Contract**:
-> 1. **Single Public Origin**: All client applications (Web Portal, Driver Mobile, Keycloak Auth & Realm, Google OAuth Broker Callback, Backend API, WebSocket, Grafana) interact via `https://thang.tail704409.ts.net`.
-> 2. **Prohibition of Port 8088 in Client Contexts**: Port `8088` (`127.0.0.1:8088`) is strictly an internal local port on the host machine where Nginx Gateway listens for reverse-proxy mapping forwarded from Tailscale Funnel (`443 -> 8088`). External clients, OAuth redirect URIs, and frontend configs must **NEVER** reference port 8088.
-> 3. **Google OAuth Contract**: The registered Authorized Redirect URI is:
->    ```text
->    https://thang.tail704409.ts.net/realms/chargeops/broker/google/endpoint
->    ```
->    Any callback referencing `8088` violates Google OAuth contracts and causes `redirect_uri_mismatch`. Keycloak is pinned with `KC_HOSTNAME: https://thang.tail704409.ts.net`.
+> 1. `https://chargeops.online` serves the Web Portal, Backend API, Keycloak realm, Google OAuth callback, WebSocket and Grafana.
+> 2. `https://driver.chargeops.online` serves the Driver Web preview. Native driver builds keep the `chargeops://auth/callback` scheme and use the public API/Auth URLs.
+> 3. Port `8088` is the local gateway listener only. Public clients, redirect URIs and OAuth callbacks must not include it.
+> 4. The Google OAuth callback is `https://chargeops.online/realms/chargeops/broker/google/endpoint`.
+> 5. Tailscale-specific setup and launchers are retained as rollback/reference material in `TAILSCALE_AND_ENV_GUIDE.md` and the legacy scripts.
 
 ---
 
@@ -33,8 +32,8 @@ ChargeOps follows a clean modular monolith architecture with event-driven integr
 
 ```mermaid
 graph TD
-    Client[Web & Mobile Clients] -->|HTTPS 443| Funnel[Tailscale Funnel :443]
-    Funnel --> Gateway[Nginx Gateway :8088 internal]
+    Client[Web & Mobile Clients] -->|HTTPS 443| Tunnel[Cloudflare Tunnel :443]
+    Tunnel --> Gateway[Nginx Gateway :8088 internal]
     Gateway --> API[Spring Boot 21 Backend :8081]
     Gateway --> Keycloak[Keycloak IAM :8080]
 
@@ -124,6 +123,7 @@ graph TD
 
 ```
 chargeops-backend/chargeops/
+├── START-CHARGEOPS.bat # Single menu for local dev and demo
 ├── src/main/java/com/thang/chargeops/
 │   ├── assistant/       # Dify RAG client, chat history proxy, quota evaluator
 │   ├── audit/           # Administrative action audit logging (V65)
@@ -141,13 +141,17 @@ chargeops-backend/chargeops/
 │   └── user/            # Admin User Management (UM-01..UM-05), actor security gate (AUTH_006)
 ├── src/main/resources/
 │   ├── db/migration/    # Flyway migration scripts (V1 through V65+)
-│   ├── application.yml  # Base Spring Boot configuration
-│   └── application-dev.yml # Local development configuration
+│   ├── application.yml  # Shared Spring Boot configuration
+│   ├── application-dev.yml # Local runtime profile
+│   ├── application-test.yml # Automated-test profile
+│   └── application-prod.yml # Production runtime profile
 ├── docs/                # Architectural RFCs, walk-throughs, and Obsidian Knowledge Vault
 ├── observability/       # Prometheus, Grafana Alloy, and Loki configuration files
-├── scripts/             # Demo runner scripts, acceptance datasets, SQL seeds
-│   ├── demo-start.ps1   # Multi-service demo startup script (PowerShell)
-│   ├── demo-stop.ps1    # Demo shutdown script
+├── launchers/           # Dev/demo start and stop scripts, plus archived launchers
+│   ├── dev/              # Local development mode
+│   ├── demo/             # Full local/public demo mode
+│   └── archive/          # Previous scripts kept for rollback/reference
+├── scripts/             # CI helpers, acceptance datasets, SQL seeds
 │   └── sql/
 │       ├── seed-bkg-069-demo.sql  # BKG-069 benchmark acceptance dataset (ST-1901..1903)
 │       └── reset-bkg-069-demo.sql # Clean reset script for repeatable test runs
@@ -189,6 +193,8 @@ Detailed verification steps are documented in [`docs/ChargeOps/Booking/71-bkg-06
 ---
 
 ## 🚀 Getting Started
+
+For the local dev/demo launcher, Spring/Maven profiles, Compose files, and the CI image workflow, see [Environment and Compose guide](ENVIRONMENTS_AND_COMPOSE.md). Start either local mode from `START-CHARGEOPS.bat`; no VPS or Dokploy is needed.
 
 ### Prerequisites
 - **Java**: JDK 21 (Eclipse Temurin or Oracle JDK)
@@ -254,7 +260,7 @@ mvnw.cmd spring-boot:run -Dspring-boot.run.profiles=dev
 ```
 
 Once started, access:
-- **API Documentation (Swagger UI)**: [https://thang.tail704409.ts.net/swagger-ui/index.html](https://thang.tail704409.ts.net/swagger-ui/index.html) (or `http://localhost:8081/swagger-ui/index.html` locally)
+- **API Documentation (Swagger UI)**: [https://chargeops.online/swagger-ui/index.html](https://chargeops.online/swagger-ui/index.html) (or `http://localhost:8081/swagger-ui/index.html` locally)
 - **OpenAPI JSON**: `http://localhost:8081/v3/api-docs`
 - **Actuator Health**: `http://localhost:8081/actuator/health`
 

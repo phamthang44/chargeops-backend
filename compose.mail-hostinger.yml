@@ -1,0 +1,57 @@
+# Live-email overlay: Hostinger SMTP plus the Kafka broker used by the durable booking-email pipeline.
+# Set HOSTINGER_SMTP_PASSWORD in the local, git-ignored .env before using this file.
+services:
+  backend:
+    environment:
+      SMTP_HOST: smtp.hostinger.com
+      SMTP_PORT: "587"
+      SMTP_USERNAME: ${HOSTINGER_SMTP_USERNAME:-support@chargeops.online}
+      SMTP_PASSWORD: ${HOSTINGER_SMTP_PASSWORD:?Set HOSTINGER_SMTP_PASSWORD in the local .env first}
+      SMTP_AUTH: "true"
+      SMTP_STARTTLS: "true"
+      # SMTP authenticates as the real mailbox; the visible sender can be its Hostinger alias.
+      BOOKING_NOTIFICATION_EMAIL_FROM: "ChargeOps Notifications <${HOSTINGER_SMTP_FROM_ADDRESS:-notifications@chargeops.online}>"
+      BOOKING_NOTIFICATION_EMAIL_ENABLED: "true"
+      BOOKING_NOTIFICATION_KAFKA_ENABLED: "true"
+      BOOKING_NOTIFICATION_CONSUMER_ENABLED: "true"
+      BOOKING_NOTIFICATION_OUTBOX_ENABLED: "true"
+      MANAGEMENT_HEALTH_KAFKA_ENABLED: "true"
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+    depends_on:
+      kafka:
+        condition: service_healthy
+  kafka:
+    image: apache/kafka:4.1.2
+    restart: unless-stopped
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,INTERNAL:PLAINTEXT,HOST:PLAINTEXT
+      KAFKA_LISTENERS: CONTROLLER://:29093,INTERNAL://:29092,HOST://:9092
+      KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka:29092,HOST://localhost:9092
+      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:29093
+      CLUSTER_ID: 4L6g3nShT-eMCtK--X86sw
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_SHARE_COORDINATOR_STATE_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_SHARE_COORDINATOR_STATE_TOPIC_MIN_ISR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+      KAFKA_LOG_DIRS: /var/lib/kafka/data
+      KAFKA_HEAP_OPTS: -Xms256m -Xmx512m
+    volumes:
+      - chargeops_kafka_data:/var/lib/kafka/data
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:29092 --list >/dev/null 2>&1"]
+      interval: 10s
+      timeout: 10s
+      retries: 12
+      start_period: 20s
+  mailpit:
+    profiles:
+      - local-mailpit
+volumes:
+  chargeops_kafka_data:

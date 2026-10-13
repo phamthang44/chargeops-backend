@@ -1,0 +1,35 @@
+# Local domain mode: Expo Web listens on the host at port 8082 and the gateway
+# proxies driver.chargeops.online to it. A future server image can instead use
+# an in-network driver-web:80 service; no VM or Dokploy is needed for this file.
+# Apply after docker-compose.yml (IDE/dev) or docker-compose.demo.yml (containers).
+# The original Compose files and Tailscale launchers are kept for rollback.
+services:
+  gateway:
+    volumes:
+      - ./gateway/domain-templates:/etc/nginx/templates:ro
+      - ./gateway/domain-proxy_params:/etc/nginx/domain_proxy_params:ro
+    environment:
+      NGINX_ENVSUBST_FILTER: '^(WEB_UPSTREAM|API_UPSTREAM|KEYCLOAK_UPSTREAM|GRAFANA_UPSTREAM|DRIVER_UPSTREAM)$'
+      DRIVER_UPSTREAM: host.docker.internal:8082
+    extra_hosts:
+      - host.docker.internal:host-gateway
+  keycloak:
+    environment:
+      KC_HOSTNAME: https://chargeops.online
+      KC_HOSTNAME_STRICT: 'true'
+      KC_PROXY_HEADERS: xforwarded
+  grafana:
+    environment:
+      GF_SERVER_ROOT_URL: https://chargeops.online/grafana/
+      GF_SECURITY_COOKIE_SECURE: 'true'
+      GF_AUTH_GENERIC_OAUTH_AUTH_URL: https://chargeops.online/realms/chargeops/protocol/openid-connect/auth
+  cloudflared:
+    image: cloudflare/cloudflared:2026.10.0
+    profiles: [public]
+    command: tunnel --no-autoupdate run
+    environment:
+      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:-}
+    restart: unless-stopped
+    depends_on:
+      gateway:
+        condition: service_healthy
