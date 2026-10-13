@@ -1,0 +1,10 @@
+# Packages the JAR tested by CI; no second compilation on the deployment host.
+FROM eclipse-temurin:21-jre-alpine
+WORKDIR /app
+RUN addgroup -S spring && adduser -S spring -G spring \
+    && mkdir -p /app/logs && chown -R spring:spring /app
+COPY --chown=spring:spring target/chargeops-*.jar /app/app.jar
+USER spring:spring
+ENV TZ=UTC
+EXPOSE 8081
+ENTRYPOINT ["java", "-Djava.security.egd=file:/dev/./urandom", "-jar", "/app/app.jar"]

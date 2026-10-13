@@ -183,6 +183,15 @@
 	<build>
 		<plugins>
 			<plugin>
+				<groupId>org.jacoco</groupId>
+				<artifactId>jacoco-maven-plugin</artifactId>
+				<version>0.8.14</version>
+				<executions>
+					<execution><goals><goal>prepare-agent</goal></goals></execution>
+					<execution><id>coverage-report</id><phase>verify</phase><goals><goal>report</goal></goals></execution>
+				</executions>
+			</plugin>
+			<plugin>
 				<groupId>org.springframework.boot</groupId>
 				<artifactId>spring-boot-maven-plugin</artifactId>
 				<configuration>
@@ -242,5 +251,34 @@
 			</plugin>
 		</plugins>
 	</build>
+	<profiles>
+		<!-- Runtime environments belong to Spring profiles. This Maven profile only
+		     opts CI into integration tests that require the disposable compose.ci.yml services. -->
+		<profile>
+			<id>ci</id>
+			<properties>
+				<chargeops.smtp.integration>true</chargeops.smtp.integration>
+				<chargeops.kafka.integration>true</chargeops.kafka.integration>
+				<chargeops.kafka.bootstrap-servers>localhost:9092</chargeops.kafka.bootstrap-servers>
+				<chargeops.redis.integration.enabled>true</chargeops.redis.integration.enabled>
+			</properties>
+			<build>
+				<plugins>
+					<plugin>
+						<groupId>org.apache.maven.plugins</groupId>
+						<artifactId>maven-surefire-plugin</artifactId>
+						<configuration>
+							<systemPropertyVariables>
+								<chargeops.smtp.integration>${chargeops.smtp.integration}</chargeops.smtp.integration>
+								<chargeops.kafka.integration>${chargeops.kafka.integration}</chargeops.kafka.integration>
+								<chargeops.kafka.bootstrap-servers>${chargeops.kafka.bootstrap-servers}</chargeops.kafka.bootstrap-servers>
+								<chargeops.redis.integration.enabled>${chargeops.redis.integration.enabled}</chargeops.redis.integration.enabled>
+							</systemPropertyVariables>
+						</configuration>
+					</plugin>
+				</plugins>
+			</build>
+		</profile>
+	</profiles>
 
 </project>
