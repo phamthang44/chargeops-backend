@@ -329,7 +329,7 @@ class BookingCancellationPostgresTest {
         var claimModel = new com.thang.chargeops.notification.email.BookingEmailRenderer().renderBookingCancelled(
                 cancellationPreparedBeforeSendForPreview(event));
         assertThat(claimModel.html()).contains("An &lt;script&gt;", "đang chờ xử lý").doesNotContain("An <script>", "đã hoàn tất");
-        assertThat(claimModel.text()).contains("đang chờ xử lý", "/bookings/" + bookingId);
+        assertThat(claimModel.text()).contains("đang chờ xử lý");
         assertThat(emailState()).containsEntry("status", "SENT").containsEntry("attempt_count", 1);
     }
 

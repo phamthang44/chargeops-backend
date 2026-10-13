@@ -1,59 +1,87 @@
 <th:block th:fragment="content">
-  <!-- Header: wordmark + badge -->
+  <!-- Header: Brand wordmark & bilingual status badge -->
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;border-collapse:collapse;">
     <tr>
-      <td class="px" style="padding:30px 30px 0 30px;">
+      <td class="px" style="padding:32px 32px 0 32px;">
         <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;border-collapse:collapse;">
           <tr>
-            <td style="font-family:-apple-system,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;font-size:18px;font-weight:700;letter-spacing:-0.02em;color:#3f39c9;">ChargeOps</td>
-            <td align="right">
-              <span style="display:inline-block;background-color:#eceafe;color:#3f39c9;font-family:-apple-system,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;font-size:11px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;padding:6px 13px;border-radius:999px;">Đã xác nhận</span>
+            <td style="vertical-align:middle;">
+              <table role="presentation" cellpadding="0" cellspacing="0" border="0">
+                <tr>
+                  <td style="vertical-align:middle;padding-right:10px;">
+                    <div style="width:28px;height:28px;background-color:#0f172a;border-radius:8px;text-align:center;line-height:28px;display:inline-block;">
+                      <span style="color:#38bdf8;font-size:14px;line-height:28px;">⚡</span>
+                    </div>
+                  </td>
+                  <td style="vertical-align:middle;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;font-size:18px;font-weight:800;letter-spacing:-0.03em;color:#0f172a;">
+                    Charge<span style="color:#4f46e5;">Ops</span>
+                  </td>
+                </tr>
+              </table>
+            </td>
+            <td align="right" style="vertical-align:middle;">
+              <span style="display:inline-block;background-color:#ecfdf5;border:1px solid #a7f3d0;color:#065f46;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;font-size:11px;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;padding:5px 12px;border-radius:999px;">
+                <span style="color:#10b981;font-size:10px;margin-right:5px;vertical-align:baseline;">●</span>Đã xác nhận · Confirmed
+              </span>
             </td>
           </tr>
         </table>
       </td>
     </tr>
 
-    <!-- Hero -->
+    <!-- Hero: Bilingual heading -->
     <tr>
-      <td class="px" style="padding:22px 30px 2px 30px;">
-        <div style="font-family:-apple-system,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;font-size:11px;font-weight:700;letter-spacing:0.16em;text-transform:uppercase;color:#5b54e8;">Xác nhận đặt chỗ</div>
-        <h1 class="h1" style="margin:14px 0 0 0;font-family:-apple-system,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;font-size:26px;line-height:1.25;font-weight:700;letter-spacing:-0.01em;color:#16161f;">Chào <span th:text="${model.recipientName}">Nguyễn Văn An</span>, booking của bạn đã được xác nhận.</h1>
-        <p style="margin:12px 0 0 0;font-family:-apple-system,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;font-size:15px;line-height:1.65;color:#5a5a6e;">Mã booking <strong style="color:#16161f;" th:text="${model.bookingCode}">BK-2026-000482</strong>. Vui lòng có mặt đúng giờ đã đặt.</p>
+      <td class="px" style="padding:24px 32px 4px 32px;">
+        <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;font-size:11px;font-weight:700;letter-spacing:0.14em;text-transform:uppercase;color:#4f46e5;">Xác nhận đặt chỗ · Booking Confirmation</div>
+        <h1 class="h1" style="margin:12px 0 0 0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;font-size:25px;line-height:1.28;font-weight:750;letter-spacing:-0.025em;color:#0f172a;">Chào <span th:text="${model.recipientName}">Nguyễn Văn An</span>, booking của bạn đã được xác nhận.</h1>
+        <div style="margin-top:6px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;font-size:15px;line-height:1.45;font-weight:500;color:#64748b;">Hello <span th:text="${model.recipientName}">Nguyễn Văn An</span>, your charging booking has been confirmed.</div>
+        <p style="margin:10px 0 0 0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;font-size:13px;line-height:1.6;color:#64748b;">Mã booking / Code: <strong style="color:#0f172a;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;" th:text="${model.bookingCode}">BK-2026-000482</strong>. Vui lòng có mặt đúng giờ đã đặt / Please arrive on time.</p>
       </td>
     </tr>
 
-    <!-- Detail card: outer shell + inner core (double bezel, email-safe) -->
+    <!-- Detail card: Double-Bezel (outer shell + inner core) -->
     <tr>
-      <td class="px" style="padding:24px 30px 0 30px;">
+      <td class="px" style="padding:22px 32px 0 32px;">
         <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;border-collapse:collapse;">
           <tr>
-            <td style="background-color:#f7f7fb;border-radius:16px;padding:8px;">
-              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;border-collapse:separate;background-color:#ffffff;border:1px solid #e8e8f0;border-radius:12px;">
+            <td style="background-color:#f8fafc;border:1px solid #e2e8f0;border-radius:16px;padding:8px;">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;border-collapse:separate;background-color:#ffffff;border:1px solid #edf2f7;border-radius:12px;box-shadow:0 1px 3px rgba(15,23,42,0.03);">
                 <tr>
-                  <td style="padding:20px 22px 20px 22px;">
+                  <td style="padding:22px 24px;">
                     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;border-collapse:collapse;">
                       <tr>
-                        <td class="label" width="38%" style="width:38%;padding:0 0 16px 0;border-bottom:1px solid #f0f0f5;font-family:-apple-system,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;font-size:13px;line-height:1.5;color:#5a5a6e;vertical-align:top;">Trạm sạc</td>
-                        <td class="value" style="padding:0 0 16px 20px;border-bottom:1px solid #f0f0f5;font-family:-apple-system,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;font-size:15px;line-height:1.55;color:#16161f;vertical-align:top;">
-                          <div style="font-weight:600;" th:text="${model.stationName}">Trạm ChargeOps Vinhomes Central Park</div>
-                          <div style="margin-top:4px;font-size:13px;font-weight:400;color:#5a5a6e;" th:text="${model.stationAddress}">208 Nguyễn Hữu Cảnh, Phường 22, Bình Thạnh, TP. Hồ Chí Minh</div>
+                        <td class="label" width="38%" style="width:38%;padding:0 0 16px 0;border-bottom:1px solid #f1f5f9;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;font-size:13px;line-height:1.4;color:#0f172a;font-weight:600;vertical-align:top;">
+                          Trạm sạc
+                          <div style="margin-top:2px;font-size:11px;font-weight:400;color:#94a3b8;">Charging Station</div>
+                        </td>
+                        <td class="value" style="padding:0 0 16px 20px;border-bottom:1px solid #f1f5f9;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;font-size:14px;line-height:1.55;color:#0f172a;vertical-align:top;">
+                          <div style="font-weight:650;" th:text="${model.stationName}">Trạm ChargeOps Vinhomes Central Park</div>
+                          <div style="margin-top:4px;font-size:13px;color:#64748b;" th:text="${model.stationAddress}">208 Nguyễn Hữu Cảnh, Phường 22, Bình Thạnh, TP. Hồ Chí Minh</div>
                         </td>
                       </tr>
                       <tr>
-                        <td class="label" style="padding:0 0 16px 0;border-bottom:1px solid #f0f0f5;font-family:-apple-system,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;font-size:13px;line-height:1.5;color:#5a5a6e;vertical-align:top;">Cổng sạc</td>
-                        <td class="value" style="padding:0 0 16px 20px;border-bottom:1px solid #f0f0f5;font-family:-apple-system,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;font-size:15px;line-height:1.55;color:#16161f;vertical-align:top;" th:text="|Trụ ${model.chargePointCode} · Cổng ${model.connectorCode}|">Trụ CP-07 · Cổng C2</td>
+                        <td class="label" style="padding:0 0 16px 0;border-bottom:1px solid #f1f5f9;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;font-size:13px;line-height:1.4;color:#0f172a;font-weight:600;vertical-align:top;">
+                          Cổng sạc
+                          <div style="margin-top:2px;font-size:11px;font-weight:400;color:#94a3b8;">Connector / Port</div>
+                        </td>
+                        <td class="value" style="padding:0 0 16px 20px;border-bottom:1px solid #f1f5f9;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;font-size:14px;line-height:1.55;font-weight:600;color:#0f172a;vertical-align:top;" th:text="|Trụ ${model.chargePointCode} · Cổng ${model.connectorCode}|">Trụ CP-07 · Cổng C2</td>
                       </tr>
                       <tr>
-                        <td class="label" style="padding:0 0 16px 0;border-bottom:1px solid #f0f0f5;font-family:-apple-system,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;font-size:13px;line-height:1.5;color:#5a5a6e;vertical-align:top;">Thời gian bắt đầu – kết thúc</td>
-                        <td class="value" style="padding:0 0 16px 20px;border-bottom:1px solid #f0f0f5;font-family:-apple-system,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;font-size:15px;line-height:1.55;color:#16161f;vertical-align:top;">
-                          <div style="font-weight:600;" th:text="${model.timeWindowText}">14/10/2026 · 09:00 – 10:30</div>
-                          <div style="margin-top:4px;font-size:13px;font-weight:400;color:#5a5a6e;" th:text="${model.timeZoneLabel}">Giờ Việt Nam (GMT+7)</div>
+                        <td class="label" style="padding:0 0 16px 0;border-bottom:1px solid #f1f5f9;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;font-size:13px;line-height:1.4;color:#0f172a;font-weight:600;vertical-align:top;">
+                          Thời gian
+                          <div style="margin-top:2px;font-size:11px;font-weight:400;color:#94a3b8;">Time Window</div>
+                        </td>
+                        <td class="value" style="padding:0 0 16px 20px;border-bottom:1px solid #f1f5f9;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;font-size:14px;line-height:1.55;color:#0f172a;vertical-align:top;">
+                          <div style="font-weight:650;" th:text="${model.timeWindowText}">14/10/2026 · 09:00 – 10:30</div>
+                          <div style="margin-top:4px;font-size:12px;color:#64748b;" th:text="${model.timeZoneLabel}">Giờ Việt Nam (GMT+7)</div>
                         </td>
                       </tr>
                       <tr>
-                        <td class="label" style="padding:4px 0 0 0;font-family:-apple-system,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;font-size:13px;line-height:1.5;color:#5a5a6e;vertical-align:top;">Số tiền đã thanh toán</td>
-                        <td class="value-last" style="padding:4px 0 0 20px;font-family:-apple-system,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;font-size:22px;font-weight:700;letter-spacing:-0.01em;color:#3f39c9;vertical-align:top;" th:text="${model.paidAmountText}">126.000 ₫</td>
+                        <td class="label" style="padding:4px 0 0 0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;font-size:13px;line-height:1.4;color:#0f172a;font-weight:600;vertical-align:top;">
+                          Số tiền đã thanh toán
+                          <div style="margin-top:2px;font-size:11px;font-weight:400;color:#94a3b8;">Total Paid</div>
+                        </td>
+                        <td class="value-last" style="padding:4px 0 0 20px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;font-size:22px;font-weight:750;letter-spacing:-0.02em;color:#0f172a;vertical-align:top;" th:text="${model.paidAmountText}">126.000 ₫</td>
                       </tr>
                     </table>
                   </td>
@@ -65,36 +93,25 @@
       </td>
     </tr>
 
-    <!-- CTA -->
+    <!-- Guidance note card: Bilingual -->
     <tr>
-      <td class="px" style="padding:26px 30px 0 30px;">
-        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;border-collapse:collapse;">
-          <tr>
-            <td align="center" bgcolor="#5b54e8" style="background-color:#5b54e8;border-radius:999px;">
-              <a th:href="${model.bookingUrl}" href="#" style="display:block;padding:15px 30px;font-family:-apple-system,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;font-size:15px;font-weight:600;color:#ffffff;text-decoration:none;text-align:center;">Xem booking →</a>
-            </td>
-          </tr>
-        </table>
-        <div style="margin-top:14px;font-family:-apple-system,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;font-size:13px;line-height:1.6;color:#5a5a6e;text-align:center;">Không bấm được nút? Mở liên kết: <a th:href="${model.bookingUrl}" th:text="${model.bookingUrl}" href="#" style="color:#5b54e8;word-break:break-all;">http://localhost:5173/bookings/…</a></div>
+      <td class="px" style="padding:26px 32px 0 32px;">
+        <div style="background-color:#f8fafc;border:1px solid #e2e8f0;border-radius:14px;padding:16px 20px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;font-size:13px;line-height:1.65;color:#475569;text-align:center;">
+          <div>📱 Vui lòng mở <strong>ứng dụng di động ChargeOps</strong> trên điện thoại của bạn để theo dõi hành trình, kiểm tra trạng thái trụ sạc và quét mã QR check-in đúng giờ.</div>
+          <div style="margin-top:6px;font-size:12px;color:#64748b;">Please open the <strong>ChargeOps mobile app</strong> on your phone to track your charging session and scan the QR code to check in on time.</div>
+        </div>
       </td>
     </tr>
 
-    <!-- Note -->
+    <!-- Footer inside container -->
     <tr>
-      <td class="px" style="padding:22px 30px 0 30px;">
-        <div style="background-color:#f7f7fb;border-radius:12px;padding:14px 16px;font-family:-apple-system,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;font-size:13px;line-height:1.65;color:#5a5a6e;">Bạn có thể xem lại trạng thái mới nhất của booking trong ứng dụng trước khi di chuyển.</div>
-      </td>
-    </tr>
-
-    <!-- Footer -->
-    <tr>
-      <td class="px" style="padding:26px 30px 30px 30px;">
+      <td class="px" style="padding:26px 32px 32px 32px;">
         <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;border-collapse:collapse;">
           <tr>
-            <td style="padding-top:18px;border-top:1px solid #f0f0f5;font-family:-apple-system,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;font-size:12px;line-height:1.8;color:#5a5a6e;">
-              <div style="font-weight:600;color:#16161f;">ChargeOps · Nền tảng đặt chỗ sạc điện</div>
-              <div th:text="|Bạn nhận được thư này vì đã đặt booking ${model.bookingCode} trên ChargeOps.|">Bạn nhận được thư này vì đã đặt booking trên ChargeOps.</div>
-              <div th:if="${model.supportContact != null}" th:text="|Hỗ trợ: ${model.supportContact}|">Hỗ trợ: hotro@chargeops.vn</div>
+            <td style="padding-top:20px;border-top:1px solid #f1f5f9;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;font-size:12px;line-height:1.75;color:#64748b;">
+              <div style="font-weight:600;color:#0f172a;">ChargeOps · Nền tảng đặt chỗ sạc điện / EV Charging Reservation Platform</div>
+              <div>Bạn nhận được thư này vì đã đặt booking <span th:text="${model.bookingCode}">BK-2026-000482</span> trên ChargeOps.</div>
+              <div th:if="${model.supportContact != null and !model.supportContact.isBlank()}" th:text="|Hỗ trợ / Support: ${model.supportContact}|">Hỗ trợ: hotro@chargeops.vn</div>
             </td>
           </tr>
         </table>

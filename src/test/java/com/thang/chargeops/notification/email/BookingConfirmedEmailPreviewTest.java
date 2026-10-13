@@ -73,7 +73,7 @@ class BookingConfirmedEmailPreviewTest {
                 .contains("14/10/2026 · 09:00 – 10:30")
                 .contains("Giờ Việt Nam (GMT+7)")
                 .contains("126.000 ₫")
-                .contains(FRONTEND_URL + "/bookings/" + BOOKING_ID)
+                .contains("ứng dụng di động ChargeOps")
                 .contains("hotro@chargeops.vn");
         assertThat(html)
                 .contains("Booking BK-2026-000482 đã xác nhận")
@@ -81,7 +81,7 @@ class BookingConfirmedEmailPreviewTest {
         assertThat(text)
                 .contains("BK-2026-000482")
                 .contains("126.000 ₫")
-                .contains(FRONTEND_URL + "/bookings/" + BOOKING_ID)
+                .contains("ứng dụng ChargeOps")
                 .doesNotContain("<");
     }
 

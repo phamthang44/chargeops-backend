@@ -10,7 +10,7 @@ Thời điểm hủy: [(${model.cancelledAtText})]
 
 [(${model.refundText})]
 
-Xem chi tiết booking: [(${model.bookingUrl})]
+Vui lòng mở ứng dụng ChargeOps trên điện thoại của bạn để kiểm tra chi tiết hoặc đặt chỗ trạm khác.
 [# th:if="${model.supportContact != null and !model.supportContact.isBlank()}"]Hỗ trợ: [(${model.supportContact})][/]
 
 Thư tự động từ ChargeOps — vui lòng không trả lời email này.

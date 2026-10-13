@@ -9,9 +9,7 @@ Cổng sạc: Trụ [(${model.chargePointCode})] · Cổng [(${model.connectorCo
 Thời gian bắt đầu – kết thúc: [(${model.timeWindowText})] ([(${model.timeZoneLabel})])
 Số tiền đã thanh toán: [(${model.paidAmountText})]
 
-Xem booking: [(${model.bookingUrl})]
-
-Bạn có thể xem lại trạng thái mới nhất của booking trong ứng dụng trước khi di chuyển.
+Vui lòng mở ứng dụng ChargeOps trên điện thoại của bạn để theo dõi trạng thái và check-in sạc pin đúng giờ.
 
 ---------------------------------
 ChargeOps · Nền tảng đặt chỗ sạc điện
