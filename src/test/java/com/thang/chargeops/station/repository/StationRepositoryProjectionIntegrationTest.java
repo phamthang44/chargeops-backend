@@ -101,6 +101,7 @@ class StationRepositoryProjectionIntegrationTest {
         Page<OwnerStationSummaryProjection> result = stationRepository.findOwnerStationSummaries(
                 ownerId,
                 Instant.now(),
+                "vi",
                 PageRequest.of(0, 20, Sort.by(Sort.Direction.DESC, "createdAt"))
         );
 
@@ -146,6 +147,7 @@ class StationRepositoryProjectionIntegrationTest {
         Page<OwnerStationSummaryProjection> result = stationRepository.findOwnerStationSummaries(
                 ownerId,
                 at,
+                "vi",
                 PageRequest.of(0, 20, Sort.by(Sort.Direction.DESC, "createdAt"))
         );
 
@@ -159,6 +161,7 @@ class StationRepositoryProjectionIntegrationTest {
     void returnsApprovalSummaryAndFallsBackToOwnerEmail() {
         Page<StationApprovalSummaryProjection> result = stationRepository.findStationApprovalSummaries(
                 StationStatus.PENDING_APPROVAL,
+                "vi",
                 PageRequest.of(0, 20, Sort.by(Sort.Direction.DESC, "createdAt"))
         );
 
