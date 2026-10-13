@@ -1,6 +1,6 @@
 # ─────────────────────────────────────────────────────────────────────────────
-# application-prod.yml — chỉ chứa phần KHÁC với application.yml ở môi trường prod.
-# Mọi secret/host đều BẮT BUỘC qua biến môi trường (không có default localhost).
+# application-prod.yml — chỉ chứa phần khác biệt an toàn lúc chạy production.
+# Hosts and secrets are supplied by the deployment environment, never by this file.
 # ─────────────────────────────────────────────────────────────────────────────
 
 spring:

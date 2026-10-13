@@ -21,6 +21,39 @@ spring:
     connection-timeout: 3s
     socket-timeout: 10s
 
+  mail:
+    host: ${SMTP_HOST:localhost}
+    port: ${SMTP_PORT:1025}
+    username: ${SMTP_USERNAME:}
+    password: ${SMTP_PASSWORD:}
+    properties:
+      mail.smtp.auth: ${SMTP_AUTH:false}
+      mail.smtp.starttls.enable: ${SMTP_STARTTLS:false}
+      mail.smtp.connectiontimeout: 3000
+      mail.smtp.timeout: 10000
+      mail.smtp.writetimeout: 10000
+
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+      acks: all
+      properties:
+        enable.idempotence: true
+        max.block.ms: 5000
+        delivery.timeout.ms: 30000
+        request.timeout.ms: 10000
+    consumer:
+      group-id: chargeops-booking-email-v1
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      enable-auto-commit: false
+      auto-offset-reset: earliest
+    listener:
+      ack-mode: record
+      missing-topics-fatal: true
+
   jackson:
     time-zone: UTC
     default-property-inclusion: non_null
@@ -173,7 +206,7 @@ app:
   no-show-auto-lock-minutes: 15
   # CORS allowed origins (comma-separated). Read by CorsConfig.
   cors:
-    allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5173,http://localhost:8082,https://thang.tail704409.ts.net,https://thang.tail704409.ts.net:8443/}
+    allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5173,http://localhost:8082,https://chargeops.online,https://driver.chargeops.online}
   imagekit:
     public-key: ${IMAGEKIT_PUBLIC_KEY:}
     private-key: ${IMAGEKIT_PRIVATE_KEY:}
