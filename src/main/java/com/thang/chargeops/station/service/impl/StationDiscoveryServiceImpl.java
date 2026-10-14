@@ -237,6 +237,7 @@ public class StationDiscoveryServiceImpl implements StationDiscoveryService {
         String escaped = normalized
                 .toLowerCase(Locale.ROOT)
                 .replace("!", "!!")
+                .replace("\\", "!\\")
                 .replace("%", "!%")
                 .replace("_", "!_");
 

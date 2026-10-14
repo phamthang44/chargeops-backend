@@ -116,7 +116,7 @@ class StationDiscoveryServiceImplTest {
                 service.searchStations(filter, 1, 12);
 
         StationDiscoveryQueryParameters parameters = capturedParameters();
-        assertThat(parameters.queryPattern()).isEqualTo("%100!%!_fast!!\\%");
+        assertThat(parameters.queryPattern()).isEqualTo("%100!%!_fast!!!\\%");
         assertThat(parameters.sort()).isEqualTo("NEAREST");
         assertThat(parameters.latitude()).isEqualByComparingTo("10.776900");
         assertThat(parameters.longitude()).isEqualByComparingTo("106.700900");
