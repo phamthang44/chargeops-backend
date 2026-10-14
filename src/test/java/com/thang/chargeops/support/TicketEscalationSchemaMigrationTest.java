@@ -17,7 +17,8 @@ import static org.assertj.core.api.Assertions.assertThatCode;
 @SpringBootTest(properties = {
         "spring.jpa.hibernate.ddl-auto=validate",
         "spring.flyway.enabled=true",
-        "spring.docker.compose.enabled=false"
+        "spring.docker.compose.enabled=false",
+        "app.search.enabled=false"
 })
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
 class TicketEscalationSchemaMigrationTest {

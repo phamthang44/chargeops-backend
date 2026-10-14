@@ -414,8 +414,8 @@ class BookingRepositoryIntegrationTest {
         jdbcTemplate.update(
                 """
                 INSERT INTO user_profile
-                    (id, keycloak_id, email, status, created_at, updated_at)
-                VALUES (?, ?, ?, 'ACTIVE', ?, ?)
+                    (id, keycloak_id, email, status, version, created_at, updated_at)
+                VALUES (?, ?, ?, 'ACTIVE', 0, ?, ?)
                 """,
                 profileId,
                 UUID.randomUUID().toString(),

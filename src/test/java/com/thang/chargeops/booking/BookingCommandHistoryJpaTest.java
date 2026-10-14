@@ -85,8 +85,8 @@ class BookingCommandHistoryJpaTest {
 
         jdbcTemplate.update(
                 """
-                INSERT INTO user_profile(id, keycloak_id, email, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?)
+                INSERT INTO user_profile(id, keycloak_id, email, version, created_at, updated_at)
+                VALUES (?, ?, ?, 0, ?, ?)
                 """,
                 actorId,
                 "command-" + suffix,

@@ -3,6 +3,7 @@ package com.thang.chargeops.support;
 import com.thang.chargeops.booking.repository.BookingRepository;
 import com.thang.chargeops.profile.repository.UserProfileRepository;
 import com.thang.chargeops.profile.support.CurrentProfileProvider;
+import com.thang.chargeops.notification.service.NotificationService;
 import com.thang.chargeops.support.dto.request.CreateTicketRequest;
 import com.thang.chargeops.support.dto.request.MessageRequest;
 import com.thang.chargeops.support.model.TicketCategory;
@@ -74,6 +75,7 @@ class SupportTicketCreatePostgresTest {
     @Autowired JdbcTemplate jdbc;
     @Autowired EntityManager entityManager;
     @MockitoBean CurrentProfileProvider currentProfileProvider;
+    @MockitoBean NotificationService notificationService;
     @MockitoBean TicketAccessPolicy ticketAccessPolicy;
     @MockitoBean TicketEscalationService ticketEscalationService;
     @MockitoBean ServiceFailureDecisionReader serviceFailureDecisionReader;

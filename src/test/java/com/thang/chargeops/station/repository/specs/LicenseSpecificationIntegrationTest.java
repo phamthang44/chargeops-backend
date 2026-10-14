@@ -230,9 +230,9 @@ class LicenseSpecificationIntegrationTest {
         jdbcTemplate.update(
                 """
                         INSERT INTO user_profile
-                            (id, keycloak_id, email, display_name, status,
+                            (id, keycloak_id, email, display_name, status, version,
                              created_at, updated_at)
-                        VALUES (?, ?, ?, ?, ?, ?, ?)
+                        VALUES (?, ?, ?, ?, ?, 0, ?, ?)
                         """,
                 ownerId,
                 UUID.randomUUID().toString(),

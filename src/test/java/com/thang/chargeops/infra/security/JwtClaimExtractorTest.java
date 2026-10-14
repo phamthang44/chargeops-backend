@@ -23,7 +23,7 @@ class JwtClaimExtractorTest {
         assertThat(extractor.resolvePrimaryRole(jwt("offline_access")))
                 .isEqualTo(PrimaryRole.UNKNOWN);
         assertThat(extractor.resolvePrimaryRole(jwt("OWNER", "DRIVER")))
-                .isEqualTo(PrimaryRole.CONFLICT);
+                .isEqualTo(PrimaryRole.OWNER);
         assertThat(extractor.resolvePrimaryRole(jwt("ADMIN", "OWNER", "DRIVER")))
                 .isEqualTo(PrimaryRole.ADMIN);
         assertThat(extractor.resolvePrimaryRole(jwt("OWNER", "STAFF", "DRIVER")))

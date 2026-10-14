@@ -81,6 +81,7 @@ class TicketWorkflowServiceTest {
         ticket = SupportTicket.open("TKT-20261001-0001", TicketCategory.PAYMENT, TicketPriority.MEDIUM,
             reporter, null, null, new SupportTicket.TicketDetails("Payment issue", "Charge disputed"));
         ticket.setId(ticketId);
+        lenient().when(clock.instant()).thenReturn(now);
         SecurityContextHolder.getContext().setAuthentication(UsernamePasswordAuthenticationToken.authenticated(
             "admin", "", List.of(new SimpleGrantedAuthority("ROLE_ADMIN"))));
     }
