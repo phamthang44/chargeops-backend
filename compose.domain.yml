@@ -1,28 +1,24 @@
-# Local domain mode: Expo Web listens on the host at port 8082 and the gateway
-# proxies driver.chargeops.online to it. A future server image can instead use
-# an in-network driver-web:80 service; no VM or Dokploy is needed for this file.
+# Public API and Keycloak origins are routed through this gateway. Marketing,
+# console, and driver static sites are hosted outside this Compose stack.
 # Apply after docker-compose.yml (IDE/dev) or docker-compose.demo.yml (containers).
-# The original Compose files and Tailscale launchers are kept for rollback.
 services:
   gateway:
     volumes:
       - ./gateway/domain-templates:/etc/nginx/templates:ro
       - ./gateway/domain-proxy_params:/etc/nginx/domain_proxy_params:ro
     environment:
-      NGINX_ENVSUBST_FILTER: '^(WEB_UPSTREAM|API_UPSTREAM|KEYCLOAK_UPSTREAM|GRAFANA_UPSTREAM|DRIVER_UPSTREAM)$'
-      DRIVER_UPSTREAM: host.docker.internal:8082
-    extra_hosts:
-      - host.docker.internal:host-gateway
+      NGINX_ENVSUBST_FILTER: '^(API_UPSTREAM|KEYCLOAK_UPSTREAM|GRAFANA_UPSTREAM)$'
   keycloak:
     environment:
-      KC_HOSTNAME: https://chargeops.online
+      KC_HOSTNAME: https://auth.chargeops.online
       KC_HOSTNAME_STRICT: 'true'
       KC_PROXY_HEADERS: xforwarded
   grafana:
     environment:
-      GF_SERVER_ROOT_URL: https://chargeops.online/grafana/
+      GF_SERVER_ROOT_URL: https://grafana.chargeops.online/
+      GF_SERVER_SERVE_FROM_SUB_PATH: 'false'
       GF_SECURITY_COOKIE_SECURE: 'true'
-      GF_AUTH_GENERIC_OAUTH_AUTH_URL: https://chargeops.online/realms/chargeops/protocol/openid-connect/auth
+      GF_AUTH_GENERIC_OAUTH_AUTH_URL: https://auth.chargeops.online/realms/chargeops/protocol/openid-connect/auth
   cloudflared:
     image: cloudflare/cloudflared:2026.10.0
     profiles: [public]

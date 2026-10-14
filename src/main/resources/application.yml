@@ -206,7 +206,7 @@ app:
   no-show-auto-lock-minutes: 15
   # CORS allowed origins (comma-separated). Read by CorsConfig.
   cors:
-    allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5173,http://localhost:8082,https://chargeops.online,https://driver.chargeops.online}
+    allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5173,http://localhost:8082,https://chargeops.online,https://console.chargeops.online,https://driver.chargeops.online}
   imagekit:
     public-key: ${IMAGEKIT_PUBLIC_KEY:}
     private-key: ${IMAGEKIT_PRIVATE_KEY:}

@@ -12,31 +12,12 @@ server {
 
 server {
     listen 80;
-    server_name chargeops.online;
+    server_name api.chargeops.online;
     server_tokens off;
     location = /healthz { return 200 "chargeops-domain-gateway-ok\n"; }
-    location ^~ /realms/master/ { return 404; }
     location ^~ /api/ {
         proxy_pass http://${API_UPSTREAM};
         include /etc/nginx/domain_proxy_params;
-    }
-    location ^~ /realms/ {
-        proxy_pass http://${KEYCLOAK_UPSTREAM};
-        include /etc/nginx/domain_proxy_params;
-    }
-    location ^~ /resources/ {
-        proxy_pass http://${KEYCLOAK_UPSTREAM};
-        include /etc/nginx/domain_proxy_params;
-    }
-    location ^~ /.well-known/ {
-        proxy_pass http://${KEYCLOAK_UPSTREAM};
-        include /etc/nginx/domain_proxy_params;
-    }
-    location ^~ /grafana/ {
-        proxy_pass http://${GRAFANA_UPSTREAM};
-        include /etc/nginx/domain_proxy_params;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection $chargeops_connection_upgrade;
     }
     location ^~ /ws {
         proxy_pass http://${API_UPSTREAM};
@@ -45,19 +26,41 @@ server {
         proxy_set_header Connection $chargeops_connection_upgrade;
     }
     location / {
-        proxy_pass http://${WEB_UPSTREAM};
-        include /etc/nginx/domain_proxy_params;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection $chargeops_connection_upgrade;
+        return 404;
     }
 }
 
 server {
     listen 80;
-    server_name driver.chargeops.online;
+    server_name auth.chargeops.online;
+    server_tokens off;
+    location = /healthz { return 200 "chargeops-domain-gateway-ok\n"; }
+    location ^~ /realms/master/ { return 404; }
+    location ^~ /realms/ {
+        proxy_pass http://${KEYCLOAK_UPSTREAM};
+        include /etc/nginx/domain_proxy_params;
+    }
+    location ^~ /resources/ {
+        proxy_pass http://${KEYCLOAK_UPSTREAM};
+        include /etc/nginx/domain_proxy_params;
+    }
+    location ^~ /js/ {
+        proxy_pass http://${KEYCLOAK_UPSTREAM};
+        include /etc/nginx/domain_proxy_params;
+    }
+    location ^~ /.well-known/ {
+        proxy_pass http://${KEYCLOAK_UPSTREAM};
+        include /etc/nginx/domain_proxy_params;
+    }
+    location / { return 404; }
+}
+
+server {
+    listen 80;
+    server_name grafana.chargeops.online;
     server_tokens off;
     location / {
-        proxy_pass http://${DRIVER_UPSTREAM};
+        proxy_pass http://${GRAFANA_UPSTREAM};
         include /etc/nginx/domain_proxy_params;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection $chargeops_connection_upgrade;

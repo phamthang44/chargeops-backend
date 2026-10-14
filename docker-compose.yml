@@ -93,7 +93,7 @@ services:
       KC_DB_URL: jdbc:postgresql://postgres:5432/${KC_DB_NAME}
       KC_DB_USERNAME: ${POSTGRES_USER}
       KC_DB_PASSWORD: ${POSTGRES_PASSWORD}
-      KC_HOSTNAME: ${KEYCLOAK_PUBLIC_URL:-https://chargeops.online}
+      KC_HOSTNAME: ${KEYCLOAK_PUBLIC_URL:-https://auth.chargeops.online}
       KC_HOSTNAME_BACKCHANNEL_DYNAMIC: "true"
       KC_HOSTNAME_STRICT: "false"
       KC_PROXY_HEADERS: xforwarded

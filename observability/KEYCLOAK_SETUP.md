@@ -26,12 +26,12 @@ Create an OpenID Connect client with:
 Add the exact redirect URIs used by the environment:
 
 - Local gateway: `http://localhost:8088/grafana/login/generic_oauth`
-- Remote demo: `https://chargeops.online/grafana/login/generic_oauth`
+- Remote demo: `https://grafana.chargeops.online/login/generic_oauth`
 
 Add the matching Web Origins:
 
 - `http://localhost:8088`
-- `https://chargeops.online`
+- `https://auth.chargeops.online`
 
 Do not use `*` redirect URIs or Web Origins.
 
@@ -69,8 +69,8 @@ GRAFANA_OAUTH_CLIENT_SECRET=<copy-secret-here>
 For the remote demo also set:
 
 ```dotenv
-KEYCLOAK_PUBLIC_URL=https://chargeops.online
-GRAFANA_ROOT_URL=https://chargeops.online/grafana/
+KEYCLOAK_PUBLIC_URL=https://auth.chargeops.online
+GRAFANA_ROOT_URL=https://grafana.chargeops.online/
 GRAFANA_COOKIE_SECURE=true
 ```
 

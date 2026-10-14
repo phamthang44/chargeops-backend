@@ -1,8 +1,8 @@
 # =============================================================================
-# ChargeOps — MÔI TRƯỜNG DEMO ĐÓNG GÓI TOÀN BỘ (FULL-STACK DOCKER COMPOSE)
+# ChargeOps — BACKEND DEMO SERVICES (Compose)
 # =============================================================================
-# Sử dụng: TẮT TẤT CẢ IDE, chạy 1 lệnh để online toàn bộ hệ thống phục vụ demo:
-#   docker compose -f docker-compose.demo.yml up --build -d
+# Frontends are deployed separately to Cloudflare Pages/Vercel.
+# Sử dụng: `launchers/demo/start.bat` để áp dụng đúng các overlay.
 # =============================================================================
 
 services:
@@ -13,8 +13,7 @@ services:
       - "127.0.0.1:${GATEWAY_PORT:-8088}:80"
     restart: unless-stopped
     environment:
-      NGINX_ENVSUBST_FILTER: "^(WEB_UPSTREAM|API_UPSTREAM|KEYCLOAK_UPSTREAM|GRAFANA_UPSTREAM)$"
-      WEB_UPSTREAM: web-portal:80
+      NGINX_ENVSUBST_FILTER: "^(API_UPSTREAM|KEYCLOAK_UPSTREAM|GRAFANA_UPSTREAM)$"
       API_UPSTREAM: backend:8081
       KEYCLOAK_UPSTREAM: keycloak:8080
       GRAFANA_UPSTREAM: grafana:3000
@@ -22,7 +21,6 @@ services:
       - ./gateway/templates:/etc/nginx/templates:ro
       - ./gateway/proxy_params:/etc/nginx/proxy_params:ro
     depends_on:
-      - web-portal
       - backend
       - keycloak
       - grafana
@@ -37,7 +35,7 @@ services:
     image: postgis/postgis:16-3.4
     container_name: chargeops-postgres-demo
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-chargeops}
@@ -58,7 +56,7 @@ services:
     image: redis:7-alpine
     container_name: chargeops-redis-demo
     ports:
-      - "6379:6379"
+      - "127.0.0.1:6379:6379"
     restart: unless-stopped
     healthcheck:
       test: [ "CMD", "redis-cli", "ping" ]
@@ -68,6 +66,7 @@ services:
 
   elasticsearch:
     image: docker.elastic.co/elasticsearch/elasticsearch:9.4.2
+    profiles: ["search"]
     restart: unless-stopped
     environment:
       discovery.type: single-node
@@ -93,7 +92,7 @@ services:
     container_name: chargeops-keycloak-demo
     command: start-dev --spi-theme-cache-themes=false --spi-theme-cache-templates=false --spi-theme-static-max-age=-1
     ports:
-      - "8080:8080"
+      - "127.0.0.1:8080:8080"
     restart: unless-stopped
     environment:
       KC_BOOTSTRAP_ADMIN_USERNAME: ${KC_ADMIN_USER:-admin}
@@ -102,7 +101,7 @@ services:
       KC_DB_URL: jdbc:postgresql://postgres:5432/${KC_DB_NAME:-keycloak}
       KC_DB_USERNAME: ${POSTGRES_USER:-chargeops}
       KC_DB_PASSWORD: ${POSTGRES_PASSWORD:-chargeops}
-      KC_HOSTNAME: ${KEYCLOAK_PUBLIC_URL:-https://chargeops.online}
+      KC_HOSTNAME: ${KEYCLOAK_PUBLIC_URL:-https://auth.chargeops.online}
       KC_HOSTNAME_BACKCHANNEL_DYNAMIC: "true"
       KC_HOSTNAME_STRICT: "false"
       KC_PROXY_HEADERS: xforwarded
@@ -126,14 +125,14 @@ services:
     image: chargeops/backend:demo
     container_name: chargeops-backend-demo
     ports:
-      - "8081:8081"
+      - "127.0.0.1:8081:8081"
     restart: unless-stopped
     environment:
       - SPRING_PROFILES_ACTIVE=dev
       - SPRING_DOCKER_COMPOSE_ENABLED=false
       - ELASTICSEARCH_URL=http://elasticsearch:9200
-      - ELASTICSEARCH_ENABLED=${ELASTICSEARCH_ENABLED:-true}
-      - ELASTICSEARCH_REINDEX_ON_STARTUP=${ELASTICSEARCH_REINDEX_ON_STARTUP:-true}
+      - ELASTICSEARCH_ENABLED=${ELASTICSEARCH_ENABLED:-false}
+      - ELASTICSEARCH_REINDEX_ON_STARTUP=${ELASTICSEARCH_REINDEX_ON_STARTUP:-false}
       - DIFY_ENABLED=${DIFY_ENABLED:-false}
       - DIFY_BASE_URL=${DIFY_BASE_URL:-https://api.dify.ai/v1}
       - DIFY_API_KEY=${DIFY_API_KEY:-}
@@ -149,22 +148,20 @@ services:
       - MANAGEMENT_HEALTH_KAFKA_ENABLED=false
       - REFUND_AUTO_EXECUTION_INITIAL_DELAY_MS=5000
       - REFUND_AUTO_EXECUTION_FIXED_DELAY_MS=5000
-      - SMTP_HOST=mailpit
-      - SMTP_PORT=1025
       - DATABASE_URL=jdbc:postgresql://postgres:5432/${POSTGRES_DB:-chargeops}
       - POSTGRES_USER=${POSTGRES_USER:-chargeops}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-chargeops}
       - REDIS_HOST=redis
       - REDIS_PORT=6379
-      - KEYCLOAK_ISSUER_URI=${KEYCLOAK_PUBLIC_URL:-https://chargeops.online}/realms/chargeops
+      - KEYCLOAK_ISSUER_URI=${KEYCLOAK_PUBLIC_URL:-https://auth.chargeops.online}/realms/chargeops
       - KEYCLOAK_JWK_SET_URI=http://keycloak:8080/realms/chargeops/protocol/openid-connect/certs
       - KEYCLOAK_ADMIN_BASE_URL=http://keycloak:8080
       - KEYCLOAK_ADMIN_REALM=${KEYCLOAK_ADMIN_REALM:-chargeops}
       - KEYCLOAK_ADMIN_CLIENT_ID=${KEYCLOAK_ADMIN_CLIENT_ID:-chargeops-backend}
       - KEYCLOAK_ADMIN_CLIENT_SECRET=${KEYCLOAK_ADMIN_CLIENT_SECRET}
-      - BACKEND_BASE_URL=${BACKEND_BASE_URL:-https://chargeops.online/api}
-      - FRONTEND_BASE_URL=${FRONTEND_BASE_URL:-https://chargeops.online}
-      - CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS:-http://localhost:8088,http://localhost:5173,http://localhost:8082,https://chargeops.online,https://driver.chargeops.online}
+      - BACKEND_BASE_URL=${BACKEND_BASE_URL:-https://api.chargeops.online}
+      - FRONTEND_BASE_URL=${FRONTEND_BASE_URL:-https://console.chargeops.online}
+      - CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS:-http://localhost:8088,http://localhost:5173,http://localhost:8082,https://chargeops.online,https://console.chargeops.online,https://driver.chargeops.online}
       - SEPAY_WEBHOOK_SECRET=${SEPAY_WEBHOOK_SECRET}
       - IMAGEKIT_PUBLIC_KEY=${IMAGEKIT_PUBLIC_KEY}
       - IMAGEKIT_PRIVATE_KEY=${IMAGEKIT_PRIVATE_KEY}
@@ -183,41 +180,8 @@ services:
         condition: service_healthy
       keycloak:
         condition: service_healthy
-      elasticsearch:
-        condition: service_healthy
 
-  # 5. Frontend Web Portal (Admin / Owner / Staff Console chạy bằng Nginx)
-  web-portal:
-    build:
-      context: ../../chargeops-frontend/chargeops-web
-      dockerfile: Dockerfile
-      args:
-        - VITE_API_URL=${VITE_API_URL:-https://chargeops.online/api/v1}
-        - VITE_KEYCLOAK_URL=${VITE_KEYCLOAK_URL:-https://chargeops.online}
-        - VITE_DRIVER_APP_URL=${VITE_DRIVER_APP_URL:-https://driver.chargeops.online}
-        - VITE_KEYCLOAK_REALM=${VITE_KEYCLOAK_REALM:-chargeops}
-        - VITE_KEYCLOAK_CLIENT_ID=${VITE_KEYCLOAK_CLIENT_ID:-chargeops-web}
-        - VITE_GRAFANA_URL=/grafana/
-        - VITE_USE_MOCKS=false
-    image: chargeops/web-portal:demo
-    container_name: chargeops-web-demo
-    ports:
-      - "5173:80"   # Ánh xạ vào port 5173 của máy host để Cloudflare Tunnel gateway nhận traffic public
-    restart: unless-stopped
-    depends_on:
-      - backend
-      - grafana
-
-  # 6. Mailpit (Hộp thư ảo kiểm tra email kích hoạt, đổi mật khẩu)
-  mailpit:
-    image: axllent/mailpit:latest
-    container_name: chargeops-mailpit-demo
-    ports:
-      - "1025:1025"
-      - "8025:8025"
-    restart: unless-stopped
-
-  # 7. Observability nội bộ. Trình duyệt chỉ đi qua /grafana trên Web Portal.
+  # Observability is hosted on its own hostname, separate from the static sites.
   loki:
     image: grafana/loki:3.7.8
     command: -config.file=/etc/loki/config.yml
@@ -260,8 +224,8 @@ services:
     image: grafana/grafana:13.1.6
     restart: unless-stopped
     environment:
-      GF_SERVER_ROOT_URL: ${GRAFANA_ROOT_URL:-http://localhost:8088/grafana/}
-      GF_SERVER_SERVE_FROM_SUB_PATH: "true"
+      GF_SERVER_ROOT_URL: ${GRAFANA_ROOT_URL:-http://localhost:3000/}
+      GF_SERVER_SERVE_FROM_SUB_PATH: "false"
       GF_SECURITY_ALLOW_EMBEDDING: "true"
       GF_SECURITY_COOKIE_SAMESITE: lax
       GF_SECURITY_COOKIE_SECURE: ${GRAFANA_COOKIE_SECURE:-false}

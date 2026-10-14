@@ -9,19 +9,22 @@ ChargeOps Backend is an enterprise-grade backend system powering an end-to-end e
 
 ## 🌐 Public Domain & Authentication Invariant
 
-The platform uses Cloudflare Tunnel with a portal/auth origin and a separate Driver Web preview:
+Public origins are split by product surface:
 
 ```text
 https://chargeops.online
+https://console.chargeops.online
 https://driver.chargeops.online
+https://api.chargeops.online
+https://auth.chargeops.online
 ```
 
 > [!IMPORTANT]
 > **Production & Integration Contract**:
-> 1. `https://chargeops.online` serves the Web Portal, Backend API, Keycloak realm, Google OAuth callback, WebSocket and Grafana.
-> 2. `https://driver.chargeops.online` serves the Driver Web preview. Native driver builds keep the `chargeops://auth/callback` scheme and use the public API/Auth URLs.
-> 3. Port `8088` is the local gateway listener only. Public clients, redirect URIs and OAuth callbacks must not include it.
-> 4. The Google OAuth callback is `https://chargeops.online/realms/chargeops/broker/google/endpoint`.
+> 1. `chargeops.online` serves the marketing site; `console.chargeops.online` serves the Admin/Owner/Staff console; `driver.chargeops.online` serves Driver Web.
+> 2. `api.chargeops.online` serves Backend REST/WebSocket; `auth.chargeops.online` is the Keycloak issuer.
+> 3. Port `8088` is the local gateway listener only. Public clients and callbacks must not include it.
+> 4. The Google OAuth callback is `https://auth.chargeops.online/realms/chargeops/broker/google/endpoint`.
 > 5. Tailscale-specific setup and launchers are retained as rollback/reference material in `TAILSCALE_AND_ENV_GUIDE.md` and the legacy scripts.
 
 ---
@@ -32,24 +35,35 @@ ChargeOps follows a clean modular monolith architecture with event-driven integr
 
 ```mermaid
 graph TD
-    Client[Web & Mobile Clients] -->|HTTPS 443| Tunnel[Cloudflare Tunnel :443]
+    Visitor[Public Visitor] --> Marketing[Vercel Marketing: chargeops.online]
+    Operator[Admin/Owner/Staff] --> Console[Cloudflare Pages: console.chargeops.online]
+    Driver[Driver Web / Native App] --> DriverWeb[Cloudflare Pages: driver.chargeops.online]
+    Console -->|REST / WSS| ApiHost[api.chargeops.online]
+    Console -->|OIDC| AuthHost[auth.chargeops.online]
+    DriverWeb -->|REST / WSS| ApiHost
+    DriverWeb -->|OIDC| AuthHost
+    Native[Native Driver App] -->|REST / WSS| ApiHost
+    Native -->|OIDC| AuthHost
+    ApiHost --> Tunnel[Cloudflare Tunnel]
+    AuthHost --> Tunnel
     Tunnel --> Gateway[Nginx Gateway :8088 internal]
     Gateway --> API[Spring Boot 21 Backend :8081]
     Gateway --> Keycloak[Keycloak IAM :8080]
+    Gateway --> Grafana[Grafana :3000]
 
     subgraph Persistence & Infrastructure
         API --> PostGIS[(PostgreSQL 16 + PostGIS 3.4)]
         API --> Redis[(Redis 7 - Locks & Leases)]
         API --> ES[(Elasticsearch 9.4.2 - Spatial Search)]
-        API --> Kafka[Apache Kafka 4.1.2 - Outbox Events]
-        API --> Mail[Mailpit SMTP :1025]
+        API --> Kafka[Apache Kafka 4.1.2 - Outbox]
+        Kafka --> Mail[Hostinger SMTP :587]
         API --> Dify[Dify AI Engine - Policy RAG]
     end
 
     subgraph Observability
         API --> Actuator[Micrometer Actuator]
         Actuator --> Prometheus[Prometheus :9090]
-        API --> Alloy[Grafana Alloy] --> Loki[Loki] --> Grafana[Grafana :3000]
+        API --> Alloy[Grafana Alloy] --> Loki[Loki]
     end
 ```
 
@@ -260,7 +274,7 @@ mvnw.cmd spring-boot:run -Dspring-boot.run.profiles=dev
 ```
 
 Once started, access:
-- **API Documentation (Swagger UI)**: [https://chargeops.online/swagger-ui/index.html](https://chargeops.online/swagger-ui/index.html) (or `http://localhost:8081/swagger-ui/index.html` locally)
+- **API Documentation (Swagger UI)**: [https://api.chargeops.online/swagger-ui/index.html](https://api.chargeops.online/swagger-ui/index.html) (or `http://localhost:8081/swagger-ui/index.html` locally)
 - **OpenAPI JSON**: `http://localhost:8081/v3/api-docs`
 - **Actuator Health**: `http://localhost:8081/actuator/health`
 

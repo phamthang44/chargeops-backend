@@ -36,10 +36,9 @@ Compose files are instructions for Docker on the machine where the command runs.
 | File | Purpose |
 | --- | --- |
 | `docker-compose.yml` | Full local development infrastructure for running the backend from an IDE: database, Redis, Elasticsearch, Keycloak, Kafka, Mailpit, gateway, and observability. |
-| `docker-compose.demo.yml` | Full-stack demo built from the current local source. The demo keeps Kafka disabled by default and includes Mailpit. |
-| `compose.domain.yml` | Domain-aware Nginx gateway settings and an optional `public` Cloudflare Tunnel service. |
-| `compose.domain-demo.yml` | Public URL build arguments for the demo Web Portal. These values are baked into the frontend when it is built. |
-| `compose.mail-hostinger.yml` | Hostinger SMTP settings plus the Kafka broker required by the durable booking-email pipeline. When this overlay is active, Mailpit becomes an opt-in `local-mailpit` profile. |
+| `docker-compose.demo.yml` | Backend demo services built from the current local source. Frontends, Kafka UI and Mailpit are outside this stack; Kafka is added by the Hostinger mail overlay. Elasticsearch (`search`) is an opt-in profile, off by default. Grafana, Prometheus, Loki and Alloy run by default. |
+| `compose.domain.yml` | Host-based API/Auth/Grafana gateway settings and an optional `public` Cloudflare Tunnel service. Marketing and static frontends use Vercel/Pages. |
+| `compose.mail-hostinger.yml` | Hostinger SMTP settings plus the Kafka broker required by the durable booking-email pipeline. Mailpit remains in local dev/CI only. |
 | `compose.release-demo.yml` | Replaces only the demo backend with a tested GHCR image digest and selects Spring `prod`. It is an overlay, not a standalone stack. |
 | `compose.ci.yml` | Disposable Kafka and Mailpit for GitHub Actions tests. CI stops these services after the job. |
 
@@ -49,10 +48,12 @@ Use the single menu to choose the two supported local workflows:
 | --- | --- |
 | `START-CHARGEOPS.bat` | Opens the local workflow menu. No VPS or Dokploy instance is needed. |
 | `launchers/dev/start.bat` | Starts the lighter dev dependencies, Spring Boot, Vite and Expo Web locally. |
-| `launchers/demo/start.bat` | Builds the full local demo, starts Hostinger mail and the Cloudflare Tunnel, and runs Expo Web for the driver domain. |
+| `launchers/demo/start.bat` | Builds backend demo services, starts Hostinger mail and the Cloudflare Tunnel. Marketing, Console, and Driver Web are deployed separately. |
 | `launchers/dev/stop.bat`, `launchers/demo/stop.bat` | Stop their Docker services without removing volumes. |
 
 Previous domain-specific steps, the CI image smoke launcher, Dokploy deploy workflow/helper and Tailscale launchers are retained in `launchers/archive/`; they are not the normal entry points.
+
+The demo launcher includes Grafana, Prometheus, Loki and Alloy by default. The `search` profile starts Elasticsearch only when station text-search ranking is specifically needed. Set `ELASTICSEARCH_ENABLED=true` and `ELASTICSEARCH_REINDEX_ON_STARTUP=true` in `.env.demo`, then start the demo with `--profile public --profile search` to enable it.
 
 Use the scripts as the normal entry points instead of manually guessing overlay order. `Dockerfile` builds from source for local use. `Dockerfile.release` packages the JAR produced by CI and does not compile a second copy on the deployment host.
 

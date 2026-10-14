@@ -119,8 +119,8 @@ Toàn bộ tài liệu kiến trúc, đặc tả nghiệp vụ, API contract và
 
 ## 🌐 Public Domain & Authentication Invariant (BẮT BUỘC CHO MỌI AGENT)
 
-1. **Public Portal/Auth Origin**: `https://chargeops.online` serves the Web Portal, Backend API, Keycloak issuer/realm, Google OAuth broker callback, WebSocket, and Grafana through the Cloudflare Tunnel gateway.
-2. **Driver Web Preview**: `https://driver.chargeops.online` routes through the same Tunnel gateway to the local Driver Web preview on port `8082`. Port `8082` is a local upstream only; never use localhost or this port in public redirect URIs, issuer URLs, or OAuth callbacks.
-3. **Google Cloud Console OAuth Contract**: The authorized callback is `https://chargeops.online/realms/chargeops/broker/google/endpoint`.
-4. **Native Driver app**: Keep the native callback scheme `chargeops://auth/callback`; its API and Keycloak issuer use the public Portal/Auth origin above.
-5. Prior Tailscale Funnel settings and scripts are retained as rollback/reference material. They are not the active public-origin contract.
+1. `https://chargeops.online` is the marketing site. `https://console.chargeops.online` is the Admin/Owner/Staff web console; `https://driver.chargeops.online` is the Expo Web app.
+2. `https://api.chargeops.online` serves Backend REST and WebSocket. `https://auth.chargeops.online` is the Keycloak public hostname and issuer (`https://auth.chargeops.online/realms/chargeops`).
+3. Google Cloud Console broker callback: `https://auth.chargeops.online/realms/chargeops/broker/google/endpoint`. Keycloak client callbacks return to the relevant app origin, not to the issuer origin.
+4. Keep the native callback scheme `chargeops://auth/callback`; native and web clients use the public API and Keycloak URLs above.
+5. Marketing and static web apps are hosted outside the backend Compose stack. Cloudflare Tunnel routes API, Keycloak, and optional Grafana hostnames to the backend gateway. Never use local service ports in public URLs or OAuth callbacks.

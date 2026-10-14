@@ -22,21 +22,27 @@ foreach ($ClientId in @('chargeops-web', 'chargeops-driver-mobile', 'chargeops-o
     $Client = $Clients | Where-Object { $_.clientId -eq $ClientId }
     if (-not $Client) { throw "Missing client $ClientId. Do not create it with guessed settings." }
     $Client | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath (Join-Path $BackupDir ($ClientId + '.json')) -Encoding utf8
-    $Origin = if ($ClientId -eq 'chargeops-driver-mobile') { 'https://driver.chargeops.online' } else { 'https://chargeops.online' }
-    $Redirect = if ($ClientId -eq 'chargeops-observability') { 'https://chargeops.online/grafana/login/generic_oauth' } else { "$Origin/*" }
-    $Redirects = @($Client.redirectUris | ForEach-Object { $_ -replace 'https://thang\.tail704409\.ts\.net(?::(?:8443|10000))?', $Origin })
-    $Origins = @($Client.webOrigins | ForEach-Object { $_ -replace 'https://thang\.tail704409\.ts\.net(?::(?:8443|10000))?', $Origin })
+    $Origin = switch ($ClientId) {
+        'chargeops-web' { 'https://console.chargeops.online' }
+        'chargeops-driver-mobile' { 'https://driver.chargeops.online' }
+        'chargeops-observability' { 'https://grafana.chargeops.online' }
+        default { throw "Unknown public client $ClientId. Do not guess its redirect URI." }
+    }
+    $Redirect = if ($ClientId -eq 'chargeops-observability') { "$Origin/login/generic_oauth" } else { "$Origin/*" }
+    $OldPublicOrigins = 'https://thang\.tail704409\.ts\.net(?::(?:8443|10000))?|https://chargeops\.online'
+    $Redirects = @($Client.redirectUris | ForEach-Object { $_ -replace $OldPublicOrigins, $Origin })
+    $Origins = @($Client.webOrigins | ForEach-Object { $_ -replace $OldPublicOrigins, $Origin })
     # Preserve native app schemes and localhost redirects. Add the new public domain.
     $Patch = @{
         redirectUris = @(@($Redirects) + @($Redirect) | Select-Object -Unique)
         webOrigins = @(@($Origins) + @($Origin) | Select-Object -Unique)
     }
-    $PublicRoot = if ($ClientId -eq 'chargeops-driver-mobile') { $Origin } elseif ($ClientId -eq 'chargeops-observability') { 'https://chargeops.online/grafana/' } else { 'https://chargeops.online' }
+    $PublicRoot = if ($ClientId -eq 'chargeops-observability') { "$Origin/" } else { $Origin }
     $Patch['rootUrl'] = $PublicRoot
     $Patch['baseUrl'] = $PublicRoot
     foreach ($Property in @('rootUrl', 'baseUrl', 'adminUrl')) {
         if ($Property -eq 'adminUrl' -and $Client.$Property) {
-            $Patch[$Property] = $Client.$Property -replace 'https://thang\.tail704409\.ts\.net(?::(?:8443|10000))?', $Origin
+            $Patch[$Property] = $Client.$Property -replace $OldPublicOrigins, $Origin
         }
     }
     ($Patch | ConvertTo-Json -Depth 20) | & docker @ComposeArgs exec -T keycloak sh -c 'cat > /tmp/chargeops-domain-client.json'
@@ -46,4 +52,4 @@ foreach ($ClientId in @('chargeops-web', 'chargeops-driver-mobile', 'chargeops-o
     Write-Host "Updated public URLs: $ClientId"
 }
 Write-Host "Keycloak URL backups: $BackupDir"
-Write-Host 'Google Cloud OAuth must separately include https://chargeops.online/realms/chargeops/broker/google/endpoint'
+Write-Host 'Google Cloud OAuth must separately include https://auth.chargeops.online/realms/chargeops/broker/google/endpoint'

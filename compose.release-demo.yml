@@ -5,15 +5,16 @@ services:
     image: ${BACKEND_IMAGE:?Set BACKEND_IMAGE to the tested GHCR image digest}
     environment:
       SPRING_PROFILES_ACTIVE: prod
-      KEYCLOAK_ISSUER_URI: https://chargeops.online/realms/chargeops
+      KEYCLOAK_ISSUER_URI: https://auth.chargeops.online/realms/chargeops
       KEYCLOAK_JWK_SET_URI: http://keycloak:8080/realms/chargeops/protocol/openid-connect/certs
       KEYCLOAK_ADMIN_BASE_URL: http://keycloak:8080
-      BACKEND_BASE_URL: https://chargeops.online/api
-      FRONTEND_BASE_URL: https://chargeops.online
-      CORS_ALLOWED_ORIGINS: https://chargeops.online,https://driver.chargeops.online,http://localhost:5173,http://localhost:8082
+      BACKEND_BASE_URL: https://api.chargeops.online
+      FRONTEND_BASE_URL: https://console.chargeops.online
+      CORS_ALLOWED_ORIGINS: https://chargeops.online,https://console.chargeops.online,https://driver.chargeops.online,http://localhost:5173,http://localhost:8082
       JAVA_TOOL_OPTIONS: ${BACKEND_JAVA_OPTIONS:--XX:MaxRAMPercentage=65.0}
   grafana:
     environment:
-      GF_SERVER_ROOT_URL: https://chargeops.online/grafana/
+      GF_SERVER_ROOT_URL: https://grafana.chargeops.online/
+      GF_SERVER_SERVE_FROM_SUB_PATH: 'false'
       GF_SECURITY_COOKIE_SECURE: 'true'
-      GF_AUTH_GENERIC_OAUTH_AUTH_URL: https://chargeops.online/realms/chargeops/protocol/openid-connect/auth
+      GF_AUTH_GENERIC_OAUTH_AUTH_URL: https://auth.chargeops.online/realms/chargeops/protocol/openid-connect/auth
