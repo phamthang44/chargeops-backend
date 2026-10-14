@@ -121,8 +121,8 @@ class StationSpecificationIntegrationTest {
         jdbcTemplate.update(
                 """
                         INSERT INTO user_profile
-                            (id, keycloak_id, email, display_name, status, version, created_at, updated_at)
-                        VALUES (?, ?, ?, ?, ?, 0, ?, ?)
+                            (id, keycloak_id, email, display_name, status, primary_role, version, created_at, updated_at)
+                        VALUES (?, ?, ?, ?, ?, 'UNKNOWN', 0, ?, ?)
                         """,
                 ownerId,
                 UUID.randomUUID().toString(),
