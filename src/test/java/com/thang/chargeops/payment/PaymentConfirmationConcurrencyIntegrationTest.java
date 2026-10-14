@@ -390,7 +390,8 @@ class PaymentConfirmationConcurrencyIntegrationTest {
         var fixture = emailFixture();
         var event = storedEmailEvent(fixture);
         var email = jdbcTemplate.queryForObject("SELECT email FROM user_profile WHERE id = ?", String.class, event.recipientId());
-        String bookingCode = "BK-SMTP-" + UUID.randomUUID().toString().substring(0, 16);\n        jdbcTemplate.update("UPDATE bookings SET booking_code = ? WHERE id = ?", bookingCode, fixture.bookingId());
+        String bookingCode = "BK-SMTP-" + UUID.randomUUID().toString().substring(0, 16);
+        jdbcTemplate.update("UPDATE bookings SET booking_code = ? WHERE id = ?", bookingCode, fixture.bookingId());
         try (var kafka = emailKafkaHarness(template -> {})) {
             var publisher = new com.thang.chargeops.notification.kafka.BookingNotificationPublisher(kafka.template(), outboxJson, kafka.topic());
             var outboxWorker = new com.thang.chargeops.notification.outbox.BookingNotificationOutboxWorker(outboxStore, publisher, outboxJson, 1, 5);
