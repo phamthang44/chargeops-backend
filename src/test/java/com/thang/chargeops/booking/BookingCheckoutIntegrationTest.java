@@ -369,8 +369,8 @@ class BookingCheckoutIntegrationTest {
 
     private void insertUser(UUID id, String prefix) {
         jdbcTemplate.update("""
-                INSERT INTO user_profile(id, keycloak_id, email, version, created_at, updated_at)
-                VALUES (?, ?, ?, 0, ?, ?)
+                INSERT INTO user_profile(id, keycloak_id, email, primary_role, version, created_at, updated_at)
+                VALUES (?, ?, ?, 'UNKNOWN', 0, ?, ?)
                 """,
                 id,
                 prefix + id,
