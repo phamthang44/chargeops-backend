@@ -390,7 +390,8 @@ class PaymentConfirmationConcurrencyIntegrationTest {
         var fixture = emailFixture();
         var event = storedEmailEvent(fixture);
         var email = jdbcTemplate.queryForObject("SELECT email FROM user_profile WHERE id = ?", String.class, event.recipientId());
-        jdbcTemplate.update("UPDATE bookings SET booking_code = ? WHERE id = ?", "BK-SMTP-" + UUID.randomUUID().toString().substring(0, 16), fixture.bookingId());
+        String bookingCode = "BK-SMTP-" + UUID.randomUUID().toString().substring(0, 16);
+        jdbcTemplate.update("UPDATE bookings SET booking_code = ? WHERE id = ?", bookingCode, fixture.bookingId());
         try (var kafka = emailKafkaHarness(template -> {})) {
             var publisher = new com.thang.chargeops.notification.kafka.BookingNotificationPublisher(kafka.template(), outboxJson, kafka.topic());
             var outboxWorker = new com.thang.chargeops.notification.outbox.BookingNotificationOutboxWorker(outboxStore, publisher, outboxJson, 1, 5);
@@ -420,7 +421,7 @@ class PaymentConfirmationConcurrencyIntegrationTest {
                 var id = messages.get(0).get("ID").asText();
                 var detailRequest = java.net.http.HttpRequest.newBuilder(java.net.URI.create("http://localhost:8025/api/v1/message/" + id)).timeout(java.time.Duration.ofSeconds(5)).GET().build();
                 var detail = outboxJson.readTree(client.send(detailRequest, java.net.http.HttpResponse.BodyHandlers.ofString()).body());
-                assertThat(detail.get("HTML").asText()).contains("Race Station", fixture.bookingId().toString());
+                assertThat(detail.get("HTML").asText()).contains("Race Station", bookingCode);
                 assertThat(detail.get("Text").asText()).contains("Race Station", "120.000");
                 assertThat(detail.get("MessageID").asText()).contains(deliveryId(fixture).toString());
             });

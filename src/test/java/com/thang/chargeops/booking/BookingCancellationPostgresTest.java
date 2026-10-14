@@ -269,7 +269,9 @@ class BookingCancellationPostgresTest {
                         "http://localhost:8025/api/v1/message/" + result.get("messages").get(0).get("ID").asString()))
                         .timeout(java.time.Duration.ofSeconds(5)).GET().build(), java.net.http.HttpResponse.BodyHandlers.ofString());
                 var content = json.readTree(mail.body());
-                assertThat(content.get("HTML").asString()).contains("đang chờ xử lý", bookingId.toString());
+                String bookingCode = jdbc.queryForObject(
+                        "SELECT booking_code FROM bookings WHERE id=?", String.class, bookingId);
+                assertThat(content.get("HTML").asString()).contains("đang chờ xử lý", bookingCode);
                 assertThat(content.get("Text").asString()).contains("đang chờ xử lý", "126.000");
             } finally {
                 container.stop();

@@ -58,6 +58,7 @@ class TicketEscalationServiceTest {
         driver.setId(UUID.randomUUID());
         ticket = mock(SupportTicket.class);
         lenient().when(ticket.getId()).thenReturn(ticketId);
+        lenient().when(ticket.getTicketCode()).thenReturn("TKT-20261002-0001");
         lenient().when(ticket.getStation()).thenReturn(mock(Station.class));
         lenient().when(ticket.getStatus()).thenReturn(TicketStatus.OPEN);
         lenient().when(ticket.getReporter()).thenReturn(driver);

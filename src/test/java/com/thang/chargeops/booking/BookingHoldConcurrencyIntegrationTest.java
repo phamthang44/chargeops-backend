@@ -151,8 +151,8 @@ class BookingHoldConcurrencyIntegrationTest {
 
     private void insertUserProfile(UUID id, String keycloakId, String email) {
         jdbcTemplate.update("""
-                INSERT INTO user_profile(id, keycloak_id, email, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?)
+                INSERT INTO user_profile(id, keycloak_id, email, primary_role, version, created_at, updated_at)
+                VALUES (?, ?, ?, 'UNKNOWN', 0, ?, ?)
                 """, id, keycloakId, email, Timestamp.from(NOW), Timestamp.from(NOW));
     }
 

@@ -60,8 +60,8 @@ class StationRepositoryProjectionIntegrationTest {
         jdbcTemplate.update(
                 """
                         INSERT INTO user_profile
-                            (id, keycloak_id, email, display_name, status, created_at, updated_at)
-                        VALUES (?, ?, ?, ?, ?, ?, ?)
+                            (id, keycloak_id, email, display_name, status, primary_role, version, created_at, updated_at)
+                        VALUES (?, ?, ?, ?, ?, 'UNKNOWN', 0, ?, ?)
                         """,
                 ownerId,
                 UUID.randomUUID().toString(),
