@@ -4,6 +4,7 @@ import com.thang.chargeops.common.constant.SystemConstant;
 import com.thang.chargeops.common.response.ApiResult;
 import com.thang.chargeops.station.dto.station.response.OwnerOperationsSummaryResponse;
 import com.thang.chargeops.station.service.StationService;
+import com.thang.chargeops.station.service.OwnerDashboardService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.CacheControl;
 import org.springframework.http.ResponseEntity;
@@ -18,6 +19,7 @@ import org.springframework.web.bind.annotation.RestController;
 @RequiredArgsConstructor
 public class OwnerOperationsSummaryController {
     private final StationService service;
+    private final OwnerDashboardService dashboardService;
 
     @GetMapping("/stations/summary")
     public ResponseEntity<ApiResult<OwnerOperationsSummaryResponse.Stations>> stations() {
@@ -34,6 +36,6 @@ public class OwnerOperationsSummaryController {
     @GetMapping("/dashboard/summary")
     public ResponseEntity<ApiResult<OwnerOperationsSummaryResponse>> dashboard() {
         return ResponseEntity.ok().cacheControl(CacheControl.noStore())
-                .body(ApiResult.success(service.getOwnerOperationsSummary()));
+                .body(ApiResult.success(dashboardService.summary()));
     }
 }

@@ -36,6 +36,7 @@ import com.thang.chargeops.station.projection.StationApprovalSummaryProjection;
 import com.thang.chargeops.station.repository.LicenseRepository;
 import com.thang.chargeops.station.repository.StationRepository;
 import com.thang.chargeops.station.service.impl.StationServiceImpl;
+import com.thang.chargeops.station.service.OwnerDashboardService;
 import com.thang.chargeops.station.service.support.StationOperatingStatus;
 import com.thang.chargeops.station.service.support.StationEffectiveStateResolver;
 import com.thang.chargeops.station.service.usecase.AdminStationQueryUseCase;
@@ -166,7 +167,8 @@ class StationServiceImplTest {
                         stationAssetRepository,
                         stationOperatingScheduleRepository,
                         stationOperatingPeriodRepository
-                )
+                ),
+                mock(OwnerDashboardService.class)
         );
     }
 

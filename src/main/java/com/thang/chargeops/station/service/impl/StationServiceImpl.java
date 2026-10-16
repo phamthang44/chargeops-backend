@@ -15,6 +15,7 @@ import com.thang.chargeops.station.dto.station.response.StationCreatedResponse;
 import com.thang.chargeops.station.dto.station.response.StationOperationalStatusResponse;
 import com.thang.chargeops.station.entity.Station;
 import com.thang.chargeops.station.service.StationService;
+import com.thang.chargeops.station.service.OwnerDashboardService;
 import com.thang.chargeops.station.service.usecase.AdminStationQueryUseCase;
 import com.thang.chargeops.station.service.usecase.OwnerStationUseCase;
 import com.thang.chargeops.station.service.usecase.StationLifecycleUseCase;
@@ -40,10 +41,11 @@ public class StationServiceImpl implements StationService {
     private final StationLifecycleUseCase lifecycleUseCase;
     private final OwnerStationUseCase ownerUseCase;
     private final AdminStationQueryUseCase adminQueryUseCase;
+    private final OwnerDashboardService ownerDashboardService;
 
     @Override
     public OwnerOperationsSummaryResponse getOwnerOperationsSummary() {
-        return ownerUseCase.getOperationsSummary();
+        return ownerDashboardService.summary();
     }
 
     @Override

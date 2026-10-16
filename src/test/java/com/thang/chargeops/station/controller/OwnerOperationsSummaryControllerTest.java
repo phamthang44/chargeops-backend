@@ -2,6 +2,7 @@ package com.thang.chargeops.station.controller;
 
 import com.thang.chargeops.station.dto.station.response.OwnerOperationsSummaryResponse;
 import com.thang.chargeops.station.service.StationService;
+import com.thang.chargeops.station.service.OwnerDashboardService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
@@ -30,6 +31,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class OwnerOperationsSummaryControllerTest {
     @Autowired MockMvc mvc;
     @MockitoBean StationService service;
+    @MockitoBean OwnerDashboardService ownerDashboardService;
 
     @TestConfiguration
     @EnableMethodSecurity
@@ -42,10 +44,12 @@ class OwnerOperationsSummaryControllerTest {
     @Test
     @WithMockUser(roles = "OWNER")
     void exposesDedicatedCardsAndDashboardWithoutCaching() throws Exception {
-        when(service.getOwnerOperationsSummary()).thenReturn(new OwnerOperationsSummaryResponse(Instant.EPOCH,
+        OwnerOperationsSummaryResponse summary = new OwnerOperationsSummaryResponse(Instant.EPOCH,
                 LocalDate.of(2026, 10, 6), "Asia/Ho_Chi_Minh",
                 new OwnerOperationsSummaryResponse.Stations(11, 8, 5, 1, 30, 30),
-                new OwnerOperationsSummaryResponse.Hardware(19, 19, 0, 0, 0, 0, BigDecimal.ZERO)));
+                new OwnerOperationsSummaryResponse.Hardware(19, 19, 0, 0, 0, 0, BigDecimal.ZERO));
+        when(service.getOwnerOperationsSummary()).thenReturn(summary);
+        when(ownerDashboardService.summary()).thenReturn(summary);
         mvc.perform(get("/api/v1/owner/stations/summary")).andExpect(status().isOk())
                 .andExpect(header().string("Cache-Control", "no-store"))
                 .andExpect(jsonPath("$.data.visibleToDrivers").value(5));
