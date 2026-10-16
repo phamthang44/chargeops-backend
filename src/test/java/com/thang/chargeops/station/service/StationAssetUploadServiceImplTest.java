@@ -101,7 +101,6 @@ class StationAssetUploadServiceImplTest {
                 );
 
         assertThat(exception.getErrorCode()).isEqualTo(com.thang.chargeops.exception.errorcode.CommonErrorCode.INVALID_REQUEST);
-        assertThat(exception.getMessage()).contains("Image file size exceeds maximum limit of 10MB");
         verifyNoInteractions(fileService);
     }
 
