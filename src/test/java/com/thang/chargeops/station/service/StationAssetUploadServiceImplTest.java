@@ -22,6 +22,7 @@ import java.util.Collections;
 import java.util.Optional;
 import java.util.UUID;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -80,6 +81,28 @@ class StationAssetUploadServiceImplTest {
         lenient().when(uploadResponse.url()).thenReturn(Optional.of("https://ik.imagekit.io/chargeops/img.jpg"));
         lenient().when(uploadResponse.fileId()).thenReturn(Optional.of("file_123"));
         lenient().when(fileService.upload(any())).thenReturn(uploadResponse);
+    }
+
+    @Test
+    @DisplayName("uploadStationImage throws AppException when file size exceeds 10MB limit")
+    void uploadStationImage_throwsExceptionWhenFileExceedsSizeLimit() {
+        byte[] oversizedContent = new byte[10 * 1024 * 1024 + 1];
+        MockMultipartFile oversizedFile = new MockMultipartFile(
+                "image",
+                "large-image.jpg",
+                "image/jpeg",
+                oversizedContent
+        );
+
+        com.thang.chargeops.exception.AppException exception =
+                org.junit.jupiter.api.Assertions.assertThrows(
+                        com.thang.chargeops.exception.AppException.class,
+                        () -> service.uploadStationImage(stationId, oversizedFile, true)
+                );
+
+        assertThat(exception.getErrorCode()).isEqualTo(com.thang.chargeops.exception.errorcode.CommonErrorCode.INVALID_REQUEST);
+        assertThat(exception.getMessage()).contains("Image file size exceeds maximum limit of 10MB");
+        verifyNoInteractions(fileService);
     }
 
     @Test
