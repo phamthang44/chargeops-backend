@@ -31,7 +31,7 @@ Add the exact redirect URIs used by the environment:
 Add the matching Web Origins:
 
 - `http://localhost:8088`
-- `https://auth.chargeops.online`
+- `https://grafana.chargeops.online`
 
 Do not use `*` redirect URIs or Web Origins.
 

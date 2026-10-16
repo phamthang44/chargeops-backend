@@ -68,13 +68,19 @@ Build locally from `chargeops-driver-mobile` with `npm ci` and `npx expo export 
 ## Keycloak and OAuth
 
 - Public hostname / issuer: `https://auth.chargeops.online` / `https://auth.chargeops.online/realms/chargeops`.
-- Client `chargeops-web`: public web origin `https://console.chargeops.online`, redirect `https://console.chargeops.online/*`.
-- Client `chargeops-driver-mobile`: public web origin `https://driver.chargeops.online`, redirect `https://driver.chargeops.online/*`; preserve native `chargeops://auth/callback`, local development callbacks, and Expo callbacks.
-- Client `chargeops-observability`: redirect `https://grafana.chargeops.online/login/generic_oauth`.
+- Client `chargeops-web`: public web origin `https://console.chargeops.online`, login redirect `https://console.chargeops.online/*`, post-logout redirect `https://console.chargeops.online`.
+- Client `chargeops-driver-mobile`: public web origin `https://driver.chargeops.online`, login redirect `https://driver.chargeops.online/*`, post-logout redirect `https://driver.chargeops.online`; preserve native `chargeops://auth/callback`, local development callbacks, and Expo callbacks for both flows.
+- Client `chargeops-observability`: login redirect `https://grafana.chargeops.online/login/generic_oauth`, post-logout redirect `https://grafana.chargeops.online/`.
 - Google broker callback registered in Google Cloud Console: `https://auth.chargeops.online/realms/chargeops/broker/google/endpoint`.
 - SePay webhook, if enabled: `https://api.chargeops.online/api/v1/webhooks/sepay`.
 
-After the DNS/Tunnel routes resolve, start the backend demo stack with the updated `compose.domain.yml`, then apply the backed-up realm/client URL changes with:
+After the DNS/Tunnel routes resolve, start the backend stack with the updated `compose.domain.yml`, then apply the backed-up realm/client URL changes. For local dev use:
+
+```powershell
+.\scripts\configure-keycloak-domain.ps1
+```
+
+For the demo stack use:
 
 ```powershell
 .\scripts\configure-keycloak-domain.ps1 -Demo

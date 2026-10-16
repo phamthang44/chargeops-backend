@@ -1,7 +1,9 @@
 param([switch]$Demo)
+
 $ErrorActionPreference = 'Stop'
 $ProjectRoot = Split-Path -Parent $PSScriptRoot
 Set-Location $ProjectRoot
+
 $BaseCompose = if ($Demo) { 'docker-compose.demo.yml' } else { 'docker-compose.yml' }
 $ComposeArgs = @('compose', '--env-file', '.env', '-f', $BaseCompose, '-f', 'compose.domain.yml')
 $BackupDir = Join-Path $ProjectRoot ('.codex-tmp/keycloak-domain-' + (Get-Date -Format 'yyyyMMdd-HHmmss'))
@@ -9,47 +11,84 @@ New-Item -ItemType Directory -Path $BackupDir | Out-Null
 
 # Credentials are expanded inside the local Keycloak container, never printed.
 & docker @ComposeArgs exec -T keycloak sh -c '/opt/keycloak/bin/kcadm.sh config credentials --server http://127.0.0.1:8080 --realm master --user "$KC_BOOTSTRAP_ADMIN_USERNAME" --password "$KC_BOOTSTRAP_ADMIN_PASSWORD" >/dev/null 2>&1'
-if ($LASTEXITCODE -ne 0) { throw 'Keycloak login failed. Start the local Keycloak service first.' }
+if ($LASTEXITCODE -ne 0) { throw 'Keycloak login failed. Start the selected Keycloak service first.' }
 
 $RealmJson = & docker @ComposeArgs exec -T keycloak /opt/keycloak/bin/kcadm.sh get realms/chargeops --fields realm,attributes
 if ($LASTEXITCODE -ne 0) { throw 'Could not read the chargeops realm.' }
 $RealmJson | Set-Content -LiteralPath (Join-Path $BackupDir 'realm.json') -Encoding utf8
 
-$ClientsJson = & docker @ComposeArgs exec -T keycloak /opt/keycloak/bin/kcadm.sh get clients -r chargeops --fields id,clientId,redirectUris,webOrigins,rootUrl,baseUrl,adminUrl
+$ClientsJson = & docker @ComposeArgs exec -T keycloak /opt/keycloak/bin/kcadm.sh get clients -r chargeops --fields id,clientId
 if ($LASTEXITCODE -ne 0) { throw 'Could not read realm clients.' }
 $Clients = ($ClientsJson -join "`n") | ConvertFrom-Json
-foreach ($ClientId in @('chargeops-web', 'chargeops-driver-mobile', 'chargeops-observability')) {
-    $Client = $Clients | Where-Object { $_.clientId -eq $ClientId }
-    if (-not $Client) { throw "Missing client $ClientId. Do not create it with guessed settings." }
-    $Client | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath (Join-Path $BackupDir ($ClientId + '.json')) -Encoding utf8
-    $Origin = switch ($ClientId) {
-        'chargeops-web' { 'https://console.chargeops.online' }
-        'chargeops-driver-mobile' { 'https://driver.chargeops.online' }
-        'chargeops-observability' { 'https://grafana.chargeops.online' }
-        default { throw "Unknown public client $ClientId. Do not guess its redirect URI." }
+
+# These are the callbacks used by the current web and native applications.
+# Localhost callbacks remain available for development; obsolete public hosts are removed.
+$ClientConfigs = [ordered]@{
+    'chargeops-web' = @{
+        rootUrl = 'https://console.chargeops.online'
+        redirectUris = @('https://console.chargeops.online/*', 'http://localhost:5173/*', 'http://127.0.0.1:5173/*')
+        webOrigins = @('https://console.chargeops.online', 'http://localhost:5173', 'http://127.0.0.1:5173')
+        postLogoutRedirectUris = @('https://console.chargeops.online', 'http://localhost:5173', 'http://127.0.0.1:5173')
     }
-    $Redirect = if ($ClientId -eq 'chargeops-observability') { "$Origin/login/generic_oauth" } else { "$Origin/*" }
-    $OldPublicOrigins = 'https://thang\.tail704409\.ts\.net(?::(?:8443|10000))?|https://chargeops\.online'
-    $Redirects = @($Client.redirectUris | ForEach-Object { $_ -replace $OldPublicOrigins, $Origin })
-    $Origins = @($Client.webOrigins | ForEach-Object { $_ -replace $OldPublicOrigins, $Origin })
-    # Preserve native app schemes and localhost redirects. Add the new public domain.
-    $Patch = @{
-        redirectUris = @(@($Redirects) + @($Redirect) | Select-Object -Unique)
-        webOrigins = @(@($Origins) + @($Origin) | Select-Object -Unique)
+    'chargeops-driver-mobile' = @{
+        rootUrl = 'https://driver.chargeops.online'
+        redirectUris = @('https://driver.chargeops.online/*', 'chargeops://auth/callback', 'http://localhost:8082', 'http://127.0.0.1:8082', 'exp://*')
+        webOrigins = @('https://driver.chargeops.online', 'http://localhost:8082', 'http://127.0.0.1:8082', '+')
+        postLogoutRedirectUris = @('https://driver.chargeops.online', 'chargeops://auth/callback', 'http://localhost:8082', 'http://127.0.0.1:8082', 'exp://*')
     }
-    $PublicRoot = if ($ClientId -eq 'chargeops-observability') { "$Origin/" } else { $Origin }
-    $Patch['rootUrl'] = $PublicRoot
-    $Patch['baseUrl'] = $PublicRoot
-    foreach ($Property in @('rootUrl', 'baseUrl', 'adminUrl')) {
-        if ($Property -eq 'adminUrl' -and $Client.$Property) {
-            $Patch[$Property] = $Client.$Property -replace $OldPublicOrigins, $Origin
+    'chargeops-observability' = @{
+        rootUrl = 'https://grafana.chargeops.online/'
+        redirectUris = @('https://grafana.chargeops.online/login/generic_oauth', 'http://localhost:5173/grafana/login/generic_oauth')
+        webOrigins = @('https://grafana.chargeops.online', 'http://localhost:5173')
+        postLogoutRedirectUris = @('https://grafana.chargeops.online/')
+    }
+}
+
+foreach ($ClientId in $ClientConfigs.Keys) {
+    $ClientRef = $Clients | Where-Object { $_.clientId -eq $ClientId } | Select-Object -First 1
+    if (-not $ClientRef) { throw "Missing client $ClientId. Do not create it with guessed settings." }
+
+    # The list endpoint omits attributes, including Valid Post Logout Redirect URIs.
+    $ClientJson = & docker @ComposeArgs exec -T keycloak /opt/keycloak/bin/kcadm.sh get "clients/$($ClientRef.id)" -r chargeops
+    if ($LASTEXITCODE -ne 0) { throw "Could not read client $ClientId." }
+    $Client = ($ClientJson -join "`n") | ConvertFrom-Json
+    $Backup = [ordered]@{
+        clientId = $Client.clientId
+        redirectUris = $Client.redirectUris
+        webOrigins = $Client.webOrigins
+        rootUrl = $Client.rootUrl
+        baseUrl = $Client.baseUrl
+        adminUrl = $Client.adminUrl
+        postLogoutRedirectUris = $Client.attributes.'post.logout.redirect.uris'
+    }
+    $Backup | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath (Join-Path $BackupDir ($ClientId + '.json')) -Encoding utf8
+
+    $Config = $ClientConfigs[$ClientId]
+    $LocalRedirects = @($Client.redirectUris | Where-Object { $_ -match '^https?://(localhost|127\.0\.0\.1)(:\d+)?(/.*)?$' })
+    $LocalOrigins = @($Client.webOrigins | Where-Object { $_ -match '^https?://(localhost|127\.0\.0\.1)(:\d+)?$' })
+    $LocalPostLogout = @(($Client.attributes.'post.logout.redirect.uris' -split '##') | Where-Object { $_ -match '^https?://(localhost|127\.0\.0\.1)(:\d+)?(/.*)?$' })
+    $Attributes = @{}
+    if ($Client.attributes) {
+        foreach ($Attribute in $Client.attributes.PSObject.Properties) {
+            $Attributes[$Attribute.Name] = $Attribute.Value
         }
+    }
+    $Attributes['post.logout.redirect.uris'] = (@($Config.postLogoutRedirectUris + $LocalPostLogout | Select-Object -Unique) -join '##')
+
+    $Patch = [ordered]@{
+        redirectUris = @($Config.redirectUris + $LocalRedirects | Select-Object -Unique)
+        webOrigins = @($Config.webOrigins + $LocalOrigins | Select-Object -Unique)
+        rootUrl = $Config.rootUrl
+        baseUrl = $Config.rootUrl
+        attributes = $Attributes
     }
     ($Patch | ConvertTo-Json -Depth 20) | & docker @ComposeArgs exec -T keycloak sh -c 'cat > /tmp/chargeops-domain-client.json'
     if ($LASTEXITCODE -ne 0) { throw 'Could not prepare client patch.' }
-    & docker @ComposeArgs exec -T keycloak /opt/keycloak/bin/kcadm.sh update "clients/$($Client.id)" -r chargeops -f /tmp/chargeops-domain-client.json
+    & docker @ComposeArgs exec -T keycloak /opt/keycloak/bin/kcadm.sh update "clients/$($ClientRef.id)" -r chargeops -f /tmp/chargeops-domain-client.json
     if ($LASTEXITCODE -ne 0) { throw "Client update failed: $ClientId. Backup: $BackupDir" }
-    Write-Host "Updated public URLs: $ClientId"
+    & docker @ComposeArgs exec -T keycloak rm -f /tmp/chargeops-domain-client.json
+    Write-Host "Updated public and post-logout URLs: $ClientId"
 }
+
 Write-Host "Keycloak URL backups: $BackupDir"
 Write-Host 'Google Cloud OAuth must separately include https://auth.chargeops.online/realms/chargeops/broker/google/endpoint'
