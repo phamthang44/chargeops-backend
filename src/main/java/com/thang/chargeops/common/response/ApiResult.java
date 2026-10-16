@@ -97,6 +97,12 @@ public class ApiResult<T> {
         private String sort;
         /** Applied filters, echoed back to the client. */
         private Map<String, Object> filter;
+
+        /** Optional reference time for a dashboard read snapshot. */
+        private java.time.Instant generatedAt;
+
+        /** Optional server-defined dataset scope; existing endpoints omit it. */
+        private String scope;
     }
 
     /**

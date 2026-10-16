@@ -15,5 +15,9 @@ public record AdminDashboardTicketItem(
         String reporterName,
         UUID stationId,
         String stationName,
-        String escalationReason
+        String escalationReason,
+        UUID escalationId,
+        Instant requestedAt,
+        UUID assignedHandlerId,
+        String assignedHandlerName
 ) {}

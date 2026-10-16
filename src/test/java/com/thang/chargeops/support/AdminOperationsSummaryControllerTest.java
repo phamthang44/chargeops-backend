@@ -19,10 +19,12 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.util.Map;
+import java.time.Instant;
 
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @WebMvcTest({AdminOperationsSummaryController.class, AdminTicketController.class})
@@ -38,7 +40,8 @@ class AdminOperationsSummaryControllerTest {
     @Test
     @WithMockUser(roles = "ADMIN")
     void adminSummaryRoutesReturnDedicatedData() throws Exception {
-        when(summaries.dashboard()).thenReturn(new AdminOperationsSummaryResponse(12, 3, 2, 1));
+        when(summaries.dashboard()).thenReturn(new AdminOperationsSummaryResponse(12, 3, 2, 1,
+                Instant.parse("2026-10-16T08:00:00Z")));
         when(summaries.tickets(false)).thenReturn(new AdminTicketSummaryResponse(5,
                 Map.of("open", 2L, "in_progress", 1L, "resolved", 1L, "closed", 1L), 2, 1, 1, 1));
         when(summaries.tickets(true)).thenReturn(new AdminTicketSummaryResponse(2,
@@ -46,7 +49,9 @@ class AdminOperationsSummaryControllerTest {
 
         mockMvc.perform(get("/api/v1/admin/dashboard/summary"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.pendingApprovals").value(3));
+                .andExpect(jsonPath("$.data.pendingApprovals").value(3))
+                .andExpect(header().string("Cache-Control", "no-store"))
+                .andExpect(jsonPath("$.data.generatedAt").value("2026-10-16T08:00:00Z"));
         mockMvc.perform(get("/api/v1/admin/tickets/summary"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.byStatus.open").value(2));

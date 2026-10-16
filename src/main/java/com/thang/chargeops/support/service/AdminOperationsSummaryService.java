@@ -1,6 +1,5 @@
 package com.thang.chargeops.support.service;
 
-import com.thang.chargeops.common.enums.StationStatus;
 import com.thang.chargeops.support.dto.response.AdminOperationsSummaryResponse;
 import com.thang.chargeops.support.dto.response.AdminTicketSummaryResponse;
 import com.thang.chargeops.support.model.TicketStatus;
@@ -8,6 +7,7 @@ import jakarta.persistence.EntityManager;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.annotation.Isolation;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -16,16 +16,11 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class AdminOperationsSummaryService {
     private final EntityManager entityManager;
+    private final AdminDashboardQueueService dashboardQueues;
 
-    @Transactional(readOnly = true)
+    @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
     public AdminOperationsSummaryResponse dashboard() {
-        long activeStations = stationCount(StationStatus.ACTIVE);
-        long pendingApprovals = stationCount(StationStatus.PENDING_APPROVAL);
-        AdminTicketSummaryResponse platform = ticketCounts(false);
-        AdminTicketSummaryResponse escalated = ticketCounts(true);
-        return new AdminOperationsSummaryResponse(activeStations, pendingApprovals,
-                platform.open() + platform.inProgress(),
-                escalated.open() + escalated.inProgress());
+        return dashboardQueues.summary();
     }
 
     @Transactional(readOnly = true)
@@ -55,8 +50,4 @@ public class AdminOperationsSummaryService {
                 counts.get("in_progress"), counts.get("resolved"), counts.get("closed"));
     }
 
-    private long stationCount(StationStatus status) {
-        return entityManager.createQuery("SELECT COUNT(s) FROM Station s WHERE s.status = :status", Long.class)
-                .setParameter("status", status).getSingleResult();
-    }
 }
