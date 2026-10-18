@@ -49,19 +49,33 @@ public class AdminDashboardReadRepository {
         return countTickets(ESCALATED_SOURCE);
     }
 
+    private static final String APPROVALS_QUERY_ASC = """
+            select new com.thang.chargeops.support.dto.response.AdminDashboardApprovalItem(
+              s.id, s.stationCode, s.name, coalesce(nullif(owner.displayName, ''), owner.email),
+              case when :language = 'en'
+                then coalesce(nullif(province.fullNameEn, ''), province.fullName)
+                else province.fullName end,
+              s.status, s.createdAt)
+            from Station s join s.owner owner left join s.ward ward left join ward.province province
+            where s.status = :status
+            order by s.createdAt asc, s.id asc
+            """;
+
+    private static final String APPROVALS_QUERY_DESC = """
+            select new com.thang.chargeops.support.dto.response.AdminDashboardApprovalItem(
+              s.id, s.stationCode, s.name, coalesce(nullif(owner.displayName, ''), owner.email),
+              case when :language = 'en'
+                then coalesce(nullif(province.fullNameEn, ''), province.fullName)
+                else province.fullName end,
+              s.status, s.createdAt)
+            from Station s join s.owner owner left join s.ward ward left join ward.province province
+            where s.status = :status
+            order by s.createdAt desc, s.id desc
+            """;
+
     public Page<AdminDashboardApprovalItem> approvals(Pageable pageable, AdminDashboardSort sort, String language) {
-        String direction = sort == AdminDashboardSort.OLDEST_FIRST ? "asc" : "desc";
-        var rows = entityManager.createQuery("""
-                select new com.thang.chargeops.support.dto.response.AdminDashboardApprovalItem(
-                  s.id, s.stationCode, s.name, coalesce(nullif(owner.displayName, ''), owner.email),
-                  case when :language = 'en'
-                    then coalesce(nullif(province.fullNameEn, ''), province.fullName)
-                    else province.fullName end,
-                  s.status, s.createdAt)
-                from Station s join s.owner owner left join s.ward ward left join ward.province province
-                where s.status = :status
-                order by s.createdAt %s, s.id %s
-                """.formatted(direction, direction), AdminDashboardApprovalItem.class)
+        String jpql = sort == AdminDashboardSort.OLDEST_FIRST ? APPROVALS_QUERY_ASC : APPROVALS_QUERY_DESC;
+        var rows = entityManager.createQuery(jpql, AdminDashboardApprovalItem.class)
                 .setParameter("language", language).setParameter("status", StationStatus.PENDING_APPROVAL)
                 .setFirstResult(Math.toIntExact(pageable.getOffset())).setMaxResults(pageable.getPageSize())
                 .getResultList();
@@ -92,8 +106,8 @@ public class AdminDashboardReadRepository {
     }
 
     private Page<AdminDashboardTicketItem> loadTickets(String select, String source, String order, Pageable pageable) {
-        var rows = entityManager.createQuery("%s\n%s\norder by %s".formatted(select, source, order),
-                        AdminDashboardTicketItem.class)
+        String jpql = select + "\n" + source + "\norder by " + order;
+        var rows = entityManager.createQuery(jpql, AdminDashboardTicketItem.class)
                 .setFirstResult(Math.toIntExact(pageable.getOffset())).setMaxResults(pageable.getPageSize())
                 .getResultList();
         return new PageImpl<>(rows, pageable, countTickets(source));
