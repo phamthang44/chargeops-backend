@@ -6,6 +6,8 @@ import com.thang.chargeops.common.enums.StationStatus;
 import com.thang.chargeops.common.enums.StationStatusEventType;
 import com.thang.chargeops.common.enums.UserStatus;
 import com.thang.chargeops.exception.AppException;
+import com.thang.chargeops.moderation.model.ContentScope;
+import com.thang.chargeops.moderation.service.ContentModerationService;
 import com.thang.chargeops.exception.errorcode.ProfileErrorCode;
 import com.thang.chargeops.location.entity.AdministrativeWard;
 import com.thang.chargeops.location.service.AdministrativeLocationService;
@@ -37,6 +39,7 @@ public class StationRegistrationUseCase {
     private final StationStatusHistoryService stationStatusHistoryService;
     private final NotificationService notificationService;
     private final UserProfileRepository userProfileRepository;
+    private final ContentModerationService contentModerationService;
 
     @Transactional
     public StationCreatedResponse create(RegisterStationRequest request) {
@@ -46,7 +49,7 @@ public class StationRegistrationUseCase {
                 LogConstant.ACTION_START,
                 "createStationRegistration",
                 owner.getId(),
-                request
+                "station registration"
         );
         if (owner.getStatus() != UserStatus.ACTIVE) {
             throw new AppException(ProfileErrorCode.PROFILE_NOT_ACTIVE);
@@ -60,6 +63,7 @@ public class StationRegistrationUseCase {
                 request.provinceCode()
         );
 
+        contentModerationService.validate("name", ContentScope.STATION_NAME, request.name());
         Station station = stationMapper.toStationEntity(request);
         station.setStationCode(formatStationCode(
                 stationRepository.nextStationCodeSequence()

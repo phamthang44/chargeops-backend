@@ -31,7 +31,8 @@ class OwnerStationRegistrationUseCaseTest {
     private final CurrentProfileProvider profiles = mock(CurrentProfileProvider.class);
     private final AdministrativeLocationService locations = mock(AdministrativeLocationService.class);
     private final StationStatusHistoryService history = mock(StationStatusHistoryService.class);
-    private final OwnerStationRegistrationUseCase useCase = new OwnerStationRegistrationUseCase(repository, profiles, locations, history);
+    private final com.thang.chargeops.moderation.service.ContentModerationService moderation = mock(com.thang.chargeops.moderation.service.ContentModerationService.class);
+    private final OwnerStationRegistrationUseCase useCase = new OwnerStationRegistrationUseCase(repository, profiles, locations, history, moderation);
     private UserProfile owner;
     private Station station;
     private AdministrativeWard ward;
@@ -51,6 +52,17 @@ class OwnerStationRegistrationUseCaseTest {
         station.setWard(ward);
         when(profiles.requireProfile()).thenReturn(owner);
         when(repository.findByIdForOperationalStatusUpdate(station.getId())).thenReturn(Optional.of(station));
+    }
+
+    @Test
+    void prohibitedNameDoesNotMutateStationOrFlush() {
+        when(locations.requireWard("26734")).thenReturn(ward);
+        doThrow(new AppException(com.thang.chargeops.exception.errorcode.ModerationErrorCode.CONTENT_PROHIBITED))
+                .when(moderation).validate("name", com.thang.chargeops.moderation.model.ContentScope.STATION_NAME, request.name());
+        assertThatThrownBy(() -> useCase.update(station.getId(), 3, request)).isInstanceOf(AppException.class);
+        assertThat(station.getName()).isEqualTo("Old name");
+        verify(repository, never()).saveAndFlush(any());
+        verifyNoInteractions(history);
     }
 
     @Test

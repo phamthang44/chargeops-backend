@@ -4,6 +4,8 @@ import com.thang.chargeops.common.enums.StationStatus;
 import com.thang.chargeops.common.enums.StationStatusEventType;
 import com.thang.chargeops.common.enums.UserStatus;
 import com.thang.chargeops.exception.AppException;
+import com.thang.chargeops.moderation.model.ContentScope;
+import com.thang.chargeops.moderation.service.ContentModerationService;
 import com.thang.chargeops.exception.errorcode.CommonErrorCode;
 import com.thang.chargeops.exception.errorcode.ProfileErrorCode;
 import com.thang.chargeops.exception.errorcode.StationErrorCode;
@@ -28,6 +30,7 @@ public class OwnerStationRegistrationUseCase {
     private final CurrentProfileProvider currentProfileProvider;
     private final AdministrativeLocationService locationService;
     private final StationStatusHistoryService historyService;
+    private final ContentModerationService contentModerationService;
 
     @Transactional(readOnly = true)
     public OwnerStationRegistrationResponse get(UUID stationId) {
@@ -44,6 +47,7 @@ public class OwnerStationRegistrationUseCase {
         Station station = requirePending(stationId, owner, version);
         var ward = locationService.requireWard(request.wardCode());
         locationService.requireWardBelongsToProvince(ward, request.provinceCode());
+        contentModerationService.validate("name", ContentScope.STATION_NAME, request.name());
         station.setName(request.name().trim());
         station.setAddressLine(request.addressLine().trim());
         station.setDescription(request.description() == null ? null : request.description().trim());

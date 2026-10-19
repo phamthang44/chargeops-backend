@@ -43,14 +43,18 @@ class UserProfileServiceImplTest {
     private UserProfileMapper userProfileMapper;
 
     private UserProfileServiceImpl userProfileService;
+    @Mock private com.thang.chargeops.moderation.service.ContentModerationService moderation;
 
     @BeforeEach
     void setUp() {
         userProfileService = new UserProfileServiceImpl(
                 new JwtClaimExtractor(),
                 userProfileRepository,
-                userProfileMapper
+                userProfileMapper,
+                moderation
         );
+        org.mockito.Mockito.lenient().when(moderation.safeImportedDisplayName(any()))
+                .thenAnswer(invocation -> invocation.getArgument(0));
     }
 
     @Test
@@ -179,6 +183,45 @@ class UserProfileServiceImplTest {
                 .isInstanceOfSatisfying(AppException.class,
                         exception -> assertThat(exception.getErrorCode())
                                 .isEqualTo(ProfileErrorCode.PROFILE_BOOTSTRAP_FAILED));
+    }
+
+    @Test
+    void rejectsProhibitedNameBeforeProfileMutationOrFlush() {
+        var existing = profile("moderation-user", "moderation@example.test", UserStatus.ACTIVE);
+        existing.setDisplayName("Original");
+        when(userProfileRepository.findByKeycloakId("moderation-user")).thenReturn(Optional.of(existing));
+        org.mockito.Mockito.doThrow(new AppException(com.thang.chargeops.exception.errorcode.ModerationErrorCode.CONTENT_PROHIBITED))
+                .when(moderation).validate("displayName", com.thang.chargeops.moderation.model.ContentScope.DISPLAY_NAME, "bad");
+        assertThatThrownBy(() -> userProfileService.updateCurrentProfile(
+                jwt("moderation-user", "moderation@example.test", "Original"), updateRequest("bad", "0912345678")))
+                .isInstanceOf(AppException.class);
+        assertThat(existing.getDisplayName()).isEqualTo("Original");
+        verify(userProfileRepository, never()).flush();
+    }
+
+    @Test
+    void ssoNameIsSanitizedBeforeNativeInsertAndBlankNameSynchronization() {
+        var created = profile("moderation-sso", "sso@example.test", UserStatus.ACTIVE);
+        when(userProfileRepository.findByKeycloakId("moderation-sso"))
+                .thenReturn(Optional.empty(), Optional.of(created));
+        when(moderation.safeImportedDisplayName("bad")).thenReturn("Người dùng");
+        when(userProfileRepository.insertProfileIfAbsent("moderation-sso", "sso@example.test", "Người dùng"))
+                .thenReturn(1);
+        stubMapper();
+        userProfileService.getOrBootstrapProfile(jwt("moderation-sso", "sso@example.test", "bad"));
+        verify(userProfileRepository).insertProfileIfAbsent("moderation-sso", "sso@example.test", "Người dùng");
+        assertThat(created.getDisplayName()).isEqualTo("Người dùng");
+    }
+
+    @Test
+    void existingNonblankNameIsNotReplacedByBadSsoName() {
+        var existing = profile("moderation-existing", "existing@example.test", UserStatus.ACTIVE);
+        existing.setDisplayName("Valid existing name");
+        when(userProfileRepository.findByKeycloakId("moderation-existing")).thenReturn(Optional.of(existing));
+        stubMapper();
+        userProfileService.getOrBootstrapProfile(jwt("moderation-existing", "existing@example.test", "bad"));
+        assertThat(existing.getDisplayName()).isEqualTo("Valid existing name");
+        verify(moderation, never()).safeImportedDisplayName(any());
     }
 
     private Jwt jwt(String subject, String email, String name) {

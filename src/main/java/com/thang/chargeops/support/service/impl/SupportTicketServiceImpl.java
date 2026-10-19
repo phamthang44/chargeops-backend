@@ -4,6 +4,8 @@ import com.thang.chargeops.booking.entity.Booking;
 import com.thang.chargeops.booking.repository.BookingRepository;
 import com.thang.chargeops.common.constant.SystemConstant;
 import com.thang.chargeops.exception.AppException;
+import com.thang.chargeops.moderation.model.ContentScope;
+import com.thang.chargeops.moderation.service.ContentModerationService;
 import com.thang.chargeops.exception.errorcode.StationErrorCode;
 import com.thang.chargeops.exception.errorcode.TicketErrorCode;
 import com.thang.chargeops.profile.entity.UserProfile;
@@ -83,6 +85,7 @@ public class SupportTicketServiceImpl implements SupportTicketService {
     private final UserProfileRepository userProfileRepository;
     private final NotificationService notificationService;
     private final ApplicationEventPublisher eventPublisher;
+    private final ContentModerationService contentModerationService;
 
     @Override
     @Transactional
@@ -117,6 +120,9 @@ public class SupportTicketServiceImpl implements SupportTicketService {
         Station routedStation = request.category() == TicketCategory.CHARGING_ISSUE
                 || request.category() == TicketCategory.BOOKING
                 || (request.category() == TicketCategory.PAYMENT && booking != null) ? station : null;
+        contentModerationService.validate(List.of(
+                new ContentModerationService.Field("subject", ContentScope.TICKET_SUBJECT, request.subject()),
+                new ContentModerationService.Field("description", ContentScope.TICKET_DESCRIPTION, request.description())));
         SupportTicket ticket = ticketRepository.saveAndFlush(SupportTicket.open(
                 nextTicketCode(), request.category(), request.priority(), reporter, routedStation, booking,
                 new SupportTicket.TicketDetails(request.subject(), request.description())
@@ -280,6 +286,7 @@ public class SupportTicketServiceImpl implements SupportTicketService {
 
         TicketActorKind authorKind = adminConsole ? TicketActorKind.ADMIN : resolveAuthorKind(ticket, author, roles);
         prepareReply(ticket, author, authorKind, adminConsole);
+        contentModerationService.validate("body", ContentScope.TICKET_MESSAGE, request.body());
 
         TicketMessage message = TicketMessage.create(
                 ticket, author, authorKind, request.body(), clock.instant(), clientMessageId);

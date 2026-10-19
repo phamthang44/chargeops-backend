@@ -75,6 +75,7 @@ class SupportTicketCreatePostgresTest {
     @Autowired JdbcTemplate jdbc;
     @Autowired EntityManager entityManager;
     @MockitoBean CurrentProfileProvider currentProfileProvider;
+    @MockitoBean com.thang.chargeops.moderation.service.ContentModerationService moderation;
     @MockitoBean NotificationService notificationService;
     @MockitoBean TicketAccessPolicy ticketAccessPolicy;
     @MockitoBean TicketEscalationService ticketEscalationService;

@@ -1,6 +1,8 @@
 package com.thang.chargeops.profile.service.impl;
 
 import com.thang.chargeops.exception.AppException;
+import com.thang.chargeops.moderation.model.ContentScope;
+import com.thang.chargeops.moderation.service.ContentModerationService;
 import com.thang.chargeops.exception.errorcode.ProfileErrorCode;
 import com.thang.chargeops.infra.security.JwtClaimExtractor;
 import com.thang.chargeops.profile.dto.UserProfileResponse;
@@ -33,6 +35,7 @@ public class UserProfileServiceImpl implements UserProfileService {
     private final JwtClaimExtractor jwtClaimExtractor;
     private final UserProfileRepository userProfileRepository;
     private final UserProfileMapper userProfileMapper;
+    private final ContentModerationService contentModerationService;
 
     @Override
     @Transactional
@@ -46,6 +49,7 @@ public class UserProfileServiceImpl implements UserProfileService {
     @Transactional
     public UserProfileResponse updateCurrentProfile(Jwt jwt, UserProfileUpdateRequest request) {
         UserProfile profile = findOrCreateFromJwt(jwt);
+        contentModerationService.validate("displayName", ContentScope.DISPLAY_NAME, request.getDisplayName());
         profile.setDisplayName(request.getDisplayName());
         profile.setPhone(request.getPhone());
         if (request.getAvatarUrl() != null) {
@@ -88,6 +92,7 @@ public class UserProfileServiceImpl implements UserProfileService {
 
     private UserProfile createOrLoadProfile(String keycloakId, String email, String displayName,
                                             PrimaryRole primaryRole) {
+        displayName = contentModerationService.safeImportedDisplayName(displayName);
         int insertedRows;
         try {
             insertedRows = userProfileRepository.insertProfileIfAbsent(keycloakId, email, displayName);
@@ -109,7 +114,7 @@ public class UserProfileServiceImpl implements UserProfileService {
         }
 
         if (!hasText(profile.getDisplayName()) && hasText(displayName)) {
-            profile.setDisplayName(displayName);
+            profile.setDisplayName(contentModerationService.safeImportedDisplayName(displayName));
         }
         profile.setPrimaryRole(primaryRole);
         profile.setRoleSyncedAt(Instant.now());

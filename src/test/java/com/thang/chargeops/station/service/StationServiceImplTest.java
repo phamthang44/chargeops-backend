@@ -69,6 +69,7 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
@@ -124,6 +125,7 @@ class StationServiceImplTest {
     private RegisterStationRequest request;
 
     private StationServiceImpl stationService;
+    @org.mockito.Mock private com.thang.chargeops.moderation.service.ContentModerationService moderation;
 
     @BeforeEach
     void setUp() {
@@ -135,7 +137,8 @@ class StationServiceImplTest {
                         administrativeLocationService,
                         stationStatusHistoryService,
                         notificationService,
-                        userProfileRepository
+                        userProfileRepository,
+                        moderation
                 ),
                 new StationLifecycleUseCase(
                         stationRepository,
@@ -170,6 +173,22 @@ class StationServiceImplTest {
                 ),
                 mock(OwnerDashboardService.class)
         );
+    }
+
+    @Test
+    void prohibitedStationNameDoesNotAllocateOrPersistStation() {
+        when(currentProfileProvider.requireProfile()).thenReturn(UserProfile.builder().status(UserStatus.ACTIVE).build());
+        when(request.wardCode()).thenReturn("00001");
+        when(request.provinceCode()).thenReturn("01");
+        var ward = mock(AdministrativeWard.class);
+        when(administrativeLocationService.requireWard("00001")).thenReturn(ward);
+        org.mockito.Mockito.doThrow(new AppException(com.thang.chargeops.exception.errorcode.ModerationErrorCode.CONTENT_PROHIBITED))
+                .when(moderation).validate(org.mockito.ArgumentMatchers.eq("name"),
+                        org.mockito.ArgumentMatchers.eq(com.thang.chargeops.moderation.model.ContentScope.STATION_NAME), org.mockito.ArgumentMatchers.any());
+        assertThatThrownBy(() -> stationService.createStationRegistration(request)).isInstanceOf(AppException.class);
+        verify(stationRepository, never()).save(any());
+        verify(stationRepository, never()).nextStationCodeSequence();
+        org.mockito.Mockito.verifyNoInteractions(stationMapper, notificationService, stationStatusHistoryService);
     }
 
     @Test

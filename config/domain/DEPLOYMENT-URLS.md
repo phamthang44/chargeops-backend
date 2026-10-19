@@ -39,7 +39,7 @@ Build locally from `chargeops-web` with `npm ci` and `npm run build --workspace 
 ### Driver Web (same `chargeops-frontend` repository)
 
 - Root directory: `chargeops-driver-mobile`
-- Build command: `npm ci && npx expo export -p web`
+- Build command: `npm ci && npm run build:web`
 - Build output directory: `dist`
 - Build environment:
 
@@ -56,7 +56,7 @@ EXPO_PUBLIC_USE_MOCKS=false
 
 Expo `EXPO_PUBLIC_*` values are bundled into browser code; never put passwords, client secrets, or tunnel tokens in them.
 
-Build locally from `chargeops-driver-mobile` with `npm ci` and `npx expo export -p web`; upload its `dist` directory to the Driver Pages project.
+Build locally from `chargeops-driver-mobile` with `npm ci` and `npm run build:web`; upload its `dist` directory to the Driver Pages project.
 
 ### Marketing (Vercel)
 

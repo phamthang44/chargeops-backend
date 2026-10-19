@@ -73,6 +73,7 @@ class SupportTicketServiceTest {
     @Mock org.springframework.context.ApplicationEventPublisher eventPublisher;
 
     private SupportTicketServiceImpl service;
+    @Mock com.thang.chargeops.moderation.service.ContentModerationService moderation;
     private UserProfile reporter;
 
     @BeforeEach
@@ -80,7 +81,7 @@ class SupportTicketServiceTest {
         service = new SupportTicketServiceImpl(currentProfileProvider, bookingRepository, stationRepository,
                 ticketRepository, messageRepository, Clock.fixed(NOW, ZoneOffset.UTC),
                 stationStaffAssignmentRepository, ticketResponseAssembler, accessPolicy,
-                userProfileRepository, notificationService, eventPublisher);
+                userProfileRepository, notificationService, eventPublisher, moderation);
         reporter = UserProfile.builder().email("driver@example.test").displayName("Driver").build();
         reporter.setId(REPORTER_ID);
         when(currentProfileProvider.requireProfile()).thenReturn(reporter);
@@ -410,6 +411,31 @@ class SupportTicketServiceTest {
 
         assertThat(service.getTickets(null, STATION_ID, 1, 20, TicketListScope.ACTOR)
                 .getContent()).isEmpty();
+    }
+
+    @Test
+    void prohibitedTicketDoesNotPersistOrNotify() {
+        doThrow(new AppException(com.thang.chargeops.exception.errorcode.ModerationErrorCode.CONTENT_PROHIBITED))
+                .when(moderation).validate(anyList());
+        assertThatThrownBy(() -> service.create(new CreateTicketRequest(TicketCategory.ACCOUNT,
+                TicketPriority.MEDIUM, "bad", "bad", null, null))).isInstanceOf(AppException.class);
+        verify(ticketRepository, never()).saveAndFlush(any());
+        verify(ticketRepository, never()).nextTicketCodeSequence();
+        verifyNoInteractions(messageRepository, notificationService, eventPublisher);
+    }
+
+    @Test
+    void prohibitedReplyIncludingClientKeyCannotPersistOrBroadcast() {
+        UUID id = UUID.randomUUID();
+        SupportTicket ticket = mock(SupportTicket.class);
+        when(ticket.getStatus()).thenReturn(TicketStatus.OPEN);
+        when(ticket.getReporter()).thenReturn(reporter);
+        when(ticketRepository.findByIdForUpdate(id)).thenReturn(Optional.of(ticket));
+        doThrow(new AppException(com.thang.chargeops.exception.errorcode.ModerationErrorCode.CONTENT_PROHIBITED))
+                .when(moderation).validate("body", com.thang.chargeops.moderation.model.ContentScope.TICKET_MESSAGE, "bad");
+        assertThatThrownBy(() -> service.replyTicket(id, UUID.randomUUID(), new MessageRequest("bad")))
+                .isInstanceOf(AppException.class);
+        verifyNoInteractions(messageRepository, eventPublisher);
     }
 
     @Test

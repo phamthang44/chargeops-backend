@@ -47,11 +47,22 @@ Use the single menu to choose the two supported local workflows:
 | Entry point | Result |
 | --- | --- |
 | `START-CHARGEOPS.bat` | Opens the local workflow menu. No VPS or Dokploy instance is needed. |
-| `launchers/dev/start.bat` | Starts the lighter dev dependencies, Spring Boot, Vite and Expo Web locally. |
+| `launchers/dev/start.bat` | Starts local Docker dependencies only. Start Spring Boot, Vite and Expo Web yourself in the IDE or terminal. |
 | `launchers/demo/start.bat` | Builds backend demo services, starts Hostinger mail and the Cloudflare Tunnel. Marketing, Console, and Driver Web are deployed separately. |
 | `launchers/dev/stop.bat`, `launchers/demo/stop.bat` | Stop their Docker services without removing volumes. |
 
 Previous domain-specific steps, the CI image smoke launcher, Dokploy deploy workflow/helper and Tailscale launchers are retained in `launchers/archive/`; they are not the normal entry points.
+
+For local development, keep backend `.env` URL values on `localhost` and use
+`chargeops-web/apps/web/.env.development.local` and
+`chargeops-driver-mobile/.env.local` for local frontend endpoints. These files are
+ignored by Git. After the launcher reports the infrastructure ready, run the
+backend from the repository root, `npm run dev` from `chargeops-web`, and
+`npm run web` from `chargeops-driver-mobile` when you need those applications.
+The demo launcher uses `.env.demo` to select public origins.
+The dev launcher verifies that Keycloak discovery advertises
+`http://localhost:8080/realms/chargeops`; if it reports the public issuer,
+restart the dev infrastructure with the launcher before opening the login page.
 
 The demo launcher includes Grafana, Prometheus, Loki and Alloy by default. The `search` profile starts Elasticsearch only when station text-search ranking is specifically needed. Set `ELASTICSEARCH_ENABLED=true` and `ELASTICSEARCH_REINDEX_ON_STARTUP=true` in `.env.demo`, then start the demo with `--profile public --profile search` to enable it.
 
