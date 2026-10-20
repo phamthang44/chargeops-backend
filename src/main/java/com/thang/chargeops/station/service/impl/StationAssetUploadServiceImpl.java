@@ -175,9 +175,15 @@ public class StationAssetUploadServiceImpl implements StationAssetUploadService 
         return stationAssetRepository.findByStationIdOrderByDisplayOrderAsc(stationId);
     }
 
+    private static final long MAX_IMAGE_SIZE_BYTES = 10 * 1024 * 1024; // 10 MB
+
     private void validateImage(MultipartFile file) {
         if (file == null || file.isEmpty()) {
             throw new AppException(CommonErrorCode.INVALID_REQUEST, "Image file is required");
+        }
+        // Security check: Limit file upload size to 10MB to prevent Denial of Service (DoS) via memory exhaustion
+        if (file.getSize() > MAX_IMAGE_SIZE_BYTES) {
+            throw new AppException(CommonErrorCode.INVALID_REQUEST, "Image file size exceeds maximum limit of 10MB");
         }
         String contentType = file.getContentType();
         if (contentType == null || !contentType.startsWith("image/")) {
