@@ -33,6 +33,7 @@ import java.util.stream.Collectors;
 public class GlobalSearchService {
 
     public static final int MIN_QUERY_LENGTH = 2;
+    public static final int MAX_QUERY_LENGTH = 100;
     public static final int DEFAULT_LIMIT = 5;
     public static final int MAX_LIMIT = 20;
 
@@ -44,6 +45,9 @@ public class GlobalSearchService {
         if (query.length() < MIN_QUERY_LENGTH) {
             // IllegalArgumentException → GlobalHandlerError xử lý thành 400.
             throw new IllegalArgumentException("q must be at least " + MIN_QUERY_LENGTH + " characters");
+        }
+        if (query.length() > MAX_QUERY_LENGTH) {
+            throw new IllegalArgumentException("q must not exceed " + MAX_QUERY_LENGTH + " characters");
         }
         int effectiveLimit = Math.min(Math.max(limit, 1), MAX_LIMIT);
 

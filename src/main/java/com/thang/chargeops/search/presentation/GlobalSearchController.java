@@ -7,6 +7,7 @@ import com.thang.chargeops.search.GlobalSearchType;
 import com.thang.chargeops.search.dto.GlobalSearchResponse;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.Size;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -34,7 +35,7 @@ public class GlobalSearchController {
 
     @GetMapping
     public ResponseEntity<ApiResult<GlobalSearchResponse>> search(
-            @RequestParam String q,
+            @RequestParam @Size(max = 100) String q,
             @RequestParam(required = false) GlobalSearchType type,
             @RequestParam(defaultValue = "5") @Min(1) @Max(20) int limit) {
         return ResponseEntity.ok(ApiResult.success(globalSearchService.search(q, type, limit)));
