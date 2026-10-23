@@ -59,6 +59,24 @@ class OwnerStationAssetControllerTest {
     }
 
     @Test
+    @DisplayName("POST /api/v1/owner/stations/{stationId}/assets/register validates URL format")
+    void registerStationAsset_invalidUrl_returnsBadRequest() throws Exception {
+        UUID stationId = UUID.randomUUID();
+
+        mockMvc.perform(post("/api/v1/owner/stations/{stationId}/assets/register", stationId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "assetUrl": "not-a-valid-url",
+                                  "storageKey": "file_123",
+                                  "assetType": "IMAGE",
+                                  "primary": true
+                                }
+                                """))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
     @DisplayName("POST /api/v1/owner/stations/{stationId}/assets/register registers asset metadata")
     void registerStationAsset_success() throws Exception {
         UUID stationId = UUID.randomUUID();
