@@ -2,6 +2,7 @@ package com.thang.chargeops.station.dto.station.request;
 
 import com.thang.chargeops.common.enums.StationAssetType;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -18,6 +19,7 @@ public class RegisterStationAssetRequest {
 
     @NotBlank(message = "ASSET_URL_REQUIRED")
     @Size(max = 500, message = "ASSET_URL_MAX_LENGTH")
+    @Pattern(regexp = "^https?://.*$", message = "ASSET_URL_INVALID_SCHEME")
     private String assetUrl;
 
     @Size(max = 255, message = "STORAGE_KEY_MAX_LENGTH")
