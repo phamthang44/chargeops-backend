@@ -160,15 +160,25 @@ class WebSocketNotificationHintIntegrationTest {
         StompSession sessionB = connect(new RecordingHandler(), "token-b");
         CapturingFrameHandler inboxA = new CapturingFrameHandler();
         CapturingFrameHandler inboxB = new CapturingFrameHandler();
-        sessionA.subscribe("/user/queue/notifications", inboxA);
-        sessionB.subscribe("/user/queue/notifications", inboxB);
 
-        // Retry committed hints until A's subscription is live; B must stay empty the whole
-        // time — delivery/exactly-once is proven separately by the transaction test.
-        AtomicInteger sequence = new AtomicInteger();
+        StompHeaders headersA = new StompHeaders();
+        headersA.setDestination("/user/queue/notifications");
+        headersA.setReceipt("receipt-sub-a");
+        CountDownLatch receiptA = new CountDownLatch(1);
+        sessionA.subscribe(headersA, inboxA).addReceiptTask(receiptA::countDown);
+
+        StompHeaders headersB = new StompHeaders();
+        headersB.setDestination("/user/queue/notifications");
+        headersB.setReceipt("receipt-sub-b");
+        CountDownLatch receiptB = new CountDownLatch(1);
+        sessionB.subscribe(headersB, inboxB).addReceiptTask(receiptB::countDown);
+
+        assertThat(receiptA.await(5, TimeUnit.SECONDS)).isTrue();
+        assertThat(receiptB.await(5, TimeUnit.SECONDS)).isTrue();
+
+        publishHintFor("hint-user-a", "a-1");
         await().atMost(10, TimeUnit.SECONDS).untilAsserted(() -> {
-            publishHintFor("hint-user-a", "a-" + sequence.incrementAndGet());
-            assertThat(inboxA.payloads).isNotEmpty();
+            assertThat(inboxA.payloads).hasSize(1);
             assertThat(inboxB.payloads).as("session B must never see session A's hints").isEmpty();
         });
 
@@ -178,12 +188,11 @@ class WebSocketNotificationHintIntegrationTest {
         assertThat(body.get("eventId").toString()).startsWith("CREATED:hint-user-a:");
 
         // And the reverse direction: B receives its own hint, A receives nothing new.
-        int seenByA = inboxA.payloads.size();
+        publishHintFor("hint-user-b", "b-1");
         await().atMost(10, TimeUnit.SECONDS).untilAsserted(() -> {
-            publishHintFor("hint-user-b", "b-" + sequence.incrementAndGet());
-            assertThat(inboxB.payloads).isNotEmpty();
+            assertThat(inboxB.payloads).hasSize(1);
             assertThat(inboxA.payloads).as("session A must not receive session B's hints")
-                    .hasSize(seenByA);
+                    .hasSize(1);
         });
         assertThat(parse(inboxB.payloads.getFirst()).get("eventId").toString())
                 .startsWith("CREATED:hint-user-b:");
