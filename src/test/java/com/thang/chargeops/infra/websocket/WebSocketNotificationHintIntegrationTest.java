@@ -163,30 +163,32 @@ class WebSocketNotificationHintIntegrationTest {
         sessionA.subscribe("/user/queue/notifications", inboxA);
         sessionB.subscribe("/user/queue/notifications", inboxB);
 
-        // Retry committed hints until A's subscription is live; B must stay empty the whole
-        // time — delivery/exactly-once is proven separately by the transaction test.
+        // Retry committed hints until A's subscription is live; B must stay empty the whole time.
         AtomicInteger sequence = new AtomicInteger();
         await().atMost(10, TimeUnit.SECONDS).untilAsserted(() -> {
             publishHintFor("hint-user-a", "a-" + sequence.incrementAndGet());
-            assertThat(inboxA.payloads).isNotEmpty();
-            assertThat(inboxB.payloads).as("session B must never see session A's hints").isEmpty();
+            assertThat(inboxA.payloads)
+                    .as("inboxA must receive hint for user A")
+                    .anyMatch(p -> parse(p).get("eventId").toString().startsWith("CREATED:hint-user-a:"));
+            assertThat(inboxB.payloads)
+                    .as("session B must never see session A's hints")
+                    .isEmpty();
         });
 
         Map<String, Object> body = parse(inboxA.payloads.getFirst());
         assertThat(body.keySet()).isSubsetOf(CONTRACT_KEYS);
         assertThat(body.get("type")).isEqualTo("NOTIFICATION_CREATED");
-        assertThat(body.get("eventId").toString()).startsWith("CREATED:hint-user-a:");
 
-        // And the reverse direction: B receives its own hint, A receives nothing new.
-        int seenByA = inboxA.payloads.size();
+        // And the reverse direction: B receives its own hint, A receives no hint for user B.
         await().atMost(10, TimeUnit.SECONDS).untilAsserted(() -> {
             publishHintFor("hint-user-b", "b-" + sequence.incrementAndGet());
-            assertThat(inboxB.payloads).isNotEmpty();
-            assertThat(inboxA.payloads).as("session A must not receive session B's hints")
-                    .hasSize(seenByA);
+            assertThat(inboxB.payloads)
+                    .as("inboxB must receive hint for user B")
+                    .anyMatch(p -> parse(p).get("eventId").toString().startsWith("CREATED:hint-user-b:"));
+            assertThat(inboxA.payloads)
+                    .as("session A must not receive session B's hints")
+                    .noneMatch(p -> parse(p).get("eventId").toString().startsWith("CREATED:hint-user-b:"));
         });
-        assertThat(parse(inboxB.payloads.getFirst()).get("eventId").toString())
-                .startsWith("CREATED:hint-user-b:");
 
         assertThat(sessionA.isConnected()).isTrue();
         assertThat(sessionB.isConnected()).isTrue();

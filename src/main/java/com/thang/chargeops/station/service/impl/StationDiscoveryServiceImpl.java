@@ -227,6 +227,7 @@ public class StationDiscoveryServiceImpl implements StationDiscoveryService {
     /**
      * VI: Chuẩn hóa từ khóa và escape ký tự LIKE để %, _ và ! được tìm như ký tự thường.
      * EN: Normalizes the keyword and escapes LIKE metacharacters so %, _ and ! stay literal.
+     * Security: Prevents SQL LIKE wildcard pattern expansion injection in native SQL queries using ESCAPE '!'.
      */
     private String toQueryPattern(String value) {
         String normalized = normalizeText(value);
@@ -234,6 +235,7 @@ public class StationDiscoveryServiceImpl implements StationDiscoveryService {
             return null;
         }
 
+        // Security: Escape the custom escape character '!' first, followed by '\\', '%', and '_'
         String escaped = normalized
                 .toLowerCase(Locale.ROOT)
                 .replace("!", "!!")

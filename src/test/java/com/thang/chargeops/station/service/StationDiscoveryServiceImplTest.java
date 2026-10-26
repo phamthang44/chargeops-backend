@@ -116,6 +116,7 @@ class StationDiscoveryServiceImplTest {
                 service.searchStations(filter, 1, 12);
 
         StationDiscoveryQueryParameters parameters = capturedParameters();
+        // Verifies security requirement: %, _, !, and \ must be escaped with ! custom escape char
         assertThat(parameters.queryPattern()).isEqualTo("%100!%!_fast!!!\\%");
         assertThat(parameters.sort()).isEqualTo("NEAREST");
         assertThat(parameters.latitude()).isEqualByComparingTo("10.776900");
@@ -123,6 +124,23 @@ class StationDiscoveryServiceImplTest {
         assertThat(result.getContent()).singleElement()
                 .extracting(StationDiscoveryItemResponse::distanceKm)
                 .isEqualTo(new BigDecimal("1.24"));
+    }
+
+    @Test
+    void escapesAllSqlWildcardCharactersInSearchQuery() {
+        UUID stationId = UUID.randomUUID();
+        StationDiscoveryFilter filter = new StationDiscoveryFilter();
+        filter.setQuery("test_%!\\input");
+
+        StationDiscoveryItemProjection station = stationProjection(stationId, null);
+        when(discoveryQueryRepository.findStations(any(), eq(FIRST_PAGE)))
+                .thenReturn(pageOf(station));
+
+        service.searchStations(filter, 1, 12);
+
+        StationDiscoveryQueryParameters parameters = capturedParameters();
+        // Verify each special character (_, %, !, \) is correctly escaped with custom escape char !
+        assertThat(parameters.queryPattern()).isEqualTo("%test!_!%!!!\\input%");
     }
 
     @Test
