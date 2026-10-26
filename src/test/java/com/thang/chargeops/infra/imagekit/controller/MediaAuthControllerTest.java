@@ -17,6 +17,7 @@ import java.util.Map;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -44,6 +45,7 @@ class MediaAuthControllerTest {
 
         mockMvc.perform(get("/api/v1/media/imagekit-auth"))
                 .andExpect(status().isOk())
+                .andExpect(header().string("Cache-Control", "no-store"))
                 .andExpect(jsonPath("$.data.token").value("mock-token-123"))
                 .andExpect(jsonPath("$.data.expire").value(1757080000L))
                 .andExpect(jsonPath("$.data.signature").value("mock-signature-abc"));
