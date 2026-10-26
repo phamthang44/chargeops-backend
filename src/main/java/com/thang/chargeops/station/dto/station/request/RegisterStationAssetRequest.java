@@ -18,6 +18,7 @@ public class RegisterStationAssetRequest {
 
     @NotBlank(message = "ASSET_URL_REQUIRED")
     @Size(max = 500, message = "ASSET_URL_MAX_LENGTH")
+    @org.hibernate.validator.constraints.URL(message = "ASSET_URL_INVALID_FORMAT")
     private String assetUrl;
 
     @Size(max = 255, message = "STORAGE_KEY_MAX_LENGTH")

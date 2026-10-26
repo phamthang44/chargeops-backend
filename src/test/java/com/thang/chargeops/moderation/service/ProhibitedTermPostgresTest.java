@@ -91,6 +91,16 @@ class ProhibitedTermPostgresTest {
         var disabled = admin.setStatus(created.id(), new ProhibitedTermRequests.Status(false, updated.version()));
         assertThat(disabled.enabled()).isFalse();
         assertThat(moderation.check(ContentScope.DISPLAY_NAME, text).allowed()).isTrue();
+        // Verify SQL LIKE wildcard query escaping (% and _ do not perform wildcard expansion)
+        String wildcardText = "term%test_wildcard" + UUID.randomUUID().toString().replace("-", "");
+        var wildcardTerm = create(wildcardText, true);
+        assertThat(admin.list("term%", ContentScope.DISPLAY_NAME, true, 1, 20).getContent())
+                .extracting(ProhibitedTermResponse::id).contains(wildcardTerm.id());
+        assertThat(admin.list("term%test", ContentScope.DISPLAY_NAME, true, 1, 20).getContent())
+                .extracting(ProhibitedTermResponse::id).contains(wildcardTerm.id());
+        assertThat(admin.list("term_test", ContentScope.DISPLAY_NAME, true, 1, 20).getContent())
+                .extracting(ProhibitedTermResponse::id).doesNotContain(wildcardTerm.id());
+
         var history = admin.history(created.id(), 1, 20).getContent();
         assertThat(history).hasSize(3).allMatch(change -> actorId.equals(change.actorId()));
         assertThat(history.getFirst().beforeSnapshot()).contains("\"enabled\":true");
