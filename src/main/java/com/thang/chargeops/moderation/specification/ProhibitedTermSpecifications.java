@@ -10,6 +10,7 @@ public final class ProhibitedTermSpecifications {
         return (root, query, cb) -> {
             var predicate = cb.conjunction();
             if (q != null && !q.isBlank()) {
+                // Security check: Escape SQL LIKE wildcard characters (\, %, _) to treat search query literally
                 String value = ContentNormalizer.normalize(q).replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_");
                 predicate = cb.and(predicate, cb.like(root.get("normalizedTerm"), "%" + value + "%", '\\'));
             }

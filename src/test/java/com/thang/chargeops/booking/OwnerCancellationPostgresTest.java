@@ -156,7 +156,7 @@ class OwnerCancellationPostgresTest {
                 container.start();
                 org.awaitility.Awaitility.await().atMost(Duration.ofSeconds(30)).untilAsserted(()->assertThat(container.getAssignedPartitions()).hasSize(3));
                 worker.dispatchPending();
-                org.awaitility.Awaitility.await().atMost(Duration.ofSeconds(15)).untilAsserted(()->assertThat(jdbc.queryForObject("SELECT status FROM notification_email_deliveries WHERE event_id=?",String.class,event.eventId())).isEqualTo("PENDING"));
+                org.awaitility.Awaitility.await().atMost(Duration.ofSeconds(15)).untilAsserted(()->assertThat(jdbc.queryForList("SELECT status FROM notification_email_deliveries WHERE event_id=?",String.class,event.eventId())).containsExactly("PENDING"));
                 smtp.dispatchPending();
                 kafka.send(topic,event.bookingId().toString(),objectMapper.writeValueAsString(event)).get(10,TimeUnit.SECONDS);
                 org.awaitility.Awaitility.await().atMost(Duration.ofSeconds(15)).untilAsserted(()->assertThat(admin.listConsumerGroupOffsets(group).partitionsToOffsetAndMetadata().get(5,TimeUnit.SECONDS).values().stream().mapToLong(org.apache.kafka.clients.consumer.OffsetAndMetadata::offset).sum()).isEqualTo(2));

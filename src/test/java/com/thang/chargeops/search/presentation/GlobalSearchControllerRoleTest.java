@@ -85,6 +85,13 @@ class GlobalSearchControllerRoleTest {
     }
 
     @Test
+    void longKeywordExceedingMaxLengthIsBadRequest() throws Exception {
+        String longQuery = "a".repeat(101);
+        mockMvc.perform(get("/api/v1/search").param("q", longQuery).with(user("admin").roles("ADMIN")))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
     void limitIsBoundedAndTypeIsOnlyAFilter() throws Exception {
         mockMvc.perform(get("/api/v1/search").param("q", "global").param("limit", "0")
                         .with(user("admin").roles("ADMIN")))

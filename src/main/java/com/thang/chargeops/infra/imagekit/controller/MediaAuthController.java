@@ -7,6 +7,7 @@ import io.imagekit.client.ImageKitClient;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.CacheControl;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -46,6 +47,8 @@ public class MediaAuthController {
                 .urlEndpoint(urlEndpoint)
                 .build();
 
-        return ResponseEntity.ok(ApiResult.success(response));
+        return ResponseEntity.ok()
+                .cacheControl(CacheControl.noStore())
+                .body(ApiResult.success(response));
     }
 }

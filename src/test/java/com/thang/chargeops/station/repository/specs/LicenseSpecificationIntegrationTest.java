@@ -194,7 +194,7 @@ class LicenseSpecificationIntegrationTest {
 
     @Test
     void treatsLikeWildcardsAsLiteralCharacters() {
-        LicenseFilter filter = new LicenseFilter(
+        LicenseFilter percentFilter = new LicenseFilter(
                 null,
                 null,
                 null,
@@ -205,11 +205,45 @@ class LicenseSpecificationIntegrationTest {
                 null
         );
 
-        var result = licenseRepository.findAll(
-                LicenseSpecification.filter(filter)
+        var percentResult = licenseRepository.findAll(
+                LicenseSpecification.filter(percentFilter)
         );
 
-        assertThat(result).isEmpty();
+        assertThat(percentResult).isEmpty();
+
+        LicenseFilter underscoreFilter = new LicenseFilter(
+                null,
+                null,
+                null,
+                "_",
+                null,
+                null,
+                null,
+                null
+        );
+
+        var underscoreResult = licenseRepository.findAll(
+                LicenseSpecification.filter(underscoreFilter)
+        );
+
+        assertThat(underscoreResult).isEmpty();
+
+        LicenseFilter backslashFilter = new LicenseFilter(
+                null,
+                null,
+                null,
+                "\\",
+                null,
+                null,
+                null,
+                null
+        );
+
+        var backslashResult = licenseRepository.findAll(
+                LicenseSpecification.filter(backslashFilter)
+        );
+
+        assertThat(backslashResult).isEmpty();
     }
 
     private LicenseFilter filterWithLicenseCode(String licenseCode) {
