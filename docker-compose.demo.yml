@@ -9,12 +9,16 @@ services:
   gateway:
     image: nginx:alpine
     container_name: chargeops-gateway-demo
+    networks:
+      default: {}
+      api_ingress:
+        ipv4_address: 172.30.241.2
     ports:
       - "127.0.0.1:${GATEWAY_PORT:-8088}:80"
     restart: unless-stopped
     environment:
       NGINX_ENVSUBST_FILTER: "^(API_UPSTREAM|KEYCLOAK_UPSTREAM|GRAFANA_UPSTREAM)$"
-      API_UPSTREAM: backend:8081
+      API_UPSTREAM: 172.30.241.3:8081
       KEYCLOAK_UPSTREAM: keycloak:8080
       GRAFANA_UPSTREAM: grafana:3000
     volumes:
@@ -153,6 +157,15 @@ services:
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-chargeops}
       - REDIS_HOST=redis
       - REDIS_PORT=6379
+      - ABUSE_MODE=${ABUSE_MODE:-OBSERVE}
+      - ABUSE_HMAC_KEY=${ABUSE_HMAC_KEY:-}
+      - ABUSE_TRUSTED_PROXIES=${ABUSE_TRUSTED_PROXIES:-172.30.241.2/32}
+      - ABUSE_KEYCLOAK_METRICS_ENABLED=${ABUSE_KEYCLOAK_METRICS_ENABLED:-false}
+      - ABUSE_BOOKING_CREATE_PER_MINUTE=${ABUSE_BOOKING_CREATE_PER_MINUTE:-5}
+      - ABUSE_TICKET_CREATE_PER_MINUTE=${ABUSE_TICKET_CREATE_PER_MINUTE:-5}
+      - ABUSE_TICKET_MESSAGE_PER_MINUTE=${ABUSE_TICKET_MESSAGE_PER_MINUTE:-20}
+      - ABUSE_EXPORT_PER_MINUTE=${ABUSE_EXPORT_PER_MINUTE:-2}
+      - ABUSE_WS_SUBSCRIBE_PER_MINUTE=${ABUSE_WS_SUBSCRIBE_PER_MINUTE:-30}
       - KEYCLOAK_ISSUER_URI=${KEYCLOAK_PUBLIC_URL:-https://auth.chargeops.online}/realms/chargeops
       - KEYCLOAK_JWK_SET_URI=http://keycloak:8080/realms/chargeops/protocol/openid-connect/certs
       - KEYCLOAK_ADMIN_BASE_URL=http://keycloak:8080
@@ -175,6 +188,10 @@ services:
       - SEPAY_TEST_WEBHOOK_SECRET=${SEPAY_TEST_WEBHOOK_SECRET}
     volumes:
       - ./logs:/app/logs
+    networks:
+      default: {}
+      api_ingress:
+        ipv4_address: 172.30.241.3
     depends_on:
       postgres:
         condition: service_healthy
@@ -253,6 +270,13 @@ services:
       - keycloak
       - loki
       - prometheus
+
+networks:
+  api_ingress:
+    internal: true
+    ipam:
+      config:
+        - subnet: 172.30.241.0/29
 
 volumes:
   chargeops_search_demo:

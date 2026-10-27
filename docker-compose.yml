@@ -28,7 +28,7 @@ services:
   postgres:
     image: postgis/postgis:16-3.4      # PostGIS cho proximity; pgvector bật qua init
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
@@ -47,7 +47,7 @@ services:
   redis:
     image: redis:7-alpine
     ports:
-      - "6379:6379"
+      - "127.0.0.1:6379:6379"
     restart: unless-stopped
     # KHÔNG bật appendonly: Redis ở đây chỉ là cache + lock tạm thời,
     # mất khi restart không sao (Postgres mới là nguồn sự thật).
@@ -84,7 +84,7 @@ services:
     image: chargeops/keycloak:26.0.8
     command: start-dev --spi-theme-cache-themes=false --spi-theme-cache-templates=false --spi-theme-static-max-age=-1
     ports:
-      - "8080:8080"
+      - "127.0.0.1:8080:8080"
     restart: unless-stopped
     environment:
       KC_BOOTSTRAP_ADMIN_USERNAME: ${KC_ADMIN_USER}

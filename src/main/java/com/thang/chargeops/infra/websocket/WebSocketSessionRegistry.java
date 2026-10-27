@@ -22,6 +22,8 @@ import java.util.concurrent.ConcurrentHashMap;
 @Component
 @Slf4j
 public class WebSocketSessionRegistry {
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private com.thang.chargeops.infra.security.abuse.AbuseRateLimiter abuseLimiter;
 
     private final ConcurrentHashMap<String, WebSocketSession> sessions = new ConcurrentHashMap<>();
     /** UM-02: sessionId → Keycloak subject, bound at STOMP CONNECT (best-effort only). */
@@ -36,8 +38,22 @@ public class WebSocketSessionRegistry {
     }
 
     /** UM-02: liên kết STOMP session với subject để có thể đóng theo user khi suspend. */
-    public void bindSubject(String sessionId, String subject) {
+    public synchronized void bindSubject(String sessionId, String subject) {
         if (sessionId != null && subject != null) {
+            // A disconnect may finish while CONNECT is resolving a profile. Do not resurrect a slot.
+            if (!sessions.containsKey(sessionId)) return;
+            String bound = sessionSubjects.get(sessionId);
+            if (bound != null && !bound.equals(subject)) {
+                throw new org.springframework.security.access.AccessDeniedException("WebSocket identity cannot change");
+            }
+            if (abuseLimiter != null && abuseLimiter.mode() !=
+                    com.thang.chargeops.infra.security.abuse.AbuseProperties.Mode.OFF
+                    && !sessionSubjects.containsKey(sessionId)
+                    && sessionSubjects.values().stream().filter(subject::equals).count() >= 5) {
+                abuseLimiter.sessionCapacityReached(subject);
+                if (abuseLimiter.mode() == com.thang.chargeops.infra.security.abuse.AbuseProperties.Mode.ENFORCE)
+                    throw new org.springframework.security.access.AccessDeniedException("Too many WebSocket sessions");
+            }
             sessionSubjects.put(sessionId, subject);
         }
     }
@@ -60,8 +76,11 @@ public class WebSocketSessionRegistry {
      * in {@link StompAuthChannelInterceptor} already blocks new subscriptions.
      */
     public void closeSession(String sessionId, String reason) {
-        WebSocketSession session = sessions.remove(sessionId);
-        sessionSubjects.remove(sessionId);
+        WebSocketSession session;
+        synchronized (this) {
+            session = sessions.remove(sessionId);
+            sessionSubjects.remove(sessionId);
+        }
         if (session == null || !session.isOpen()) {
             return;
         }
@@ -94,15 +113,19 @@ public class WebSocketSessionRegistry {
 
         @Override
         public void afterConnectionClosed(WebSocketSession session, CloseStatus closeStatus) throws Exception {
-            sessions.remove(session.getId());
-            sessionSubjects.remove(session.getId());
+            synchronized (WebSocketSessionRegistry.this) {
+                sessions.remove(session.getId());
+                sessionSubjects.remove(session.getId());
+            }
             super.afterConnectionClosed(session, closeStatus);
         }
 
         @Override
         public void handleTransportError(WebSocketSession session, Throwable exception) throws Exception {
-            sessions.remove(session.getId());
-            sessionSubjects.remove(session.getId());
+            synchronized (WebSocketSessionRegistry.this) {
+                sessions.remove(session.getId());
+                sessionSubjects.remove(session.getId());
+            }
             super.handleTransportError(session, exception);
         }
     }

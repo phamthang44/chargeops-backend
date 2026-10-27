@@ -1,6 +1,10 @@
 package com.thang.chargeops.infra.security;
 
 import com.thang.chargeops.common.constant.SecurityConstants;
+import com.thang.chargeops.infra.security.abuse.AbuseRateLimiter;
+import com.thang.chargeops.infra.security.abuse.AbuseRateLimitFilter;
+import com.thang.chargeops.infra.security.abuse.ClientIpResolver;
+import org.springframework.beans.factory.ObjectProvider;
 import com.thang.chargeops.infra.persistence.CurrentActorContext;
 import com.thang.chargeops.profile.repository.UserProfileRepository;
 import lombok.RequiredArgsConstructor;
@@ -57,7 +61,8 @@ public class SecurityConfig {
     private String configuredJwkSetUri;
 
     @Bean
-    public SecurityFilterChain filterChain(HttpSecurity http) {
+    public SecurityFilterChain filterChain(HttpSecurity http, ObjectProvider<AbuseRateLimiter> limiter,
+                                         ObjectProvider<ClientIpResolver> resolver) {
         http
                 .csrf(AbstractHttpConfigurer::disable)
                 .cors(Customizer.withDefaults())
@@ -88,6 +93,10 @@ public class SecurityConfig {
                 .exceptionHandling(ex -> ex
                         .authenticationEntryPoint(authenticationEntryPoint)
                         .accessDeniedHandler(accessDeniedHandler));
+        if (limiter.getIfAvailable() != null && resolver.getIfAvailable() != null) {
+            http.addFilterAfter(new AbuseRateLimitFilter(limiter.getObject(), resolver.getObject(), objectMapper, currentActorContext),
+                    CurrentActorFilter.class);
+        }
         return http.build();
     }
 
@@ -104,7 +113,8 @@ public class SecurityConfig {
         NimbusJwtDecoder decoder = NimbusJwtDecoder.withJwkSetUri(jwkSetUri).build();
         OAuth2TokenValidator<Jwt> validator = new DelegatingOAuth2TokenValidator<>(
                 new JwtTimestampValidator(),
-                new JwtClaimValidator<String>("iss", iss -> iss != null && (iss.equals(issuerUri) || iss.contains("/realms/chargeops")))
+                new JwtClaimValidator<String>("iss", issuerUri::equals),
+                new JwtClaimValidator<String>("sub", StringUtils::hasText)
         );
         decoder.setJwtValidator(validator);
         return decoder;

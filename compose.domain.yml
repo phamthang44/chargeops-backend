@@ -6,8 +6,14 @@ services:
     volumes:
       - ./gateway/domain-templates:/etc/nginx/templates:ro
       - ./gateway/domain-proxy_params:/etc/nginx/domain_proxy_params:ro
+      - ./logs/gateway:/var/log/nginx/chargeops
     environment:
-      NGINX_ENVSUBST_FILTER: '^(API_UPSTREAM|KEYCLOAK_UPSTREAM|GRAFANA_UPSTREAM)$'
+      NGINX_ENVSUBST_FILTER: '^(API_UPSTREAM|KEYCLOAK_UPSTREAM|GRAFANA_UPSTREAM|ABUSE_GATEWAY_DRY_RUN)$'
+      ABUSE_GATEWAY_DRY_RUN: ${ABUSE_GATEWAY_DRY_RUN:-on}
+    networks:
+      default: {}
+      public_ingress:
+        ipv4_address: 172.30.240.3
   keycloak:
     environment:
       KC_HOSTNAME: https://auth.chargeops.online
@@ -29,3 +35,12 @@ services:
     depends_on:
       gateway:
         condition: service_healthy
+    networks:
+      public_ingress:
+        ipv4_address: 172.30.240.2
+
+networks:
+  public_ingress:
+    ipam:
+      config:
+        - subnet: 172.30.240.0/29

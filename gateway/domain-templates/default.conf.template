@@ -1,7 +1,38 @@
+map_hash_bucket_size 128;
 map $http_upgrade $chargeops_connection_upgrade {
     default upgrade;
     "" close;
 }
+
+# Only cloudflared's isolated ingress address may assert the visitor IP.
+set_real_ip_from 172.30.240.2;
+real_ip_header CF-Connecting-IP;
+real_ip_recursive off;
+map $http_origin $abuse_cors_origin {
+    default "";
+    "https://console.chargeops.online" $http_origin;
+    "https://driver.chargeops.online" $http_origin;
+    "http://localhost:5173" $http_origin;
+    "http://localhost:8082" $http_origin;
+}
+map "$request_method:$uri" $abuse_login_key {
+    default "";
+    ~^POST:/realms/chargeops/login-actions/(authenticate|registration|reset-credentials)(/|$) $binary_remote_addr;
+}
+map "$request_method:$uri" $abuse_token_key {
+    default "";
+    "POST:/realms/chargeops/protocol/openid-connect/token" $binary_remote_addr;
+}
+limit_req_zone $binary_remote_addr zone=abuse_api:10m rate=20r/s;
+limit_req_zone $binary_remote_addr zone=abuse_ws:10m rate=10r/m;
+limit_req_zone $abuse_login_key zone=abuse_login:10m rate=10r/m;
+limit_req_zone $abuse_token_key zone=abuse_token:10m rate=60r/m;
+limit_req_dry_run ${ABUSE_GATEWAY_DRY_RUN};
+limit_req_status 429;
+# Never retain OAuth query strings, authorization values or visitor addresses.
+log_format abuse_safe 'gateway_request trace=$request_id status=$status limit=$limit_req_status host=$host method=$request_method';
+access_log /var/log/nginx/chargeops/access.log abuse_safe;
+error_log /dev/stderr crit;
 
 server {
     listen 80 default_server;
@@ -14,12 +45,24 @@ server {
     listen 80;
     server_name api.chargeops.online;
     server_tokens off;
+    error_page 429 = @abuse_error;
+    location @abuse_error {
+        default_type application/json;
+        add_header Retry-After 6 always;
+        add_header Cache-Control no-store always;
+        add_header Access-Control-Allow-Origin $abuse_cors_origin always;
+        add_header Access-Control-Expose-Headers Retry-After always;
+        add_header Vary Origin always;
+        return 429 '{"error":{"code":"SEC_001","messageKey":"error.security.SEC_001","message":"Please wait before trying again.","traceId":"$request_id","details":{"group":"GATEWAY_IP","retryAfterSeconds":6}}}';
+    }
     location = /healthz { return 200 "chargeops-domain-gateway-ok\n"; }
     location ^~ /api/ {
+        limit_req zone=abuse_api burst=100 nodelay;
         proxy_pass http://${API_UPSTREAM};
         include /etc/nginx/domain_proxy_params;
     }
     location ^~ /ws {
+        limit_req zone=abuse_ws burst=10 nodelay;
         proxy_pass http://${API_UPSTREAM};
         include /etc/nginx/domain_proxy_params;
         proxy_set_header Upgrade $http_upgrade;
@@ -34,6 +77,18 @@ server {
     listen 80;
     server_name auth.chargeops.online;
     server_tokens off;
+    limit_req zone=abuse_login burst=10 nodelay;
+    limit_req zone=abuse_token burst=30 nodelay;
+    error_page 429 = @abuse_error;
+    location @abuse_error {
+        default_type application/json;
+        add_header Retry-After 6 always;
+        add_header Cache-Control no-store always;
+        add_header Access-Control-Allow-Origin $abuse_cors_origin always;
+        add_header Access-Control-Expose-Headers Retry-After always;
+        add_header Vary Origin always;
+        return 429 '{"error":{"code":"SEC_001","message":"Please wait before trying again.","traceId":"$request_id","details":{"group":"AUTH_IP","retryAfterSeconds":6}}}';
+    }
     location = /healthz { return 200 "chargeops-domain-gateway-ok\n"; }
     location ^~ /realms/master/ { return 404; }
     location ^~ /realms/ {

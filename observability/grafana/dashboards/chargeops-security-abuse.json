@@ -1,0 +1,165 @@
+{
+  "uid": "chargeops-security-abuse",
+  "title": "ChargeOps Security & Abuse",
+  "schemaVersion": 39,
+  "version": 1,
+  "tags": [
+    "chargeops",
+    "security"
+  ],
+  "timezone": "Asia/Ho_Chi_Minh",
+  "refresh": "30s",
+  "time": {
+    "from": "now-1h",
+    "to": "now"
+  },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Abuse decisions by mode and group",
+      "type": "timeseries",
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (group, decision, mode) (rate(chargeops_abuse_decisions_total[5m]))"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Redis protection unavailable",
+      "type": "timeseries",
+      "gridPos": {
+        "x": 12,
+        "y": 0,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (mode) (rate(chargeops_abuse_decisions_total{decision=\"SEC_003\"}[1m]))"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Cooldown and profile evidence (scope matters)",
+      "type": "logs",
+      "gridPos": {
+        "x": 0,
+        "y": 8,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "{job=\"chargeops-backend\"} |= \"security_abuse\""
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Gateway throttling / dry-run",
+      "type": "timeseries",
+      "gridPos": {
+        "x": 12,
+        "y": 8,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (limit) (count_over_time({job=\"chargeops-gateway\"} | logfmt | limit =~ \"REJECTED.*\" [1m]))"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "title": "Login failures last 5m (opt-in collector; -1 unavailable)",
+      "type": "stat",
+      "gridPos": {
+        "x": 0,
+        "y": 16,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "chargeops_auth_login_errors_recent"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "title": "Keycloak event collector health (enable explicitly)",
+      "type": "stat",
+      "gridPos": {
+        "x": 12,
+        "y": 16,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "chargeops_auth_events_healthy"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "title": "Keycloak event sample truncated (1 = lower-bound count)",
+      "type": "stat",
+      "gridPos": {
+        "x": 0,
+        "y": 24,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "chargeops_auth_events_truncated"
+        }
+      ]
+    }
+  ]
+}

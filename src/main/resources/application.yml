@@ -200,6 +200,22 @@ app:
       initial-delay-ms: ${REFUND_AUTO_EXECUTION_INITIAL_DELAY_MS:600000}
       batch-size: ${REFUND_AUTO_EXECUTION_BATCH_SIZE:50}
   turnaround-buffer-minutes: 10
+  abuse:
+    mode: ${ABUSE_MODE:OBSERVE}
+    hmac-key: ${ABUSE_HMAC_KEY:}
+    # Explicit CIDRs of the gateway as seen by the backend; empty trusts no headers.
+    trusted-proxies: ${ABUSE_TRUSTED_PROXIES:}
+    strike-window-seconds: 600
+    cooldown-seconds: 900
+    strike-minutes: 3
+    keycloak-metrics-enabled: ${ABUSE_KEYCLOAK_METRICS_ENABLED:false}
+    limits:
+      BOOKING_CREATE: ${ABUSE_BOOKING_CREATE_PER_MINUTE:5}
+      TICKET_CREATE: ${ABUSE_TICKET_CREATE_PER_MINUTE:5}
+      TICKET_MESSAGE: ${ABUSE_TICKET_MESSAGE_PER_MINUTE:20}
+      EXPORT: ${ABUSE_EXPORT_PER_MINUTE:2}
+      ASSISTANT: ${DIFY_REQUESTS_PER_MINUTE:3}
+      WS_SUBSCRIBE: ${ABUSE_WS_SUBSCRIBE_PER_MINUTE:30}
   duration-step-minutes: 30
   max-duration-minutes: 180
   max-advance-booking-days: 2

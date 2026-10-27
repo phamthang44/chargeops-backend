@@ -40,6 +40,8 @@ import java.util.List;
 @EnableWebSocketMessageBroker
 @Slf4j
 public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private com.thang.chargeops.infra.security.abuse.AbuseStompInterceptor abuseInterceptor;
 
     private final StompAuthChannelInterceptor stompAuthChannelInterceptor;
     private final WebSocketSessionRegistry sessionRegistry;
@@ -84,6 +86,7 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
     @Override
     public void configureClientInboundChannel(ChannelRegistration registration) {
         registration.interceptors(stompAuthChannelInterceptor);
+        if (abuseInterceptor != null) registration.interceptors(abuseInterceptor);
     }
 
     @Override
