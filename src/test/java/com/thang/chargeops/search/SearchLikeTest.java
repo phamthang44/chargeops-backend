@@ -42,6 +42,7 @@ class SearchLikeTest {
     void parseUuid_InvalidUuid_ReturnsNull() {
         assertThat(SearchLike.parseUuid(null)).isNull();
         assertThat(SearchLike.parseUuid("")).isNull();
+        assertThat(SearchLike.parseUuid("   ")).isNull();
         assertThat(SearchLike.parseUuid("not-a-uuid")).isNull();
         assertThat(SearchLike.parseUuid("12345")).isNull();
     }

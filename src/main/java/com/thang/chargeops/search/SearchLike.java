@@ -26,9 +26,12 @@ public final class SearchLike {
 
     /** Trả về {@code null} nếu input không phải UUID hợp lệ (không ném exception). */
     public static UUID parseUuid(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return null;
+        }
         try {
             return UUID.fromString(raw.trim());
-        } catch (RuntimeException e) {
+        } catch (IllegalArgumentException e) {
             return null;
         }
     }

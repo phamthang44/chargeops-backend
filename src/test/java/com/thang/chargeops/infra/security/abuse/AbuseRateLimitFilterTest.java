@@ -63,4 +63,10 @@ class AbuseRateLimitFilterTest {
             assertThat(AbuseGroup.match("POST", "/api/v1/" + prefix + "tickets/12345678-1234-1234-1234-123456789012/messages"))
                     .isEqualTo(AbuseGroup.TICKET_MESSAGE);
     }
+
+    @Test void handlesNullOrMalformedPathGracefully() {
+        assertThat(AbuseGroup.match("POST", null)).isNull();
+        assertThat(AbuseGroup.match("POST", "/api/v1/bookings%FF")).isNull();
+        assertThat(AbuseGroup.match("POST", "/api/v1/bookings%1")).isNull();
+    }
 }
