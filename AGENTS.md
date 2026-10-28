@@ -102,6 +102,16 @@ To check whether embeddings exist, inspect `.gitnexus/meta.json` — the `stats.
 
 ---
 
+## Năm quy tắc bắt buộc khi làm việc với code
+
+1. **Hiểu yêu cầu trước khi sửa**: Đọc tài liệu Vault liên quan và kiểm tra working tree; xác định hành vi mong muốn, giữ nguyên thay đổi sẵn có của người dùng và các invariant công khai bên dưới.
+2. **Đánh giá ảnh hưởng trước khi sửa symbol**: Dùng GitNexus query/context và chạy impact upstream cho từng function/class/method dự định thay đổi; báo direct callers, execution flows và mức rủi ro. Cảnh báo HIGH/CRITICAL trước khi chỉnh sửa.
+3. **Đo SQL trước khi tối ưu**: Khi xử lý truy vấn chậm hoặc thay đổi truy vấn trên luồng quan trọng, xác định đúng database/môi trường, SQL và tham số đại diện. Kiểm tra activity, lock/wait và thống kê truy vấn nếu có; dùng `EXPLAIN (ANALYZE, BUFFERS)` cho SELECT trong transaction READ ONLY với `statement_timeout` và `lock_timeout` hữu hạn. ANALYZE thực thi truy vấn: không chạy trên câu lệnh ghi dữ liệu hoặc SELECT có side effect; kiểm tra chúng trên database thử nghiệm cô lập. Không bật extension, đổi cấu hình hay chạy tải lớn trên database dùng chung khi chưa được cho phép.
+4. **Vá có căn cứ, kiểm chứng trước/sau**: Chỉ sửa nguyên nhân có bằng chứng; giữ contract, phân quyền, transaction và tính đúng đắn nghiệp vụ. Thay đổi schema/index phải qua migration mới, không sửa migration đã áp dụng. So sánh plan, actual rows/loops, buffers và thời gian với cùng tham số/dữ liệu; chạy test phù hợp và kiểm tra hồi quy ở các caller trực tiếp. Không kết luận có nghẽn chỉ từ Seq Scan hoặc dữ liệu demo quá nhỏ.
+5. **Kiểm tra phạm vi và báo cáo trung thực**: Chạy `gitnexus_detect_changes({scope: "all"})` sau khi sửa code và trước commit; rà diff, nêu rõ thay đổi, kết quả test/đo và giới hạn. Khi thiếu database hoặc không chạy được phép đo, ghi rõ chưa xác minh, không tuyên bố đã tối ưu hay đã vá. Không đưa credential hoặc dữ liệu cá nhân vào log/báo cáo.
+
+---
+
 ## ChargeOps Knowledge Base (Obsidian Vault) — Quy Tắc Bắt Buộc
 
 Toàn bộ tài liệu kiến trúc, đặc tả nghiệp vụ, API contract và chính sách hệ thống được quản lý tập trung tại **Obsidian Vault** (`chargeops/docs/ChargeOps`), được theo dõi bởi repository độc lập: `https://github.com/phamthang44/chargeops-vault.git`.
