@@ -77,6 +77,24 @@ class OwnerStationAssetControllerTest {
     }
 
     @Test
+    @DisplayName("POST /api/v1/owner/stations/{stationId}/assets/register rejects non-http/https URL schemes")
+    void registerStationAsset_nonHttpUrl_returnsBadRequest() throws Exception {
+        UUID stationId = UUID.randomUUID();
+
+        mockMvc.perform(post("/api/v1/owner/stations/{stationId}/assets/register", stationId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "assetUrl": "file:///etc/passwd",
+                                  "storageKey": "file_123",
+                                  "assetType": "IMAGE",
+                                  "primary": true
+                                }
+                                """))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
     @DisplayName("POST /api/v1/owner/stations/{stationId}/assets/register registers asset metadata")
     void registerStationAsset_success() throws Exception {
         UUID stationId = UUID.randomUUID();
