@@ -111,13 +111,15 @@ class StationDetailMapperTest {
                 List.of(chargePoint),
                 new BigDecimal("3500.00"),
                 StationOperatingStatus.open(),
-                cancellationPolicySummary()
+                cancellationPolicySummary(),
+                List.of("wifi", "coffee")
         );
 
         assertThat(result.id()).isEqualTo(stationId);
         assertThat(result.wardName()).isEqualTo("Phường Bến Nghé");
         assertThat(result.provinceName()).isEqualTo("Thành phố Hồ Chí Minh");
         assertThat(result.assets()).containsExactly(assetResponse);
+        assertThat(result.amenities()).containsExactly("wifi", "coffee");
         assertThat(result.currentPriceVndPerKwh()).isEqualByComparingTo("3500.00");
         assertThat(result.operationalStatus())
                 .isEqualTo(com.thang.chargeops.common.enums.StationOperationalStatus.OPERATING);
@@ -193,7 +195,8 @@ class StationDetailMapperTest {
                 List.of(chargePoint),
                 null,
                 StationOperatingStatus.scheduleNotConfigured(),
-                cancellationPolicySummary()
+                cancellationPolicySummary(),
+                List.of()
         );
 
         assertThat(result.open24Hours()).isFalse();

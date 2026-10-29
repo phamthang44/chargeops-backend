@@ -54,6 +54,11 @@ public interface StationRepository extends JpaRepository<Station, UUID>, JpaSpec
     @Query("SELECT station FROM Station station JOIN FETCH station.owner WHERE station.id = :stationId")
     Optional<Station> findByIdForPricingUpdate(@Param("stationId") UUID stationId);
 
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @EntityGraph(attributePaths = "owner")
+    @Query("SELECT station FROM Station station WHERE station.id = :stationId")
+    Optional<Station> findByIdForAmenitiesUpdate(@Param("stationId") UUID stationId);
+
     @Query(value = "SELECT nextval('station_code_seq')", nativeQuery = true)
     long nextStationCodeSequence();
 

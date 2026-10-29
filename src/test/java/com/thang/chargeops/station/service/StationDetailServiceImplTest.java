@@ -12,6 +12,7 @@ import com.thang.chargeops.station.policy.StationVisibilityPolicy;
 import com.thang.chargeops.station.repository.ChargePointRepository;
 import com.thang.chargeops.station.repository.StationRepository;
 import com.thang.chargeops.station.service.impl.StationDetailServiceImpl;
+import com.thang.chargeops.station.service.StationAmenitiesService;
 import com.thang.chargeops.station.service.support.StationOperatingHoursResolver;
 import com.thang.chargeops.station.service.support.StationOperatingStatus;
 import com.thang.chargeops.station.service.support.StationEffectiveStateResolver;
@@ -67,6 +68,9 @@ class StationDetailServiceImplTest {
     @Mock
     private BookingCancellationPolicy bookingCancellationPolicy;
 
+    @Mock
+    private StationAmenitiesService stationAmenitiesService;
+
     private StationDetailServiceImpl service;
 
     @BeforeEach
@@ -80,7 +84,8 @@ class StationDetailServiceImplTest {
                 stationPricingService,
                 stationDetailMapper,
                 bookingCancellationPolicy,
-                Clock.fixed(NOW, ZoneOffset.UTC)
+                Clock.fixed(NOW, ZoneOffset.UTC),
+                stationAmenitiesService
         );
     }
 
@@ -100,6 +105,8 @@ class StationDetailServiceImplTest {
                 .thenReturn(Optional.of(station));
         when(stationVisibilityPolicy.isVisibleToDrivers(station, NOW))
                 .thenReturn(true);
+        when(stationAmenitiesService.getAmenitiesForStation(stationId))
+                .thenReturn(List.of("wifi", "coffee"));
         when(station.getOperationalStatus()).thenReturn(StationOperationalStatus.OPERATING);
         when(operatingHoursResolver.findActiveSchedule(stationId, NOW))
                 .thenReturn(schedule);
@@ -122,13 +129,15 @@ class StationDetailServiceImplTest {
                 chargePoints,
                 price,
                 operatingStatus,
-                policySummary
+                policySummary,
+                List.of("wifi", "coffee")
         )).thenReturn(expected);
 
         StationDiscoveryDetailResponse result = service.getStationDetail(stationId);
 
         assertThat(result).isSameAs(expected);
         verify(operatingHoursResolver).findActiveSchedule(stationId, NOW);
+        verify(stationAmenitiesService).getAmenitiesForStation(stationId);
         verify(stationPricingService).resolvePriceAt(stationId, NOW);
         verify(effectiveStateResolver).resolve(
                 true,
@@ -153,6 +162,7 @@ class StationDetailServiceImplTest {
         verifyNoInteractions(
                 chargePointRepository,
                 stationPricingService,
+                stationAmenitiesService,
                 stationDetailMapper,
                 bookingCancellationPolicy
         );
@@ -175,6 +185,8 @@ class StationDetailServiceImplTest {
                 .thenReturn(Optional.of(station));
         when(stationVisibilityPolicy.isVisibleToDrivers(station, NOW))
                 .thenReturn(true);
+        when(stationAmenitiesService.getAmenitiesForStation(stationId))
+                .thenReturn(List.of());
         when(station.getOperationalStatus()).thenReturn(StationOperationalStatus.PAUSED);
         when(operatingHoursResolver.findActiveSchedule(stationId, NOW))
                 .thenReturn(schedule);
@@ -195,7 +207,8 @@ class StationDetailServiceImplTest {
                 List.of(),
                 BigDecimal.ZERO,
                 pausedStatus,
-                policySummary
+                policySummary,
+                List.of()
         )).thenReturn(expected);
 
         assertThat(service.getStationDetail(stationId)).isSameAs(expected);
@@ -218,6 +231,7 @@ class StationDetailServiceImplTest {
 
         verifyNoInteractions(
                 stationVisibilityPolicy,
+                stationAmenitiesService,
                 chargePointRepository,
                 operatingHoursResolver,
                 stationPricingService,

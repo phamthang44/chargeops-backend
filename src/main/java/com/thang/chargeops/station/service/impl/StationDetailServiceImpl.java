@@ -12,6 +12,7 @@ import com.thang.chargeops.station.policy.StationVisibilityPolicy;
 import com.thang.chargeops.station.repository.ChargePointRepository;
 import com.thang.chargeops.station.repository.StationRepository;
 import com.thang.chargeops.station.service.StationDetailService;
+import com.thang.chargeops.station.service.StationAmenitiesService;
 import com.thang.chargeops.station.service.StationPricingService;
 import com.thang.chargeops.station.service.support.StationOperatingHoursResolver;
 import com.thang.chargeops.station.service.support.StationOperatingStatus;
@@ -39,6 +40,7 @@ public class StationDetailServiceImpl implements StationDetailService {
     private final StationDetailMapper stationDetailMapper;
     private final BookingCancellationPolicy bookingCancellationPolicy;
     private final Clock applicationClock;
+    private final StationAmenitiesService stationAmenitiesService;
 
     /**
      * Luồng lắp ráp trang chi tiết trạm:
@@ -56,6 +58,7 @@ public class StationDetailServiceImpl implements StationDetailService {
         Instant now = applicationClock.instant();
 
         Station station = requireVisibleStation(stationId, now);
+        List<String> amenities = stationAmenitiesService.getAmenitiesForStation(stationId);
         StationOperatingSchedule schedule =
                 operatingHoursResolver.findActiveSchedule(stationId, now);
         List<ChargePoint> chargePoints =
@@ -75,7 +78,8 @@ public class StationDetailServiceImpl implements StationDetailService {
                 chargePoints,
                 currentPrice,
                 operatingStatus,
-                bookingCancellationPolicy.getSummary()
+                bookingCancellationPolicy.getSummary(),
+                amenities
         );
     }
 

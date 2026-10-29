@@ -24,6 +24,7 @@ public record StationDiscoveryDetailResponse(
         BigDecimal latitude,
         BigDecimal longitude,
         String contactPhone,
+        List<String> amenities,
         List<StationAssetResponse> assets,
         BigDecimal currentPriceVndPerKwh,
         StationOperationalStatus operationalStatus,
@@ -36,6 +37,10 @@ public record StationDiscoveryDetailResponse(
         CancellationPolicyResponse cancellationPolicy,
         List<ChargePointResponse> chargePoints
 ) {
+    public StationDiscoveryDetailResponse {
+        amenities = List.copyOf(amenities);
+    }
+
     public record ChargePointResponse(
             UUID id,
             String chargePointCode,

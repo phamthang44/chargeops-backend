@@ -39,7 +39,8 @@ public class StationDetailMapper {
             List<ChargePoint> chargePoints,
             BigDecimal currentPrice,
             StationOperatingStatus operatingStatus,
-            CancellationPolicySummary cancellationPolicy
+            CancellationPolicySummary cancellationPolicy,
+            List<String> amenities
     ) {
         return new StationDiscoveryDetailResponse(
                 station.getId(),
@@ -52,6 +53,7 @@ public class StationDetailMapper {
                 station.getLatitude(),
                 station.getLongitude(),
                 station.getContactPhone(),
+                amenities,
                 toAssets(station.getAssets()),
                 currentPrice,
                 station.getOperationalStatus(),

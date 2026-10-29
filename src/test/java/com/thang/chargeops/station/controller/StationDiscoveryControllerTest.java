@@ -72,6 +72,7 @@ class StationDiscoveryControllerTest {
                 new BigDecimal("10.776900"),
                 new BigDecimal("106.700900"),
                 "0900000000",
+                List.of("wifi"),
                 List.of(),
                 new BigDecimal("3500.00"),
                 StationOperationalStatus.OPERATING,
@@ -92,6 +93,7 @@ class StationDiscoveryControllerTest {
                 .andExpect(jsonPath("$.data.stationCode").value("ST-0001"))
                 .andExpect(jsonPath("$.data.currentPriceVndPerKwh").value(3500.00))
                 .andExpect(jsonPath("$.data.openNow").value(true))
+                .andExpect(jsonPath("$.data.amenities[0]").value("wifi"))
                 .andExpect(jsonPath("$.data.operatingState").value("OPEN"))
                 .andExpect(jsonPath("$.data.scheduleConfigured").value(true));
 
