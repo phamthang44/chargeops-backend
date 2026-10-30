@@ -7,8 +7,13 @@ public enum AbuseGroup {
     AbuseGroup(int perMinute) { this.perMinute = perMinute; }
 
     public static AbuseGroup match(String method, String path) {
-        // MVC matches decoded path segments (e.g. %62ookings). Match the same spelling.
-        path = org.springframework.web.util.UriUtils.decode(path, java.nio.charset.StandardCharsets.UTF_8);
+        if (path == null) return null;
+        try {
+            // MVC matches decoded path segments (e.g. %62ookings). Match the same spelling.
+            path = org.springframework.web.util.UriUtils.decode(path, java.nio.charset.StandardCharsets.UTF_8);
+        } catch (IllegalArgumentException e) {
+            return null;
+        }
         if ("GET".equals(method) && "/api/v1/owner/bookings/export".equals(path)) return EXPORT;
         if (!"POST".equals(method)) return null;
         if ("/api/v1/bookings".equals(path)) return BOOKING_CREATE;
