@@ -52,4 +52,11 @@ class SecurityConfigHeaderTest {
                 .andExpect(header().string("Permissions-Policy", "geolocation=(), camera=(), microphone=(), payment=()"))
                 .andExpect(header().string("Referrer-Policy", "strict-origin-when-cross-origin"));
     }
+
+    @Test
+    @DisplayName("Should include Strict-Transport-Security header on secure HTTPS requests")
+    void responseContainsStrictTransportSecurityHeaderOnHttps() throws Exception {
+        mockMvc.perform(get("/api/v1/administrative-units/provinces").secure(true))
+                .andExpect(header().string("Strict-Transport-Security", "max-age=31536000 ; includeSubDomains"));
+    }
 }
