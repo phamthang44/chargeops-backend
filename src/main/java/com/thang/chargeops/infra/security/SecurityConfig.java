@@ -74,7 +74,11 @@ public class SecurityConfig {
                         // Security: Restrict browser features to prevent misuse or unauthorized capability access
                         .addHeaderWriter(new StaticHeadersWriter("Permissions-Policy", "geolocation=(), camera=(), microphone=(), payment=()"))
                         // Security: Enforce Referrer Policy to prevent sensitive request URL information leakage across cross-origin requests
-                        .referrerPolicy(referrer -> referrer.policy(ReferrerPolicyHeaderWriter.ReferrerPolicy.STRICT_ORIGIN_WHEN_CROSS_ORIGIN)))
+                        .referrerPolicy(referrer -> referrer.policy(ReferrerPolicyHeaderWriter.ReferrerPolicy.STRICT_ORIGIN_WHEN_CROSS_ORIGIN))
+                        // Security: Enforce Strict-Transport-Security (HSTS) with subdomains to prevent SSL stripping and downgrade attacks
+                        .httpStrictTransportSecurity(hsts -> hsts
+                                .includeSubDomains(true)
+                                .maxAgeInSeconds(31536000)))
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(SecurityConstants.publicEndpoints()).permitAll()
                         .requestMatchers(
