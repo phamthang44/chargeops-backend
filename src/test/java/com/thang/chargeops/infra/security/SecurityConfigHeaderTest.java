@@ -43,14 +43,16 @@ class SecurityConfigHeaderTest {
     private JwtDecoder jwtDecoder;
 
     @Test
-    @DisplayName("Should include Content-Security-Policy, X-Frame-Options, Permissions-Policy, and Referrer-Policy headers on responses")
+    @DisplayName("Should include Content-Security-Policy, X-Frame-Options, Permissions-Policy, Referrer-Policy, Cross-Origin-Opener-Policy, and Cross-Origin-Resource-Policy headers on responses")
     void responseContainsSecurityHeaders() throws Exception {
         mockMvc.perform(get("/api/v1/administrative-units/provinces"))
                 .andExpect(header().string("Content-Security-Policy", "default-src 'self'; frame-ancestors 'none'; form-action 'self'"))
                 .andExpect(header().string("X-Frame-Options", "DENY"))
                 .andExpect(header().string("X-Content-Type-Options", "nosniff"))
                 .andExpect(header().string("Permissions-Policy", "geolocation=(), camera=(), microphone=(), payment=()"))
-                .andExpect(header().string("Referrer-Policy", "strict-origin-when-cross-origin"));
+                .andExpect(header().string("Referrer-Policy", "strict-origin-when-cross-origin"))
+                .andExpect(header().string("Cross-Origin-Opener-Policy", "same-origin"))
+                .andExpect(header().string("Cross-Origin-Resource-Policy", "same-site"));
     }
 
     @Test

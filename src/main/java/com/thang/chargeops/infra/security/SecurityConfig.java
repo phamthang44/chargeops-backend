@@ -78,7 +78,11 @@ public class SecurityConfig {
                         // Security: Enforce Strict-Transport-Security (HSTS) with subdomains to prevent SSL stripping and downgrade attacks
                         .httpStrictTransportSecurity(hsts -> hsts
                                 .includeSubDomains(true)
-                                .maxAgeInSeconds(31536000)))
+                                .maxAgeInSeconds(31536000))
+                        // Security: Enforce Cross-Origin Isolation and leak protection against XS-Leaks and Spectre attacks
+                        .addHeaderWriter(new StaticHeadersWriter("Cross-Origin-Opener-Policy", "same-origin"))
+                        // Security: Restrict resource loading to same-site origins to prevent unauthorized cross-origin embedding
+                        .addHeaderWriter(new StaticHeadersWriter("Cross-Origin-Resource-Policy", "same-site")))
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(SecurityConstants.publicEndpoints()).permitAll()
                         .requestMatchers(
