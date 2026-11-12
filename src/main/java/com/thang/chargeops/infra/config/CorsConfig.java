@@ -25,8 +25,8 @@ public class CorsConfig {
         CorsConfiguration config = new CorsConfiguration();
         config.setAllowedOrigins(allowedOrigins);
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"));
-        config.setAllowedHeaders(List.of("Authorization", "Content-Type", "Accept", "Cache-Control", "Idempotency-Key", "Client-Message-Id", "X-Requested-With"));
-        config.setExposedHeaders(List.of("Content-Disposition", "Idempotency-Key", "Client-Message-Id", "Retry-After"));
+        config.setAllowedHeaders(List.of("Authorization", "Content-Type", "Accept", "Cache-Control", "Idempotency-Key", "X-Request-Key", "Client-Message-Id", "X-Requested-With"));
+        config.setExposedHeaders(List.of("Content-Disposition", "Idempotency-Key", "X-Request-Key", "Client-Message-Id", "Retry-After"));
         //config.setAllowCredentials(true);
         config.setMaxAge(3600L);
 
