@@ -8,6 +8,10 @@ services:
       KEYCLOAK_ISSUER_URI: https://auth.chargeops.online/realms/chargeops
       KEYCLOAK_JWK_SET_URI: http://keycloak:8080/realms/chargeops/protocol/openid-connect/certs
       KEYCLOAK_ADMIN_BASE_URL: http://keycloak:8080
+      CHARGEOPS_MCP_ENABLED: ${CHARGEOPS_MCP_ENABLED:-false}
+      CHARGEOPS_MCP_RESOURCE_URL: ${CHARGEOPS_MCP_RESOURCE_URL:-https://api.chargeops.online/mcp}
+      CHARGEOPS_MCP_READ_SCOPE: ${CHARGEOPS_MCP_READ_SCOPE:-chargeops:mcp:read}
+      ABUSE_MCP_READ_PER_MINUTE: ${ABUSE_MCP_READ_PER_MINUTE:-30}
       BACKEND_BASE_URL: https://api.chargeops.online
       FRONTEND_BASE_URL: https://console.chargeops.online
       CORS_ALLOWED_ORIGINS: https://chargeops.online,https://console.chargeops.online,https://driver.chargeops.online,http://localhost:5173,http://localhost:8082

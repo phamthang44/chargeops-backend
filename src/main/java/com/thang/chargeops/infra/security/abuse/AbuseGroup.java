@@ -2,7 +2,7 @@ package com.thang.chargeops.infra.security.abuse;
 
 /** An exact method/route allowlist; ongoing work never shares a creation bucket. */
 public enum AbuseGroup {
-    BOOKING_CREATE(5), TICKET_CREATE(5), TICKET_MESSAGE(20), EXPORT(2), ASSISTANT(3), WS_SUBSCRIBE(30);
+    BOOKING_CREATE(5), TICKET_CREATE(5), TICKET_MESSAGE(20), EXPORT(2), ASSISTANT(3), MCP_READ(30), WS_SUBSCRIBE(30);
     public final int perMinute;
     AbuseGroup(int perMinute) { this.perMinute = perMinute; }
 

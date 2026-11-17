@@ -145,6 +145,10 @@ services:
       - DIFY_REQUESTS_PER_MINUTE=${DIFY_REQUESTS_PER_MINUTE:-3}
       - DIFY_REQUESTS_PER_DAY=${DIFY_REQUESTS_PER_DAY:-10}
       - DIFY_TOTAL_REQUESTS_PER_DAY=${DIFY_TOTAL_REQUESTS_PER_DAY:-30}
+      - CHARGEOPS_MCP_ENABLED=${CHARGEOPS_MCP_ENABLED:-false}
+      - CHARGEOPS_MCP_RESOURCE_URL=${CHARGEOPS_MCP_RESOURCE_URL:-https://api.chargeops.online/mcp}
+      - CHARGEOPS_MCP_READ_SCOPE=${CHARGEOPS_MCP_READ_SCOPE:-chargeops:mcp:read}
+      - ABUSE_MCP_READ_PER_MINUTE=${ABUSE_MCP_READ_PER_MINUTE:-30}
       # BKG-069 demo keeps Kafka optional. The demo compose does not define a
       # broker, so disable the transport/listener and its Actuator indicator.
       - BOOKING_NOTIFICATION_KAFKA_ENABLED=false
