@@ -8,6 +8,7 @@ import com.thang.chargeops.exception.errorcode.StationErrorCode;
 import com.thang.chargeops.exception.errorcode.StationStaffErrorCode;
 import com.thang.chargeops.infra.identity.IdentityRoleService;
 import com.thang.chargeops.profile.entity.UserProfile;
+import com.thang.chargeops.profile.model.PrimaryRole;
 import com.thang.chargeops.profile.service.UserProfileService;
 import com.thang.chargeops.profile.support.CurrentProfileProvider;
 import com.thang.chargeops.station.entity.Station;
@@ -81,11 +82,14 @@ public class StationStaffServiceImpl implements StationStaffService {
             );
         }
 
-        StaffLookupStatus status = evaluateLookupStatus(candidate, currentOwnerId);
+        StaffLookupStatus status = evaluateLookupStatus(candidate, currentOwnerId, stationId);
         return buildLookUpResponse(candidate, status);
     }
 
-    private StaffLookupStatus evaluateLookupStatus(UserProfile candidate, UUID currentOwnerId) {
+    private StaffLookupStatus evaluateLookupStatus(
+            UserProfile candidate,
+            UUID currentOwnerId,
+            UUID requestedStationId) {
         if (candidate.getId().equals(currentOwnerId)) {
             return StaffLookupStatus.SELF_ASSIGNMENT;
         }
@@ -94,18 +98,28 @@ public class StationStaffServiceImpl implements StationStaffService {
             return StaffLookupStatus.ACCOUNT_INACTIVE;
         }
 
-        if (stationStaffAssignmentRepository.existsByStaff_IdAndStatus(candidate.getId(), StaffAssignmentStatus.ACTIVE)) {
-            return StaffLookupStatus.ALREADY_ASSIGNED;
+        boolean hasActiveAssignment = stationStaffAssignmentRepository.existsByStaff_IdAndStatus(
+                candidate.getId(), StaffAssignmentStatus.ACTIVE);
+        if (hasActiveAssignment) {
+            StationStaffAssignment activeAssignment = stationStaffAssignmentRepository
+                    .findByStaff_IdAndStatus(candidate.getId(), StaffAssignmentStatus.ACTIVE)
+                    .orElse(null);
+            if (activeAssignment == null
+                    || !requestedStationId.equals(activeAssignment.getStation().getId())) {
+                return StaffLookupStatus.ALREADY_ASSIGNED;
+            }
         }
 
         Set<Role> roles = identityRoleService.getRoles(candidate.getKeycloakId());
-        if (!roles.contains(Role.DRIVER)
-                || roles.contains(Role.OWNER)
-                || roles.contains(Role.ADMIN)) {
+        if (!isAssignableStaffRole(roles)) {
             return StaffLookupStatus.ROLE_NOT_ALLOWED;
         }
 
         return StaffLookupStatus.ELIGIBLE;
+    }
+
+    private boolean isAssignableStaffRole(Set<Role> roles) {
+        return roles.equals(Set.of(Role.DRIVER)) || roles.equals(Set.of(Role.STAFF));
     }
 
     @Override
@@ -186,13 +200,32 @@ public class StationStaffServiceImpl implements StationStaffService {
                         candidate.getId(),
                         StaffAssignmentStatus.ACTIVE
                 );
+        StationStaffAssignment activeAssignment = hasActiveAssignment
+                ? stationStaffAssignmentRepository.findByStaff_IdAndStatus(
+                        candidate.getId(), StaffAssignmentStatus.ACTIVE).orElse(null)
+                : null;
+        boolean assignedToAnotherStation = hasActiveAssignment
+                && (activeAssignment == null || !stationId.equals(activeAssignment.getStation().getId()));
         policy.requireCanAssignStaff(
                 station,
                 currentOwnerId,
                 candidate,
                 roles,
-                hasActiveAssignment
+                assignedToAnotherStation
         );
+
+        if (roles.equals(Set.of(Role.DRIVER))) {
+            identityRoleService.promoteDriverToStaff(candidate.getKeycloakId());
+        }
+        candidate.setPrimaryRole(PrimaryRole.STAFF);
+        candidate.setRoleSyncedAt(Instant.now());
+
+        if (activeAssignment != null && stationId.equals(activeAssignment.getStation().getId())) {
+            log.info(LogConstant.SERVICE_LOG_FORMAT, LogConstant.ACTION_SUCCESS, "assignStaff", currentOwnerId,
+                    "stationId=" + stationId + ", assignmentId=" + activeAssignment.getId()
+                            + ", staffProfileId=" + candidate.getId() + ", roleSynchronized=true");
+            return convertToResponse(activeAssignment);
+        }
 
         StationStaffAssignment assignment = StationStaffAssignment.builder()
                 .station(station)

@@ -12,4 +12,10 @@ import java.util.Set;
 public interface IdentityRoleService {
 
     Set<Role> getRoles(String identityUserId);
+
+    /**
+     * Changes an existing Driver-only identity to a Staff-only identity.
+     * Implementations must verify the effective realm roles after the update.
+     */
+    void promoteDriverToStaff(String identityUserId);
 }
