@@ -8,6 +8,27 @@ spring:
   application:
     name: chargeops
 
+  ai:
+    mcp:
+      server:
+        enabled: ${CHARGEOPS_MCP_ENABLED:false}
+        protocol: STATELESS
+        type: SYNC
+        name: chargeops-owner-operations
+        version: 1.0.0
+        instructions: >-
+          Read-only ChargeOps owner operations. Use these tools only to summarize
+          the authenticated owner's stored station and equipment status. Never
+          claim live charger heartbeat/OCPP telemetry. No tool changes ChargeOps data.
+        capabilities:
+          tool: true
+          resource: false
+          prompt: false
+          completion: false
+        stateless:
+          mcp-endpoint: /mcp
+          disallow-delete: true
+
   profiles:
     # Docker bơm SPRING_PROFILES_ACTIVE vào; chạy từ IDE thì mặc định dev.
     active: ${SPRING_PROFILES_ACTIVE:dev}
@@ -148,6 +169,10 @@ management:
         http.server.requests: 10s
 
 app:
+  mcp:
+    resource-url: ${CHARGEOPS_MCP_RESOURCE_URL:https://api.chargeops.online/mcp}
+    authorization-server-url: ${KEYCLOAK_ISSUER_URI:https://auth.chargeops.online/realms/chargeops}
+    read-scope: ${CHARGEOPS_MCP_READ_SCOPE:chargeops:mcp:read}
   assistant:
     dify:
       enabled: ${DIFY_ENABLED:false}
@@ -215,6 +240,7 @@ app:
       TICKET_MESSAGE: ${ABUSE_TICKET_MESSAGE_PER_MINUTE:20}
       EXPORT: ${ABUSE_EXPORT_PER_MINUTE:2}
       ASSISTANT: ${DIFY_REQUESTS_PER_MINUTE:3}
+      MCP_READ: ${ABUSE_MCP_READ_PER_MINUTE:30}
       WS_SUBSCRIBE: ${ABUSE_WS_SUBSCRIBE_PER_MINUTE:30}
   duration-step-minutes: 30
   max-duration-minutes: 180

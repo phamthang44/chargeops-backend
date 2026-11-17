@@ -54,6 +54,21 @@ server {
         include /etc/nginx/proxy_params;
     }
 
+    # Owner Operations MCP is served only by the API backend. Keep Keycloak's
+    # own /.well-known routes below routed to KEYCLOAK_UPSTREAM.
+    location = /mcp {
+        proxy_pass http://${API_UPSTREAM};
+        include /etc/nginx/proxy_params;
+    }
+    location = /.well-known/oauth-protected-resource {
+        proxy_pass http://${API_UPSTREAM};
+        include /etc/nginx/proxy_params;
+    }
+    location = /.well-known/oauth-protected-resource/mcp {
+        proxy_pass http://${API_UPSTREAM};
+        include /etc/nginx/proxy_params;
+    }
+
     location ^~ /.well-known/ {
         proxy_pass http://${KEYCLOAK_UPSTREAM};
         include /etc/nginx/proxy_params;

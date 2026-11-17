@@ -68,6 +68,19 @@ server {
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection $chargeops_connection_upgrade;
     }
+    location = /mcp {
+        limit_req zone=abuse_api burst=100 nodelay;
+        proxy_pass http://${API_UPSTREAM};
+        include /etc/nginx/domain_proxy_params;
+    }
+    location = /.well-known/oauth-protected-resource {
+        proxy_pass http://${API_UPSTREAM};
+        include /etc/nginx/domain_proxy_params;
+    }
+    location = /.well-known/oauth-protected-resource/mcp {
+        proxy_pass http://${API_UPSTREAM};
+        include /etc/nginx/domain_proxy_params;
+    }
     location / {
         return 404;
     }
