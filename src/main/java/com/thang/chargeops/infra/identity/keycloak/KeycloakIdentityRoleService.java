@@ -7,6 +7,7 @@ import com.thang.chargeops.exception.AppException;
 import com.thang.chargeops.exception.errorcode.StationStaffErrorCode;
 import com.thang.chargeops.infra.identity.IdentityRoleService;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
 import org.springframework.util.LinkedMultiValueMap;
@@ -17,6 +18,7 @@ import org.springframework.web.client.RestClientResponseException;
 
 import java.time.Instant;
 import java.util.Arrays;
+import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
 import java.util.Optional;
@@ -72,6 +74,134 @@ public class KeycloakIdentityRoleService implements IdentityRoleService {
                 return Set.of();
             }
             throw translateException("read realm roles", exception);
+        }
+    }
+
+    @Override
+    public void promoteDriverToStaff(String identityUserId) {
+        requireIdentityUserId(identityUserId);
+
+        Set<Role> currentRoles = getRoles(identityUserId);
+        if (currentRoles.equals(Set.of(Role.STAFF))) {
+            return;
+        }
+        if (!currentRoles.equals(Set.of(Role.DRIVER))) {
+            throw new AppException(StationStaffErrorCode.IDENTITY_ROLE_OPERATION_FAILED);
+        }
+
+        KeycloakRoleRepresentation staffRole = requireRealmRole(Role.STAFF.name());
+        KeycloakRoleRepresentation[] directRoles = getDirectRealmRoles(identityUserId);
+        String defaultRoleName = "default-roles-" + properties.getRealm();
+        List<KeycloakRoleRepresentation> driverMappings = Arrays.stream(directRoles)
+                .filter(Objects::nonNull)
+                .filter(role -> Role.DRIVER.name().equalsIgnoreCase(role.name())
+                        || defaultRoleName.equals(role.name()))
+                .toList();
+        if (driverMappings.stream().anyMatch(role -> role.id() == null)) {
+            throw new AppException(StationStaffErrorCode.IDENTITY_ROLE_OPERATION_FAILED);
+        }
+
+        try {
+            restClient.post()
+                    .uri("/admin/realms/{realm}/users/{userId}/role-mappings/realm",
+                            properties.getRealm(), identityUserId)
+                    .headers(headers -> headers.setBearerAuth(accessToken()))
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(List.of(staffRole))
+                    .retrieve()
+                    .toBodilessEntity();
+
+            if (!driverMappings.isEmpty()) {
+                restClient.method(HttpMethod.DELETE)
+                        .uri("/admin/realms/{realm}/users/{userId}/role-mappings/realm",
+                                properties.getRealm(), identityUserId)
+                        .headers(headers -> headers.setBearerAuth(accessToken()))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .body(driverMappings)
+                        .retrieve()
+                        .toBodilessEntity();
+            }
+
+            if (!getRoles(identityUserId).equals(Set.of(Role.STAFF))) {
+                throw new AppException(StationStaffErrorCode.IDENTITY_ROLE_OPERATION_FAILED);
+            }
+        } catch (RuntimeException exception) {
+            restoreDriverRole(identityUserId, staffRole, driverMappings);
+            if (exception instanceof AppException appException) {
+                throw appException;
+            }
+            if (exception instanceof RestClientException restClientException) {
+                throw translateException("promote Driver to Staff", restClientException);
+            }
+            throw exception;
+        }
+    }
+
+    private KeycloakRoleRepresentation requireRealmRole(String roleName) {
+        try {
+            KeycloakRoleRepresentation role = restClient.get()
+                    .uri("/admin/realms/{realm}/roles/{roleName}", properties.getRealm(), roleName)
+                    .headers(headers -> headers.setBearerAuth(accessToken()))
+                    .retrieve()
+                    .body(KeycloakRoleRepresentation.class);
+            if (role == null || role.id() == null || !roleName.equals(role.name())) {
+                throw new AppException(StationStaffErrorCode.IDENTITY_ROLE_OPERATION_FAILED);
+            }
+            return role;
+        } catch (RestClientException exception) {
+            throw translateException("read realm role", exception);
+        }
+    }
+
+    private KeycloakRoleRepresentation[] getDirectRealmRoles(String identityUserId) {
+        try {
+            KeycloakRoleRepresentation[] roles = restClient.get()
+                    .uri("/admin/realms/{realm}/users/{userId}/role-mappings/realm",
+                            properties.getRealm(), identityUserId)
+                    .headers(headers -> headers.setBearerAuth(accessToken()))
+                    .retrieve()
+                    .body(KeycloakRoleRepresentation[].class);
+            if (roles == null) {
+                throw new AppException(StationStaffErrorCode.IDENTITY_ROLE_OPERATION_FAILED);
+            }
+            return roles;
+        } catch (RestClientException exception) {
+            throw translateException("read direct realm roles", exception);
+        }
+    }
+
+    private void restoreDriverRole(
+            String identityUserId,
+            KeycloakRoleRepresentation staffRole,
+            List<KeycloakRoleRepresentation> driverMappings) {
+        try {
+            restClient.method(HttpMethod.DELETE)
+                    .uri("/admin/realms/{realm}/users/{userId}/role-mappings/realm",
+                            properties.getRealm(), identityUserId)
+                    .headers(headers -> headers.setBearerAuth(accessToken()))
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(List.of(staffRole))
+                    .retrieve()
+                    .toBodilessEntity();
+        } catch (RestClientException exception) {
+            log.error("Failed to remove the Staff role during rollback; manual role repair may be required (type={})",
+                    exception.getClass().getSimpleName());
+        }
+
+        if (!driverMappings.isEmpty()) {
+            try {
+                restClient.post()
+                        .uri("/admin/realms/{realm}/users/{userId}/role-mappings/realm",
+                                properties.getRealm(), identityUserId)
+                        .headers(headers -> headers.setBearerAuth(accessToken()))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .body(driverMappings)
+                        .retrieve()
+                        .toBodilessEntity();
+            } catch (RestClientException exception) {
+                log.error("Failed to restore Driver role mappings during rollback; manual role repair may be required (type={})",
+                        exception.getClass().getSimpleName());
+            }
         }
     }
 

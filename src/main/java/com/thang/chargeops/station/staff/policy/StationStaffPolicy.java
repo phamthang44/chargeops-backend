@@ -28,8 +28,10 @@ public interface StationStaffPolicy {
      *     <li>The current profile owns the target station.</li>
      *     <li>The target station is ACTIVE. License status is not an ownership check.</li>
      *     <li>The candidate profile is ACTIVE and is not the current owner.</li>
-     *     <li>The candidate has the DRIVER platform role and has neither OWNER nor ADMIN role.</li>
-     *     <li>The candidate has no ACTIVE assignment at any station, including this station.</li>
+     *     <li>The candidate has exactly the DRIVER role (promoted during assignment) or exactly
+     *     the STAFF role, and has neither OWNER nor ADMIN role.</li>
+     *     <li>The candidate has no ACTIVE assignment at another station. Repeating the command
+     *     for an assignment already active at this station is allowed for role synchronization.</li>
      * </ol>
      *
      * <p>The database partial unique index remains the final concurrency guard. Implementations

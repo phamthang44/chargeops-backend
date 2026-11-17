@@ -50,9 +50,8 @@ public class StationStaffPolicyImpl implements StationStaffPolicy {
             throw new AppException(StationStaffErrorCode.CANDIDATE_ACCOUNT_INACTIVE);
         }
 
-        if (!candidateRoles.contains(Role.DRIVER)
-                || candidateRoles.contains(Role.OWNER)
-                || candidateRoles.contains(Role.ADMIN)) {
+        if (!candidateRoles.equals(Set.of(Role.DRIVER))
+                && !candidateRoles.equals(Set.of(Role.STAFF))) {
             throw new AppException(
                     StationStaffErrorCode.CANDIDATE_ROLE_NOT_ALLOWED
             );
