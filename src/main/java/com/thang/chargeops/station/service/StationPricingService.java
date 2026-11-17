@@ -16,8 +16,9 @@ public interface StationPricingService {
     BigDecimal resolvePriceAt(UUID stationId, Instant targetTime);
 
     /**
-     * Chia một khoảng thời gian thành các đoạn giá liên tục theo cấu hình
-     * pricing có hiệu lực tại effectiveAt.
+     * Chia khoảng yêu cầu thành các đoạn giá, chọn cấu hình thương mại theo
+     * phiên bản có hiệu lực tại từng thời điểm trong khoảng. effectiveAt được
+     * giữ làm mốc fallback cho dữ liệu cũ chưa gắn với phiên bản lịch.
      */
     List<StationPriceRange> resolvePriceRanges(
             UUID stationId,

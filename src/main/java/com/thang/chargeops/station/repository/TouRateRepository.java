@@ -16,6 +16,10 @@ public interface TouRateRepository extends JpaRepository<TouRate, UUID> {
 
     List<TouRate> findByStationIdOrderByDayTypeAscStartTimeAsc(UUID stationId);
 
+    List<TouRate> findByScheduleIdOrderByDayTypeAscStartTimeAsc(UUID scheduleId);
+
+    List<TouRate> findByScheduleIdInOrderByDayTypeAscStartTimeAsc(List<UUID> scheduleIds);
+
     @Query("""
         SELECT t FROM TouRate t
         WHERE t.station.id = :stationId

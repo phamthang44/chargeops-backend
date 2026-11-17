@@ -28,7 +28,7 @@ import com.thang.chargeops.station.repository.StationBookingSettingsRepository;
 import com.thang.chargeops.station.service.StationPricingService;
 import com.thang.chargeops.station.service.model.OperatingWindow;
 import com.thang.chargeops.station.service.model.StationPriceRange;
-import com.thang.chargeops.station.service.support.StationOperatingHoursResolver;
+import com.thang.chargeops.station.service.support.StationWeeklyConfigurationResolver;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -58,6 +58,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.lenient;
 
 @ExtendWith(MockitoExtension.class)
 class StationAvailabilityServiceImplTest {
@@ -75,7 +76,7 @@ class StationAvailabilityServiceImplTest {
     @Mock
     private StationBookingSettingsRepository bookingSettingsRepository;
     @Mock
-    private StationOperatingHoursResolver operatingHoursResolver;
+    private StationWeeklyConfigurationResolver weeklyConfigurationResolver;
     @Mock
     private StationPricingService stationPricingService;
     @Mock
@@ -92,13 +93,22 @@ class StationAvailabilityServiceImplTest {
                 connectorBookabilityPolicy,
                 bookingRepository,
                 bookingSettingsRepository,
-                operatingHoursResolver,
+                weeklyConfigurationResolver,
                 stationPricingService,
                 new StationAvailabilityMapper(),
                 bookingTimePolicy,
                 bookingPolicyConfig,
                 Clock.fixed(NOW, ZoneOffset.UTC)
         );
+        StationOperatingSchedule defaultSchedule = configuredSchedule();
+        lenient().when(weeklyConfigurationResolver.findAt(any(UUID.class), any(Instant.class)))
+                .thenReturn(Optional.of(defaultSchedule));
+        lenient().when(weeklyConfigurationResolver.resolveOperatingWindows(
+                any(UUID.class),
+                any(LocalDate.class),
+                any(Instant.class),
+                any(Instant.class)
+        )).thenReturn(List.of());
     }
 
     @Test
@@ -114,7 +124,7 @@ class StationAvailabilityServiceImplTest {
 
         Station station = station(stationId);
         Connector connector = connector(station, connectorId);
-        StationOperatingSchedule schedule = mock(StationOperatingSchedule.class);
+        StationOperatingSchedule schedule = configuredSchedule();
         OperatingWindow operatingWindow = new OperatingWindow(
                 localInstant(date, 6, 0),
                 coverageEndAt
@@ -140,9 +150,10 @@ class StationAvailabilityServiceImplTest {
 
         when(connectorRepository.findByIdWithChargePointAndStation(connectorId))
                 .thenReturn(Optional.of(connector));
-        when(operatingHoursResolver.findActiveSchedule(stationId, NOW))
-                .thenReturn(schedule);
-        when(operatingHoursResolver.resolveOperatingWindows(schedule, date, coverageStartAt, coverageEndAt))
+        when(weeklyConfigurationResolver.findAt(eq(stationId), any(Instant.class)))
+                .thenReturn(Optional.of(schedule));
+        when(weeklyConfigurationResolver.resolveOperatingWindows(
+                stationId, date, coverageStartAt, coverageEndAt))
                 .thenReturn(List.of(operatingWindow));
         when(bookingRepository.findBlockingRanges(
                 eq(connectorId),
@@ -209,7 +220,7 @@ class StationAvailabilityServiceImplTest {
                 connectorBookabilityPolicy,
                 bookingRepository,
                 bookingSettingsRepository,
-                operatingHoursResolver,
+                weeklyConfigurationResolver,
                 stationPricingService,
                 new StationAvailabilityMapper(),
                 bookingTimePolicy,
@@ -231,8 +242,8 @@ class StationAvailabilityServiceImplTest {
         when(bookingPolicyConfig.toPolicyResponse()).thenReturn(policyResponse("booking-v4.9"));
         when(connectorRepository.findByIdWithChargePointAndStation(connectorId))
                 .thenReturn(Optional.of(connector));
-        when(operatingHoursResolver.findActiveSchedule(eq(stationId), eq(nowLate)))
-                .thenReturn(mock(StationOperatingSchedule.class));
+        when(weeklyConfigurationResolver.findAt(eq(stationId), any(Instant.class)))
+                .thenReturn(Optional.of(configuredSchedule()));
         when(bookingSettingsRepository.findByStationId(stationId))
                 .thenReturn(Optional.of(settings));
 
@@ -255,7 +266,7 @@ class StationAvailabilityServiceImplTest {
                 connectorBookabilityPolicy,
                 bookingRepository,
                 bookingSettingsRepository,
-                operatingHoursResolver,
+                weeklyConfigurationResolver,
                 stationPricingService,
                 new StationAvailabilityMapper(),
                 bookingTimePolicy,
@@ -279,8 +290,8 @@ class StationAvailabilityServiceImplTest {
         when(bookingPolicyConfig.toPolicyResponse()).thenReturn(policyResponse("booking-v4.9"));
         when(connectorRepository.findByIdWithChargePointAndStation(connectorId))
                 .thenReturn(Optional.of(connector));
-        when(operatingHoursResolver.findActiveSchedule(eq(stationId), eq(nowLate)))
-                .thenReturn(mock(StationOperatingSchedule.class));
+        when(weeklyConfigurationResolver.findAt(eq(stationId), any(Instant.class)))
+                .thenReturn(Optional.of(configuredSchedule()));
         when(bookingSettingsRepository.findByStationId(stationId))
                 .thenReturn(Optional.of(settings));
 
@@ -311,8 +322,8 @@ class StationAvailabilityServiceImplTest {
         when(bookingPolicyConfig.toPolicyResponse()).thenReturn(policyResponse("booking-v4.9"));
         when(connectorRepository.findByIdWithChargePointAndStation(connectorId))
                 .thenReturn(Optional.of(connector));
-        when(operatingHoursResolver.findActiveSchedule(eq(stationId), eq(NOW)))
-                .thenReturn(mock(StationOperatingSchedule.class));
+        when(weeklyConfigurationResolver.findAt(eq(stationId), any(Instant.class)))
+                .thenReturn(Optional.of(configuredSchedule()));
         when(bookingSettingsRepository.findByStationId(stationId))
                 .thenReturn(Optional.of(settings));
 
@@ -339,7 +350,7 @@ class StationAvailabilityServiceImplTest {
 
         Station station = station(stationId);
         Connector connector = connector(station, connectorId);
-        StationOperatingSchedule schedule = mock(StationOperatingSchedule.class);
+        StationOperatingSchedule schedule = configuredSchedule();
         // Trạm đóng cửa lúc 22:00, không mở sau nửa đêm
         OperatingWindow windowUntil22 = new OperatingWindow(
                 localInstant(date, 8, 0),
@@ -353,9 +364,10 @@ class StationAvailabilityServiceImplTest {
         when(bookingPolicyConfig.toPolicyResponse()).thenReturn(policyResponse("booking-v4.9"));
         when(connectorRepository.findByIdWithChargePointAndStation(connectorId))
                 .thenReturn(Optional.of(connector));
-        when(operatingHoursResolver.findActiveSchedule(eq(stationId), eq(NOW)))
-                .thenReturn(schedule);
-        when(operatingHoursResolver.resolveOperatingWindows(schedule, date, coverageStartAt, coverageEndAt))
+        when(weeklyConfigurationResolver.findAt(eq(stationId), any(Instant.class)))
+                .thenReturn(Optional.of(schedule));
+        when(weeklyConfigurationResolver.resolveOperatingWindows(
+                stationId, date, coverageStartAt, coverageEndAt))
                 .thenReturn(List.of(windowUntil22));
         when(bookingSettingsRepository.findByStationId(stationId))
                 .thenReturn(Optional.of(StationBookingSetting.createDefault(station)));
@@ -387,8 +399,8 @@ class StationAvailabilityServiceImplTest {
         when(bookingPolicyConfig.toPolicyResponse()).thenReturn(policyResponse("booking-v4.9"));
         when(connectorRepository.findByIdWithChargePointAndStation(connectorId))
                 .thenReturn(Optional.of(connector));
-        when(operatingHoursResolver.findActiveSchedule(eq(stationId), eq(NOW)))
-                .thenReturn(mock(StationOperatingSchedule.class));
+        when(weeklyConfigurationResolver.findAt(eq(stationId), any(Instant.class)))
+                .thenReturn(Optional.of(configuredSchedule()));
         when(bookingSettingsRepository.findByStationId(stationId))
                 .thenReturn(Optional.of(StationBookingSetting.createDefault(station)));
 
@@ -440,7 +452,7 @@ class StationAvailabilityServiceImplTest {
                 connectorBookabilityPolicy,
                 bookingRepository,
                 bookingSettingsRepository,
-                operatingHoursResolver,
+                weeklyConfigurationResolver,
                 stationPricingService
         );
     }
@@ -463,7 +475,7 @@ class StationAvailabilityServiceImplTest {
                 connectorBookabilityPolicy,
                 bookingRepository,
                 bookingSettingsRepository,
-                operatingHoursResolver,
+                weeklyConfigurationResolver,
                 stationPricingService
         );
     }
@@ -479,8 +491,8 @@ class StationAvailabilityServiceImplTest {
 
         when(connectorRepository.findByIdWithChargePointAndStation(connectorId))
                 .thenReturn(Optional.of(connector));
-        when(operatingHoursResolver.findActiveSchedule(stationId, NOW))
-                .thenReturn(schedule);
+        when(weeklyConfigurationResolver.findAt(eq(stationId), any(Instant.class)))
+                .thenReturn(Optional.of(schedule));
         when(bookingSettingsRepository.findByStationId(stationId))
                 .thenReturn(Optional.empty());
 
@@ -494,6 +506,16 @@ class StationAvailabilityServiceImplTest {
                         exception -> assertThat(exception.getErrorCode())
                                 .isEqualTo(BookingErrorCode.PRICING_NOT_CONFIGURED)
                 );
+    }
+
+    private StationOperatingSchedule configuredSchedule() {
+        return StationOperatingSchedule.create(
+                new Station(),
+                true,
+                NOW.minus(Duration.ofDays(7)),
+                30,
+                new BigDecimal("3400.00")
+        );
     }
 
     private Station station(UUID stationId) {

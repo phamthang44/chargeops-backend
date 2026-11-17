@@ -8,6 +8,7 @@ import com.thang.chargeops.station.entity.StationOperatingSchedule;
 import com.thang.chargeops.station.entity.TouRate;
 import org.springframework.stereotype.Component;
 
+import java.math.BigDecimal;
 import java.time.LocalTime;
 import java.util.Arrays;
 import java.util.Comparator;
@@ -31,7 +32,88 @@ public class StationPricingMapper {
             StationOperatingSchedule schedule,
             List<TouRate> rates
     ) {
-        List<StationPricingResponse.TouRuleResponse> touRules = rates.stream()
+        List<StationPricingResponse.TouRuleResponse> touRules = mapTouRules(rates);
+        Integer scheduleMin = schedule != null ? schedule.getMinDurationMinutes() : null;
+        BigDecimal scheduleBasePrice = schedule != null ? schedule.getBasePriceVnd() : null;
+
+        return new StationPricingResponse(
+                stationId,
+                scheduleMin != null
+                        ? scheduleMin
+                        : settings != null
+                                ? settings.getMinDurationMinutes()
+                                : StationBookingSetting.DEFAULT_MIN_DURATION_MINUTES,
+                StationBookingSetting.DEFAULT_DURATION_STEP_MINUTES,
+                StationBookingSetting.DEFAULT_MAX_DURATION_MINUTES,
+                scheduleBasePrice != null
+                        ? scheduleBasePrice
+                        : settings != null ? settings.getBasePriceVnd() : null,
+                schedule != null && schedule.isOpen24Hours(),
+                operatingHours(schedule),
+                touRules,
+                new StationPricingResponse.AvailabilityPolicyResponse(
+                        true,
+                        NO_SHOW_TIMEOUT_MINUTES,
+                        MAX_ADVANCE_CALENDAR_DAYS,
+                        TURNAROUND_BUFFER_MINUTES
+                ),
+                schedule != null ? schedule.getEffectiveFrom() : null,
+                schedule != null ? schedule.getEffectiveTo() : null,
+                settings == null && schedule == null
+                        ? "UNCONFIGURED"
+                        : (schedule != null ? "ACTIVE" : "DEFAULT"),
+                settings != null ? settings.getVersion() + 1L : 0L,
+                null
+        );
+    }
+
+    public StationPricingResponse toOwnerResponse(
+            StationPricingResponse current,
+            StationOperatingSchedule pending,
+            List<TouRate> pendingRates
+    ) {
+        return new StationPricingResponse(
+                current.stationId(),
+                current.minBookingDurationMin(),
+                current.durationStepMinutes(),
+                current.maxDurationMinutes(),
+                current.basePriceVnd(),
+                current.open24Hours(),
+                current.hours(),
+                current.touRules(),
+                current.availability(),
+                current.scheduleEffectiveFrom(),
+                current.scheduleEffectiveTo(),
+                current.scheduleStatus(),
+                current.version(),
+                pending == null ? null : toConfigurationVersion(pending, pendingRates)
+        );
+    }
+
+    public StationPricingResponse.ConfigurationVersionResponse toConfigurationVersion(
+            StationOperatingSchedule schedule,
+            List<TouRate> rates
+    ) {
+        return new StationPricingResponse.ConfigurationVersionResponse(
+                schedule.getId(),
+                schedule.getMinDurationMinutes() != null
+                        ? schedule.getMinDurationMinutes()
+                        : StationBookingSetting.DEFAULT_MIN_DURATION_MINUTES,
+                schedule.getBasePriceVnd(),
+                schedule.isOpen24Hours(),
+                operatingHours(schedule),
+                mapTouRules(rates),
+                schedule.getEffectiveFrom(),
+                schedule.getEffectiveTo(),
+                schedule.getCancelledAt() == null ? "PENDING" : "CANCELLED",
+                schedule.getCreatedAt() != null
+                        ? schedule.getCreatedAt()
+                        : schedule.getEffectiveFrom()
+        );
+    }
+
+    public List<StationPricingResponse.TouRuleResponse> mapTouRules(List<TouRate> rates) {
+        return rates.stream()
                 .sorted(Comparator.comparing(TouRate::getDayType)
                         .thenComparing(TouRate::getStartTime))
                 .map(rate -> new StationPricingResponse.TouRuleResponse(
@@ -44,27 +126,6 @@ public class StationPricingMapper {
                         rate.getPricePerKwh()
                 ))
                 .toList();
-
-        return new StationPricingResponse(
-                stationId,
-                settings != null ? settings.getMinDurationMinutes() : StationBookingSetting.DEFAULT_MIN_DURATION_MINUTES,
-                StationBookingSetting.DEFAULT_DURATION_STEP_MINUTES,
-                StationBookingSetting.DEFAULT_MAX_DURATION_MINUTES,
-                settings != null ? settings.getBasePriceVnd() : null,
-                schedule != null && schedule.isOpen24Hours(),
-                operatingHours(schedule),
-                touRules,
-                new StationPricingResponse.AvailabilityPolicyResponse(
-                        true,
-                        NO_SHOW_TIMEOUT_MINUTES,
-                        MAX_ADVANCE_CALENDAR_DAYS,
-                        TURNAROUND_BUFFER_MINUTES
-                ),
-                schedule != null ? schedule.getEffectiveFrom() : null,
-                schedule != null ? schedule.getEffectiveTo() : null,
-                settings == null ? "UNCONFIGURED" : (schedule != null ? "ACTIVE" : "DEFAULT"),
-                settings != null ? settings.getVersion() + 1L : 0L
-        );
     }
 
     public List<StationPricingResponse.OperatingHourResponse> operatingHours(

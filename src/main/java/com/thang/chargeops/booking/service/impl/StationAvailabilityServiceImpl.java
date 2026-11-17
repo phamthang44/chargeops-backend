@@ -16,7 +16,6 @@ import com.thang.chargeops.exception.errorcode.StationErrorCode;
 import com.thang.chargeops.station.dto.station.filter.StationAvailabilityQuery;
 import com.thang.chargeops.station.dto.station.response.StationAvailabilityResponse;
 import com.thang.chargeops.station.entity.Connector;
-import com.thang.chargeops.station.entity.Station;
 import com.thang.chargeops.station.entity.StationBookingSetting;
 import com.thang.chargeops.station.entity.StationOperatingSchedule;
 import com.thang.chargeops.station.policy.ConnectorBookabilityPolicy;
@@ -25,7 +24,7 @@ import com.thang.chargeops.station.repository.StationBookingSettingsRepository;
 import com.thang.chargeops.station.service.StationPricingService;
 import com.thang.chargeops.station.service.model.OperatingWindow;
 import com.thang.chargeops.station.service.model.StationPriceRange;
-import com.thang.chargeops.station.service.support.StationOperatingHoursResolver;
+import com.thang.chargeops.station.service.support.StationWeeklyConfigurationResolver;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -58,7 +57,7 @@ public class StationAvailabilityServiceImpl implements StationAvailabilityServic
     private final ConnectorBookabilityPolicy connectorBookabilityPolicy;
     private final BookingRepository bookingRepository;
     private final StationBookingSettingsRepository bookingSettingsRepository;
-    private final StationOperatingHoursResolver operatingHoursResolver;
+    private final StationWeeklyConfigurationResolver weeklyConfigurationResolver;
     private final StationPricingService stationPricingService;
     private final StationAvailabilityMapper availabilityMapper;
     private final BookingTimePolicy bookingTimePolicy;
@@ -97,12 +96,15 @@ public class StationAvailabilityServiceImpl implements StationAvailabilityServic
         Instant coverageStartAt = dayStart;
         Instant coverageEndAt = dayEnd.plus(Duration.ofMinutes(maxDurationMinutes));
 
-        Station station = connector.getChargePoint().getStation();
-        StationOperatingSchedule schedule = operatingHoursResolver
-                .findActiveSchedule(stationId, generatedAt);
-        List<OperatingWindow> operatingWindows = operatingHoursResolver
+        StationOperatingSchedule schedule = weeklyConfigurationResolver
+                .findAt(
+                        stationId,
+                        dayStart.isBefore(generatedAt) ? generatedAt : dayStart
+                )
+                .orElse(null);
+        List<OperatingWindow> operatingWindows = weeklyConfigurationResolver
                 .resolveOperatingWindows(
-                        schedule,
+                        stationId,
                         query.getDate(),
                         coverageStartAt,
                         coverageEndAt
@@ -121,9 +123,18 @@ public class StationAvailabilityServiceImpl implements StationAvailabilityServic
                         BookingErrorCode.PRICING_NOT_CONFIGURED,
                         stationId
                 ));
+        if (schedule == null || schedule.getBasePriceVnd() == null) {
+            throw new AppException(
+                    BookingErrorCode.PRICING_NOT_CONFIGURED,
+                    stationId
+            );
+        }
+        int stationMinDuration = schedule.getMinDurationMinutes() != null
+                ? schedule.getMinDurationMinutes()
+                : settings.getMinDurationMinutes();
         int minDurationMinutes = Math.max(
                 bookingPolicyConfig.getMinDurationMinutes(),
-                settings.getMinDurationMinutes()
+                stationMinDuration
         );
         List<StationPriceRange> priceRanges = stationPricingService
                 .resolvePriceRanges(

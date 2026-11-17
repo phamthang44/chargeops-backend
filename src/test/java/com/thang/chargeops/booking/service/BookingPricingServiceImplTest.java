@@ -27,6 +27,7 @@ import com.thang.chargeops.station.repository.ConnectorRepository;
 import com.thang.chargeops.station.repository.StationOperatingScheduleRepository;
 import com.thang.chargeops.station.repository.StationBookingSettingsRepository;
 import com.thang.chargeops.station.service.support.StationOperatingHoursResolver;
+import com.thang.chargeops.station.service.support.StationWeeklyConfigurationResolver;
 import com.thang.chargeops.station.service.StationPricingService;
 import com.thang.chargeops.station.service.model.StationPriceRange;
 import org.junit.jupiter.api.BeforeEach;
@@ -103,7 +104,7 @@ class BookingPricingServiceImplTest {
                 Clock.fixed(NOW, ZoneOffset.UTC),
                 new BookingTimePolicy(bookingPolicyConfig, resolver),
                 bookingSettingsRepository,
-                resolver,
+                new StationWeeklyConfigurationResolver(scheduleRepository, resolver),
                 currentProfileProvider
         );
     }
@@ -311,7 +312,9 @@ class BookingPricingServiceImplTest {
                 connectorRepository, new ConnectorBookabilityPolicyImpl(businessPolicy), bookingRepository,
                 stationPricingService, new BookingPriceCalculator(), bookingPolicyConfig,
                 Clock.fixed(NOW, ZoneOffset.UTC), new BookingTimePolicy(bookingPolicyConfig, resolver),
-                bookingSettingsRepository, resolver, currentProfileProvider);
+                bookingSettingsRepository,
+                new StationWeeklyConfigurationResolver(scheduleRepository, resolver),
+                currentProfileProvider);
         PricePreviewRequest request = new PricePreviewRequest(connectorId, startAt, 60);
 
         if (overlaps) {
@@ -477,9 +480,17 @@ class BookingPricingServiceImplTest {
     }
 
     private void allowSchedule(UUID stationId) {
-        when(scheduleRepository.findActiveByStationId(stationId, NOW)).thenReturn(Optional.of(
-                StationOperatingSchedule.builder().open24Hours(true)
-                        .effectiveFrom(NOW.minusSeconds(86400)).build()));
+        StationOperatingSchedule schedule = StationOperatingSchedule.builder()
+                .open24Hours(true)
+                .effectiveFrom(NOW.minusSeconds(86400))
+                .build();
+        when(scheduleRepository.findActiveByStationId(eq(stationId), any(Instant.class)))
+                .thenReturn(Optional.of(schedule));
+        when(scheduleRepository.findEffectiveVersionsOverlapping(
+                eq(stationId),
+                any(Instant.class),
+                any(Instant.class)
+        )).thenReturn(List.of(schedule));
     }
 
     private Station station(UUID stationId) {

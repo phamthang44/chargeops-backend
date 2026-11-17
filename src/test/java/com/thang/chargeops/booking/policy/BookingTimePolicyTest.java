@@ -14,6 +14,7 @@ import org.junit.jupiter.params.provider.ValueSource;
 import java.time.Instant;
 import java.time.LocalTime;
 import java.time.OffsetDateTime;
+import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -142,6 +143,25 @@ class BookingTimePolicyTest {
     }
 
     @Test
+    void acceptsBookingAcrossAdjacentWeeklyVersionsAtMondayBoundary() {
+        Instant start = at("2026-09-06T23:00:00+07:00");
+        Instant boundary = at("2026-09-07T00:00:00+07:00");
+        Instant end = at("2026-09-07T01:00:00+07:00");
+        StationOperatingSchedule current = StationOperatingSchedule.builder()
+                .open24Hours(true)
+                .effectiveFrom(NOW.minusSeconds(86400))
+                .effectiveTo(boundary)
+                .build();
+        StationOperatingSchedule next = StationOperatingSchedule.builder()
+                .open24Hours(true)
+                .effectiveFrom(boundary)
+                .build();
+
+        assertThat(policy.validate(start, 120, 30, List.of(current, next), NOW))
+                .isEqualTo(end);
+    }
+
+    @Test
     void rejectsMissingInactiveOrDisabledSchedule() {
         Instant start = at("2026-09-06T11:00:00+07:00");
         assertInvalid(start, 60, 30, null, NOW, "startAt", "OPERATING_SCHEDULE_NOT_CONFIGURED");
@@ -149,7 +169,7 @@ class BookingTimePolicyTest {
         expired.expireAt(NOW);
         assertInvalid(start, 60, 30, expired, NOW, "startAt", "OPERATING_SCHEDULE_NOT_CONFIGURED");
         StationOperatingSchedule future = alwaysOpen();
-        future.setEffectiveFrom(NOW.plusSeconds(60));
+        future.setEffectiveFrom(start.plusSeconds(60));
         assertInvalid(start, 60, 30, future, NOW, "startAt", "OPERATING_SCHEDULE_NOT_CONFIGURED");
         StationOperatingSchedule closed = schedule(false);
         closed.addPeriod(StationDayOfWeek.SUNDAY, null, null, false);

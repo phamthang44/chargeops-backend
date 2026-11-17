@@ -15,6 +15,7 @@ import java.math.BigDecimal;
 import java.time.DayOfWeek;
 import java.time.Instant;
 import java.time.LocalTime;
+import java.util.UUID;
 
 @Getter
 @Builder
@@ -23,13 +24,17 @@ import java.time.LocalTime;
 @Entity
 @Table(name = "tou_rates", indexes = {
         @Index(name = "idx_tou_rates_station_day", columnList = "station_id, day_type, effective_from"),
-        @Index(name = "idx_tou_rates_window", columnList = "station_id, day_type, start_time, end_time")
+        @Index(name = "idx_tou_rates_window", columnList = "station_id, day_type, start_time, end_time"),
+        @Index(name = "idx_tou_rates_schedule", columnList = "schedule_id")
 })
 public class TouRate extends AuditableEntity {
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "station_id", nullable = false)
     private Station station;
+
+    @Column(name = "schedule_id")
+    private UUID scheduleId;
 
     @Column(name = "name", nullable = false, length = 100)
     private String name;
@@ -67,6 +72,21 @@ public class TouRate extends AuditableEntity {
             BigDecimal pricePerKwh,
             Instant effectiveFrom
     ) {
+        return create(station, null, name, periodCode, dayType, startTime, endTime,
+                pricePerKwh, effectiveFrom);
+    }
+
+    public static TouRate create(
+            Station station,
+            UUID scheduleId,
+            String name,
+            TouRatePeriodCode periodCode,
+            TouRateDayType dayType,
+            LocalTime startTime,
+            LocalTime endTime,
+            BigDecimal pricePerKwh,
+            Instant effectiveFrom
+    ) {
         if (station == null || periodCode == null || dayType == null || effectiveFrom == null) {
             throw new IllegalArgumentException("TOU rate is missing required pricing data");
         }
@@ -91,6 +111,7 @@ public class TouRate extends AuditableEntity {
 
         return TouRate.builder()
                 .station(station)
+                .scheduleId(scheduleId)
                 .name(name.trim())
                 .periodCode(periodCode)
                 .dayType(dayType)
