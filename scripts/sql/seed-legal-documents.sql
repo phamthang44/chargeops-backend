@@ -41,7 +41,8 @@ CREATE TEMP TABLE chargeops_legal_seed (
     CHECK (target_audience IN ('ALL','DRIVER','OWNER'))
 ) ON COMMIT DROP;
 
--- Source: docs/ChargeOps/Booking/README.md
+-- Role source: docs/ChargeOps/glossary-and-business-rules-ssot.md | BR-ACC-01 supersession
+-- Role implementation: docs/ChargeOps/Station/staff-operations-backend-rebaseline-2026-10-05.vi.md
 -- Source: docs/ChargeOps/Booking/01-backend-design.md
 -- Source: docs/ChargeOps/Booking/06-bkg-002-system-config-and-booking-policy.md
 INSERT INTO chargeops_legal_seed VALUES (
@@ -61,7 +62,7 @@ Chào mừng bạn đến với nền tảng quản trị và đặt chỗ trạ
 ---
 
 ### 1. Tài khoản và phân quyền người dùng
-1. Tài khoản tài xế (**DRIVER**), chủ trạm (**STATION_OWNER**) và quản trị viên (**ADMIN**) được cấp quyền theo chức năng. Nhân viên vận hành (Staff) được chủ trạm phân công vào trạm; quyền Staff chỉ có hiệu lực khi phân công còn **ACTIVE**, không phải một vai trò tài khoản độc lập.
+1. Tài khoản tài xế (**DRIVER**), chủ trạm (**OWNER**), nhân viên vận hành (**STAFF**) và quản trị viên (**ADMIN**) được cấp vai trò theo chức năng. Staff là vai trò tài khoản riêng, được tạo qua quy trình mời. Phân công còn **ACTIVE** xác định trạm mà nhân viên được phép vận hành; role **STAFF** không tự cấp quyền tại mọi trạm. Tài khoản **DRIVER** hiện hữu có thể được chuyển sang **STAFF** qua luồng phân công tương thích.
 2. Hệ thống quản lý phiên đăng nhập và truy cập API bằng giao thức **OpenID Connect (OIDC)** kết hợp kiểm soát phân quyền chặt chẽ theo vai trò (RBAC) và phân công trạm cụ thể.
 3. Người dùng có trách nhiệm bảo mật thông tin đăng nhập và thiết bị của mình, đồng thời báo cho bộ phận hỗ trợ khi phát hiện truy cập hoặc giao dịch bất thường.
 
@@ -104,8 +105,67 @@ Chào mừng bạn đến với nền tảng quản trị và đặt chỗ trạ
 - ChargeOps Vault: Booking/README.
 - ChargeOps Vault: Booking/01-backend-design.
 - ChargeOps Vault: Booking/06-bkg-002-system-config-and-booking-policy.$document$,
-'bkg067-2026-10-08-r1',
+'bkg067-2026-11-17-r1',
 'vi'
+);
+
+-- English translation of terms-of-service; shares the revision with the Vietnamese source.
+INSERT INTO chargeops_legal_seed VALUES (
+'terms-of-service-en','TERMS_OF_SERVICE','ALL','Terms of Service','ChargeOps Terms of Service',
+'Account roles, station-scoped access, time-package bookings, Simulator payments and refunds, QR check-in, and support responsibilities.',
+$document$# ChargeOps Terms of Service
+
+> Scope: This document summarizes ChargeOps booking and payment rules under Booking v4.9. It does not confirm that every described function is available in every runtime. The system response and the saved terms of each transaction determine applicable actions and parameters.
+
+Welcome to **ChargeOps**, a platform for managing and booking electric vehicle charging stations. By registering for an account and using our mobile app or web portal, you agree to follow these terms.
+
+---
+
+### 1. Accounts and roles
+1. Drivers (**DRIVER**), station owners (**OWNER**), operating staff (**STAFF**), and administrators (**ADMIN**) receive account roles according to their functions. **STAFF** is a distinct account role created through an invitation process. An **ACTIVE** station assignment determines which station a staff member may operate; the **STAFF** role alone does not grant access to every station. Existing **DRIVER** accounts may be promoted to **STAFF** through the compatible assignment flow.
+2. Sign-in and API access use OpenID Connect (OIDC) together with role-based access control (RBAC) and station-specific assignments.
+3. Users must protect their credentials and devices and notify support if they suspect unauthorized access or activity.
+
+---
+
+### 2. Account security
+1. Do not share passwords, authentication codes, or session credentials with others.
+2. Do not use an account to access data outside its authorized scope, falsify transactions, or interfere with station operations.
+
+---
+
+### 3. Charging bookings and time slots
+1. Drivers choose a station, connector, start date, start time, and time package. The start date must be today or tomorrow; bookings must be made at least **60 minutes** in advance, in **30-minute** increments. The minimum duration is **30 minutes**, also in **30-minute** increments. The applicable limit is shown during booking. A session may cross midnight if the station schedule allows it.
+2. Before accepting a booking, the system checks station availability, license, equipment, rates, operating hours, and open time slots. Concurrent requests for the same connector are controlled to prevent overlapping bookings.
+3. A new booking starts as **PENDING** and holds the slot for **10 minutes from creation**. If valid payment is not confirmed before the hold expires, the booking becomes **EXPIRED** and releases the slot. A late payment is reconciled separately and does not automatically restore the expired booking.
+
+---
+
+### 4. Payment, cancellation, and refunds
+1. Drivers pay the full time-package price before use. The service does not require a deposit or settle charges by metered energy. ChargeOps does not collect a service fee or booking commission. In the current demo scope, collections and refunds are simulated; there is no Owner payout, and a demo confirmation is not proof of a real bank transfer.
+2. The default **10-minute cancellation grace period** starts at the first valid payment confirmation. It is separate from the payment hold that starts when a booking is created. A **CONFIRMED** booking without check-in receives a **100% package-price refund** only when the server processes the cancellation before both the grace-period deadline and the scheduled start time. At either deadline, the change-of-mind refund no longer applies.
+3. After the grace period, a **CONFIRMED** booking may still be cancelled for a change of mind, but the refund is **0%**. A no-show also receives **0%**, except when station failure is confirmed under the rule below. If the refund amount has changed since preview, the driver must consent again before cancellation.
+4. A **confirmed station failure** may qualify for a **100% package-price refund** within the MVP, including a failure during a session or one confirmed after a no-show. The same package price is not refunded twice; excess payment is reconciled separately.
+5. Refund eligibility and refund execution are separate steps. A successful cancellation or a closed support ticket does not mean a refund has completed. Users should check the transaction refund status.
+
+---
+
+### 5. QR check-in and equipment status
+1. Drivers scan a valid QR code for the booked connector and confirm check-in in the app. Scanning or previewing the details alone does not mean check-in succeeded; the system also checks the booking, deadline, and confirmation code. If the code expires or has already been used, follow the app instructions to scan again.
+2. Check-in is allowed from the scheduled start until **before the scheduled end time minus 15 minutes**. At the cutoff, a **CONFIRMED** booking without check-in is recorded as a no-show (**CANCELLED**, reason **NO_SHOW**). Late arrival does not move the scheduled end or extend the session.
+3. In the current project scope, equipment and charging-session states are simulated logical states.
+
+---
+
+### 6. Support and incident responsibility
+1. Users may submit a support ticket about a transaction, payment, account, or station-equipment issue.
+2. The Owner and staff with an active assignment may handle operational issues within the assigned station. The Owner handles ordinary responsibility decisions and may retry a Simulator refund when permitted. Admin reviews financial policy only in a specific escalated case. Staff record technical evidence but do not decide or execute refunds.
+
+## Business references
+- ChargeOps Vault: glossary-and-business-rules-ssot, BR-ACC-01 supersession.
+- ChargeOps Vault: Station/staff-operations-backend-rebaseline-2026-10-05.vi, STAFF role, invitation, and assignment.
+- ChargeOps Vault: Booking/README, Booking/01-backend-design, and Booking/06-bkg-002-system-config-and-booking-policy.$document$,
+'bkg067-2026-11-17-r1','en'
 );
 
 -- Source: docs/ChargeOps/Booking/08-legal-documents-ssot-and-pragmatic-search.md
@@ -158,12 +218,59 @@ Chính sách bảo mật này quy định cách thức ChargeOps thu thập, lư
 ## Căn cứ nghiệp vụ
 - ChargeOps Vault: Booking/08-legal-documents-ssot-and-pragmatic-search.
 - ChargeOps Vault: Booking/01-backend-design.$document$,
-'4.9.0',
+'bkg067-2026-11-17-r1',
 'vi'
+);
+
+-- English translation of privacy-policy; shares the revision with the Vietnamese source.
+INSERT INTO chargeops_legal_seed VALUES (
+'privacy-policy-en','PRIVACY_POLICY','ALL','Data Privacy Policy','ChargeOps · Privacy',
+'How ChargeOps uses account, booking, check-in, and support data, including its purposes and access scope.',
+$document$# ChargeOps Data Privacy Policy
+
+> Scope: This policy describes how ChargeOps collects, stores, uses, and protects personal data and transaction history when users use the service. Access and applicable transaction details follow the system records and permissions.
+
+---
+
+### 1. Account data
+1. Account details such as name, email address, phone number, and access role are used for sign-in, communication, and service operations.
+2. Users should protect their sign-in information and contact support if they suspect unauthorized account access.
+
+---
+
+### 2. Use of transaction data
+1. Booking details, the package price saved when a booking is made, payment and refund status, and check-in history are used to provide the service, reconcile transactions, and resolve complaints.
+2. Support-ticket content and incident findings are used to verify issues and determine appropriate handling. Simulated payment data is used for testing and demonstrations and does not prove that a real bank transaction occurred.
+
+---
+
+### 3. Data access scope
+1. Drivers access their own bookings and support tickets. Station owners access data and financial information for their stations as permitted by their assigned scope.
+2. Staff with an active assignment may access only operational data and support tickets for the assigned station. This access does not include amounts, revenue, payment details, or bank-account information.
+3. Administrators access data for administrative, support, dispute-resolution, and reconciliation functions. Access is checked by the server and is not enforced only by the interface.
+
+---
+
+### 4. Location and QR scanning
+1. Nearby-station search uses the location provided for that search request. QR codes identify a connector and support check-in validation.
+2. Users manage location and camera permissions in their device settings. Features that require a permission may be unavailable when it is denied.
+
+---
+
+### 5. Data requests and support
+1. Users may review data within their account scope and contact support if information is inaccurate or appears to have been accessed without authorization.
+2. Requests to correct or delete data are reviewed together with transaction history and obligations still being processed. Submitting a request does not mean all transaction history has been deleted.
+
+## Business references
+- ChargeOps Vault: Booking/08-legal-documents-ssot-and-pragmatic-search.
+- ChargeOps Vault: Booking/01-backend-design.$document$,
+'bkg067-2026-11-17-r1','en'
 );
 
 -- Source: docs/ChargeOps/License/license-station-eligibility-policy.vi.md
 -- Source: docs/ChargeOps/License/license-admin-backend-api-design.md
+-- Role source: docs/ChargeOps/glossary-and-business-rules-ssot.md | BR-ACC-01 supersession
+-- Role implementation: docs/ChargeOps/Station/staff-operations-backend-rebaseline-2026-10-05.vi.md
 INSERT INTO chargeops_legal_seed VALUES (
 'station-owner-license-agreement',
 'LICENSE_AGREEMENT',
@@ -209,14 +316,72 @@ Thỏa thuận này quy định việc sử dụng phần mềm ChargeOps giữa
 ---
 
 ### 5. Phân quyền Nhân viên vận hành trạm (Staff Assignment)
-1. Chủ trạm phân công tài khoản nhân viên vận hành (Staff) vào từng trạm để hỗ trợ giám sát và xử lý sự cố. Quyền vận hành chỉ có hiệu lực khi phân công còn **ACTIVE**; Staff không phải vai trò tài khoản độc lập.
+1. Chủ trạm mời nhân viên qua quy trình invitation để cấp vai trò tài khoản **STAFF**. Phân công còn **ACTIVE** xác định phạm vi trạm được vận hành; role **STAFF** không tự cấp quyền tại mọi trạm. Tài khoản **DRIVER** hiện hữu có thể được chuyển sang **STAFF** qua luồng phân công tương thích.
 2. Nhân viên chỉ được phân quyền thao tác trong phạm vi các trạm sạc được chỉ định và không có quyền can thiệp vào cấu hình gói license hay thông tin tài chính của Chủ trạm.
 
 ## Căn cứ nghiệp vụ
 - ChargeOps Vault: License/license-station-eligibility-policy.vi.
-- ChargeOps Vault: License/license-admin-backend-api-design.$document$,
-'4.9.0',
+- ChargeOps Vault: License/license-admin-backend-api-design.
+- ChargeOps Vault: glossary-and-business-rules-ssot (BR-ACC-01 supersession) and Station/staff-operations-backend-rebaseline-2026-10-05.vi.$document$,
+'bkg067-2026-11-17-r1',
 'vi'
+);
+
+-- English translation of station-owner-license-agreement; same content revision as the Vietnamese source.
+INSERT INTO chargeops_legal_seed VALUES (
+'station-owner-license-agreement-en',
+'LICENSE_AGREEMENT',
+'OWNER',
+'Station Owner License Agreement',
+'ChargeOps · Station License',
+'B2B station subscription, license fees, operating responsibilities, and conditions for accepting new bookings.',
+$document$# Station Owner License Agreement (B2B)
+
+> Scope: This document summarizes the station subscription rules under ChargeOps Booking v4.9. It does not confirm that every described function is available in every runtime. The system response and the saved terms of each transaction determine applicable actions and parameters.
+
+This agreement governs the use of ChargeOps software between the platform and the **charging station Owner**. A **license is a per-station software subscription**; it is not a legal permit to operate a charging business or a certification of equipment safety.
+
+---
+
+### 1. Station Owner status and station rights
+1. The Owner is an individual or organization with lawful ownership or operating rights for the site where the charging station and related equipment are located.
+2. The Owner is responsible for the site's legal compliance, electrical safety, fire prevention and firefighting, and applicable local technical requirements.
+
+---
+
+### 2. License subscription and B2B payment
+1. ChargeOps provides station-management software access through a per-station subscription:
+   - Monthly plan: **VND 500,000 / station / month**.
+   - Annual plan: **VND 5,000,000 / station / year**.
+2. License fees are paid B2B outside the platform. An administrator reconciles the purchase and records the license period in the system; a period with a future start date remains pending until it becomes effective. The subscription fee is separate from a Driver's charging package price and is not a booking commission.
+
+---
+
+### 3. Station status is separate from license validity
+1. **Station status** and **license validity** are separate attributes:
+   - A station must be **ACTIVE** and have an **ACTIVE** license whose start date has arrived and expiration time has not arrived. These are necessary conditions. Search visibility also requires an activated charger and an available connector. When creating a booking, the system also checks the specific equipment, operating hours, rates, and open time slots.
+2. **Preserving accepted bookings when a license becomes invalid:** An expired, suspended, or cancelled license makes the station unavailable in Driver search and prevents new bookings. A license change does not automatically change station or equipment status, cancel or refund confirmed bookings, or stop a session already in progress. A valid **PENDING** booking may still complete payment within its hold period if the station can continue serving it. This does not remove the need to handle a separate station incident when service is actually disrupted.
+
+---
+
+### 4. Equipment maintenance and QR codes
+1. The Owner is responsible for keeping chargers and connectors in working condition and updating their operational status on the platform when a technical incident occurs.
+2. The Owner provides the QR code for the correct connector and guides Drivers through check-in confirmation. A connector identifier does not replace the check-in authentication steps.
+3. Swapping QR codes or displaying a QR code that does not match the registered connector configuration is prohibited.
+
+---
+
+### 5. Staff access
+1. The Owner invites staff through the invitation flow to grant the account role **STAFF**. An **ACTIVE** assignment determines the station the staff member may operate; the **STAFF** role alone does not grant access to every station. An existing **DRIVER** account may be promoted to **STAFF** through the compatible assignment flow.
+2. Staff may act only within the stations assigned to them and cannot change the Owner's license plan or access the Owner's financial information.
+
+## Business references
+- ChargeOps Vault: License/license-station-eligibility-policy.vi.
+- ChargeOps Vault: License/license-admin-backend-api-design.
+- ChargeOps Vault: glossary-and-business-rules-ssot, BR-ACC-01 supersession.
+- ChargeOps Vault: Station/staff-operations-backend-rebaseline-2026-10-05.vi.
+- ChargeOps Vault: Booking/01-backend-design, Booking/README.$document$,
+'bkg067-2026-11-17-r1','en'
 );
 
 -- Source: docs/ChargeOps/Booking/README.md
@@ -276,6 +441,62 @@ Quy chế này quy định các nguyên tắc vận hành của ChargeOps, áp d
 'vi'
 );
 
+-- English translation of operational-regulations; same content revision as the Vietnamese source.
+INSERT INTO chargeops_legal_seed VALUES (
+'operational-regulations-en',
+'OPERATIONAL_REGULATION',
+'ALL',
+'ChargeOps Platform Operating Regulations',
+'ChargeOps · Operations',
+'Rules for payment holds, check-in and no-shows, package-price snapshots, station incidents, and role-based support.',
+$document$# ChargeOps Platform Operating Regulations
+
+> Scope: This document summarizes ChargeOps operating rules based on the Vault, reviewed on 8 September 2026. Booking and payment behavior is described by the Booking v4.9 design; this does not confirm that every described feature is deployed. Applicable actions and transaction parameters come from the system response.
+
+These rules apply to Drivers, station Owners, assigned Staff, and Admins within their respective permissions.
+
+---
+
+### 1. Preventing overlapping bookings
+1. To prevent double bookings on the same charging connector, the system uses a pessimistic database lock while processing a booking-creation request.
+2. Hold requests for the **same connector** are checked under the lock to prevent overlapping time ranges. This does not serialize every transaction across the platform.
+
+---
+
+### 2. Ten-minute payment hold
+1. When a Driver's booking request is accepted, the system immediately holds the requested time range and sets the booking to **PENDING**.
+2. The Driver has up to **10 minutes** to complete payment. The countdown starts when the booking is created.
+3. If valid payment has not been confirmed by the deadline, the booking becomes **EXPIRED** and releases the time range. Late payments are reconciled separately. This payment-hold deadline is different from the cancellation grace period, which starts when payment is confirmed.
+
+---
+
+### 3. Check-in window and no-shows
+1. The Driver must complete check-in with a valid QR code for the correct connector from the scheduled start time until **strictly before the scheduled end time minus 15 minutes**. Scanning the code or previewing details does not count as successful check-in.
+2. At or after the cutoff, a **CONFIRMED** booking without check-in is recorded as **CANCELLED**, reason **NO_SHOW**; it is not a payment-hold expiry (**EXPIRED**). Late arrival does not extend the session, and ending early does not change the purchased package price.
+3. A no-show booking releases its time range. Whether the connector can accept another booking still depends on equipment conditions and lead-time rules. A no-show receives a **0%** refund unless a station failure is confirmed as eligible for a refund.
+
+---
+
+### 4. Preserving the package price at booking time
+1. The system recalculates the time-package price when a booking is created and stores the applicable price details with that booking. The station's per-kWh rate, connector power, and estimated energy are inputs to the package-price calculation; they are not a bill based on metered energy actually consumed. No additional service fee or booking commission is charged.
+2. Changes to time-of-use (**TOU**) rates or the station's electricity price after a booking is created apply only to later bookings. They do not change the amount of a booking that was already created.
+
+---
+
+### 5. Technical incidents and responsibilities
+1. When an incident is found, the Owner or assigned Staff record and handle it within their operating permissions. A connector that cannot serve uses **OFFLINE**; a charger may use **OFFLINE** or **MAINTENANCE**, depending on the situation. Routine maintenance must account for bookings already sold. An emergency incident is recorded separately with its reason and affected bookings.
+2. A confirmed station failure may qualify for a **100% package-price refund** under the MVP, including a failure during a session; the same amount is not refunded twice. Creating or closing a support ticket does not itself transfer money. The Owner handles ordinary responsibility decisions; Admin makes a financial decision only in a specific escalated case; Staff records technical evidence. Refund core uses the Simulator, and the Owner may retry when the system permits. A simulated result is not evidence of a real bank transfer.
+
+## Business references
+- ChargeOps Vault: Booking/README.
+- ChargeOps Vault: Booking/01-backend-design.
+- ChargeOps Vault: Booking/06-bkg-002-system-config-and-booking-policy.
+- ChargeOps Vault: Connector/chargepoint-connector-invariants-t17, connector states.
+$document$,
+'bkg067-2026-10-08-r1',
+'en'
+);
+
 -- Source: docs/ChargeOps/Booking/README.md | Invariants; D-LIMIT
 -- Source: docs/ChargeOps/Booking/01-backend-design.md | Sections 2.1, 4, 5
 -- Source: docs/ChargeOps/Booking/06-bkg-002-system-config-and-booking-policy.md | Section 2.1
@@ -309,7 +530,48 @@ Khi tạo đặt chỗ, máy chủ kiểm tra lại điều kiện, lịch và g
 - ChargeOps Vault — Booking/README: Những điều không được thay đổi ngầm; D-LIMIT.
 - Booking/01-backend-design: mục 2.1, 4 và 5, xem giá, xử lý thời gian và phiên qua ngày.
 - Booking/06-bkg-002-system-config-and-booking-policy: mục 2.1, tham số mặc định.$document$,
-'4.9.0','vi');
+'bkg067-2026-11-17-r1','vi');
+
+-- English translation of booking-time-and-availability; same content revision as the Vietnamese source.
+INSERT INTO chargeops_legal_seed VALUES (
+'booking-time-and-availability-en',
+'OPERATIONAL_REGULATION',
+'ALL',
+'Booking Time and Availability Policy',
+'ChargeOps · Booking v4.9',
+'Today-or-tomorrow start dates, advance booking limits, operating hours, slot availability, and booking snapshots.',
+$document$# Booking Time and Availability Policy
+
+> Scope: These rules follow the ChargeOps Booking v4.9 design. The system supplies the applicable parameters for each transaction; this document does not confirm that every described flow is available in every runtime.
+
+## 1. Start date, time, and duration
+
+Under the v4.9 defaults, a Driver may choose a start date of today or tomorrow according to the system's business time in Vietnam (Asia/Ho_Chi_Minh). This is not permission to select any time within a rolling 48-hour window. A session that starts tomorrow may end on the following day if the station's operating schedule allows it.
+
+The start time must be at least **60 minutes** after the system processes the request and must fall on the **30-minute grid**. For example, if it is 09:10, the earliest grid-aligned start is 10:30; that does not guarantee an available connector. The minimum duration is **30 minutes**, with additional duration in **30-minute** increments. Read the applicable limit from the system; do not treat the current 180-minute code limit as a permanently approved policy.
+
+## 2. Operating hours and sessions crossing midnight
+
+The entire charging interval must fit within valid service hours. Checking only the start and end is insufficient when the station closes during the interval. For a session crossing midnight, check the schedule for every calendar day it touches.
+
+Two sessions may be adjacent at the previous session's end time without overlapping. Do not add a separate 10-minute turnaround buffer to the schedule; the 10-minute payment hold is a different rule.
+
+## 3. Viewing availability does not reserve a slot
+
+Connector availability and open status on search results describe the time of the search. They do not guarantee that a connector will remain free for the requested time. Viewing a price does not reserve a connector or lock the price. Only a successfully created **PENDING** booking holds the time slot during its payment window.
+
+When a booking is created, the server checks eligibility, schedule, and price again. Two Drivers cannot hold overlapping times on the same connector. A Driver choosing different connectors at overlapping times may receive a warning; do not infer a general prohibition without an applicable policy.
+
+## 4. Late arrival and configuration changes
+
+Arriving late does not extend the session or move its scheduled end time. A configuration change does not automatically alter times or terms already saved to an existing booking. If a payment hold expires and the Driver books again, the new booking uses the data current at that time.
+
+## Business references
+- ChargeOps Vault: Booking/README, implicit-change invariants and D-LIMIT.
+- ChargeOps Vault: Booking/01-backend-design, sections 2.1, 4, and 5.
+- ChargeOps Vault: Booking/06-bkg-002-system-config-and-booking-policy, section 2.1.$document$,
+'bkg067-2026-11-17-r1','en'
+);
 
 -- Source: docs/ChargeOps/Booking/01-backend-design.md | Sections 2, 2.1, 2.3
 -- Source: docs/ChargeOps/Booking/README.md | Invariants; D-PRICE
@@ -342,7 +604,47 @@ Sau khi tạo PENDING thành công, giá gói cùng căn cứ tính được lư
 ## Căn cứ nghiệp vụ
 - ChargeOps Vault — Booking/01-backend-design: mục 2, 2.1 và 2.3, công thức, xác nhận lại giá và nguồn gốc hệ số 0,62.
 - Booking/README: nguyên tắc gói thời gian trả trước, không phí booking; quyết định D-PRICE.$document$,
-'4.9.0','vi');
+'bkg067-2026-11-17-r1','vi');
+
+-- English translation of time-package-pricing-policy; same content revision as the Vietnamese source.
+INSERT INTO chargeops_legal_seed VALUES (
+'time-package-pricing-policy-en',
+'OPERATIONAL_REGULATION',
+'ALL',
+'Time-Package Pricing Policy',
+'ChargeOps · Booking v4.9',
+'Time-package pricing, TOU rate selection, the unverified 0.62 estimate, price reconfirmation, and saved booking prices.',
+$document$# Time-Package Pricing and Booking Price Protection
+
+> Scope: This document describes the time-package pricing model in the ChargeOps Booking v4.9 design. It is not evidence of metered energy or confirmation that every pricing API has been deployed.
+
+## 1. What the Driver buys
+
+The Driver prepays for a time-based connector package. This is not a deposit and is not settled against energy measured in kWh. ChargeOps does not charge a service fee or booking commission; the station Owner's license subscription is separate.
+
+The Owner sets rates per kWh and by time-of-use (TOU) period. The applicable TOU rate is selected according to the scheduled charging interval, not the time the price screen is opened. A package spanning multiple rate periods is split into corresponding price lines.
+
+## 2. Booking v4.9 calculation
+
+For each line, the connector's rated power is multiplied by the session duration in hours and by **0.62** to produce estimated energy. The estimate is rounded using HALF_UP to one decimal place. The rounded estimate is multiplied by the rate per kWh; the line amount is then rounded using HALF_UP to the nearest **VND 1,000**. The package total is the sum of its line amounts and is not rounded again.
+
+Example: one line for a **60 kW** connector, **60 minutes**, and a rate of **VND 3,400/kWh** produces estimated energy of **37.2 kWh**. The amount before rounding is **VND 126,480**, so the line price is **VND 126,000**. This is a calculation example, not a universal rate for every station.
+
+## 3. Limits of the estimate
+
+The **0.62** factor is a prototype assumption and has not been calibrated against real charging data. It is not a validated efficiency, battery state, or promise that the calculated amount of energy will be delivered. Rated connector power does not prove the power received by a vehicle throughout a session.
+
+## 4. Price confirmation and booking snapshot
+
+The price shown while selecting a time is an estimate. The server calculates it again when the Driver continues and when the booking is created. If the amount, price breakdown, or policy differs from what the Driver accepted, the Driver must review and confirm again; the system must not create a booking using a newly changed price without that confirmation.
+
+After a **PENDING** booking is created successfully, its package price and calculation basis are saved for that transaction. An Owner's later rate change does not change an existing booking's saved price. If the payment hold expires, a new booking uses the then-current data. Ending a session early does not automatically reduce the package price.
+
+## Business references
+- ChargeOps Vault: Booking/01-backend-design, sections 2, 2.1, and 2.3; calculation, price confirmation, and origin of the 0.62 factor.
+- ChargeOps Vault: Booking/README, prepaid time packages, no booking fee, and decision D-PRICE.$document$,
+'bkg067-2026-11-17-r1','en'
+);
 
 -- Source: docs/ChargeOps/Booking/README.md | Invariants
 -- Source: docs/ChargeOps/Booking/01-backend-design.md | Sections 2.2, 4, 6
@@ -592,7 +894,47 @@ PENDING được nhận hợp lệ có thể hoàn tất thanh toán trong hạn
 - ChargeOps Vault — License/license-station-eligibility-policy.vi: phần policy cuối, mục 4–7.
 - Discovery/driver-station-discovery-flow.vi: tìm kiếm, chi tiết và lịch khả dụng FR02/FR03/FR04.
 - Booking/01-backend-design: mục 5 và 7, lịch tương lai và giao dịch đã được nhận.$document$,
-'4.9.0','vi');
+'bkg067-2026-11-17-r1','vi');
+
+-- English translation of station-discovery-and-eligibility-policy; same content revision as the Vietnamese source.
+INSERT INTO chargeops_legal_seed VALUES (
+'station-discovery-and-eligibility-policy-en','OPERATIONAL_REGULATION','ALL',
+'Station Discovery and Booking Eligibility Policy','ChargeOps · Station eligibility',
+'Distinguishes station approval, license validity, equipment readiness, discovery visibility, and booking acceptance.',
+$document$# Station Discovery and Booking Eligibility Policy
+
+> Scope: This policy summarizes the Station–License rules and the discovery/booking design in the ChargeOps Vault. The Booking v4.9 design does not confirm that every described behavior is deployed.
+
+## 1. Independent conditions
+
+Station status represents platform approval and station operations. A license represents the right to accept new business through the platform. Charger activation and connector runtime status represent separate equipment conditions. These states must not be treated as one synchronized status.
+
+For example, a station can be **ACTIVE** while its license is **SUSPENDED**, its charger is activated, and its connector is **AVAILABLE**. Equipment readiness does not make the license valid again.
+
+## 2. Appearing in Driver search
+
+A station must be **ACTIVE**, have an **ACTIVE** license within its effective period—from startAt up to but not including expiresAt—and have an activated charger with an **AVAILABLE** connector. A license whose status still says **ACTIVE** is not eligible after expiresAt, even if a status-update job is delayed.
+
+Open status, distance, connector availability, and a displayed station rate are search information. A per-kWh rate is not the total price of a time package, and an available connector count does not guarantee an open slot during the Driver's requested time.
+
+## 3. Checks when creating a booking
+
+Booking creation also checks the selected connector, the complete operating-hours interval, rates, and open time slots. Seeing a station in search does not replace server-side checks; a request may be rejected if conditions changed after the search.
+
+The Booking v4.9 design distinguishes a connector that is **IN_USE** now from future schedule availability. Do not infer that a connector being busy now makes every later time unavailable. A connector that cannot serve a booking or a charger under maintenance must still be blocked under the applicable equipment rules.
+
+## 4. When a license is no longer usable
+
+A station with an unusable license cannot accept new bookings and does not appear in Driver discovery. Owners and Admins may still manage data within their authorized scope. A license change does not automatically cancel confirmed bookings or stop a session already in progress.
+
+A valid **PENDING** booking may complete payment during its hold period if the station can still serve it. Preserving a booking because of a license change does not mean ignoring an actual service incident, a safety suspension, or a separate operational decision.
+
+## Business references
+- ChargeOps Vault: License/license-station-eligibility-policy.vi, policy sections 4–7.
+- ChargeOps Vault: Discovery/driver-station-discovery-flow.vi, search, details, and availability (FR02/FR03/FR04).
+- ChargeOps Vault: Booking/01-backend-design, sections 5 and 7.$document$,
+'bkg067-2026-11-17-r1','en'
+);
 
 -- Source: docs/ChargeOps/License/license-admin-backend-api-design.md | Glossary; sections 7.4-7.7
 -- Source: docs/ChargeOps/License/license-station-eligibility-policy.vi.md | Existing bookings
@@ -632,20 +974,66 @@ License thay đổi không tự sửa trạng thái trạm, trụ hoặc cổng,
 ## Căn cứ nghiệp vụ
 - ChargeOps Vault — License/license-admin-backend-api-design: Glossary, mục 7.4–7.7, kỳ mới, lineage, kiểm soát cấp phép và recovery.
 - License/license-station-eligibility-policy.vi: bảo toàn giao dịch đã được nhận.$document$,
-'4.9.0','vi');
+'bkg067-2026-11-17-r1','vi');
 
--- Source: docs/ChargeOps/Booking/README.md | Staff invariant
+-- English translation of license-lifecycle-and-renewal-policy; same content revision as the Vietnamese source.
+INSERT INTO chargeops_legal_seed VALUES (
+'license-lifecycle-and-renewal-policy-en','LICENSE_AGREEMENT','OWNER',
+'Station License Validity, Renewal, and Suspension Policy','ChargeOps · License lifecycle',
+'License effective periods, terminal and suspended states, renewal as a new term, and limits of cross-term controls.',
+$document$# Station License Validity, Renewal, and Suspension Policy
+
+> Scope: This document summarizes the license lifecycle rules in the ChargeOps Vault. Cross-period license controls are described as a design template; this document does not confirm that the template has been fully implemented.
+
+## 1. Meaning and term
+
+A license is a per-station software subscription, not a government business permit. B2B license payment is separate from Driver transactions.
+
+A monthly term follows one calendar month and an annual term follows one calendar year in the **Asia/Ho_Chi_Minh** time zone; neither is converted to a fixed 30 or 365 days. The effective interval includes startAt and excludes expiresAt. At the exact expiration time, the term no longer grants eligibility for new business.
+
+## 2. States and reactivation
+
+**PENDING** means a term has been created but is not yet effective. **ACTIVE** is usable only within its effective interval. **SUSPENDED** is a temporary suspension; the term's clock continues to run. **CANCELLED** and **EXPIRED** are terminal states and must not be changed back to **ACTIVE**.
+
+Reactivation applies to a **SUSPENDED** term that is still within its validity period and meets the conditions for lifting the suspension. Reactivation is different from renewal.
+
+## 3. Renewal creates a new term
+
+Renewal does not extend or overwrite the old term. It creates a new term with its own identifier, a link to the source term, and a snapshot of the plan, fee, and Owner at creation time.
+
+An **ACTIVE** term that is still valid may be renewed early into a **PENDING** term that starts when the current term ends. For an **EXPIRED** source term, a valid renewal starts a new term at the time of renewal. Renewal is not allowed from **PENDING**, **SUSPENDED**, or **CANCELLED** terms as a way to bypass management conditions.
+
+The source must be the latest term and must not already have a successor. Each source term may have only one direct successor, even if that successor was cancelled. The current scope allows only one future term; it does not allow renewal from a **PENDING** term.
+
+## 4. Cancelling a term and cross-term controls
+
+Cancelling a term ends only the selected term; it does not automatically cancel its successor. Ending the station's license relationship is a broader decision and must not be described as simply cancelling one term.
+
+The Vault describes station-level **COMPLIANCE_HOLD** and **REVOKED** states to block new grants, renewals, or reactivation across the term chain. These controls are a template that requires full implementation. Do not infer that a state on one term performs all of these station-level controls, or use a new term to bypass a suspension that remains in effect.
+
+## 5. Driver transactions
+
+A license change does not automatically change station, charger, or connector status, cancel a confirmed booking, or stop a session in progress. A real service incident or safety decision follows its separate operational process.
+
+## Business references
+- ChargeOps Vault: License/license-admin-backend-api-design, glossary and sections 7.4–7.7.
+- ChargeOps Vault: License/license-station-eligibility-policy.vi, preservation of accepted transactions.$document$,
+'bkg067-2026-11-17-r1','en'
+);
+
+-- Role source: docs/ChargeOps/glossary-and-business-rules-ssot.md | BR-ACC-01 supersession
+-- Role implementation: docs/ChargeOps/Station/staff-operations-backend-rebaseline-2026-10-05.vi.md
 -- Source: docs/ChargeOps/Booking/01-backend-design.md | Section 7
 INSERT INTO chargeops_legal_seed VALUES (
 'station-staff-access-policy','OPERATIONAL_REGULATION','OWNER',
 'Quy định phân công nhân viên và phạm vi truy cập','ChargeOps · Nhân viên trạm',
-'Staff là assignment ACTIVE theo trạm; tách quyền vận hành khỏi tiền, doanh thu, ngân hàng và chuyển hoàn.',
+'STAFF là vai trò tài khoản riêng; assignment ACTIVE xác định phạm vi vận hành theo trạm, tách khỏi quyền tài chính.',
 $document$# Quy định phân công nhân viên và phạm vi truy cập
 
 > Phạm vi: Quy tắc phân quyền theo Vault và thiết kế Booking v4.9. Nội dung không xác nhận mọi màn hình hoặc nghiệp vụ tài chính đã được triển khai.
 
 ## 1. Bản chất quyền nhân viên
-Staff là tài khoản được chủ trạm phân công vào một trạm, không phải role tài khoản độc lập. Quyền chỉ có hiệu lực khi phân công ACTIVE. Có tài khoản hoặc từng được phân công không đồng nghĩa đang có quyền vận hành.
+STAFF là vai trò tài khoản riêng, được tạo qua quy trình mời. Assignment ACTIVE mới cấp quyền vận hành tại trạm được giao; role STAFF tự nó không cấp quyền trên mọi trạm. Tài khoản DRIVER hiện hữu có thể được chuyển sang STAFF qua luồng phân công tương thích.
 
 Một người chỉ thao tác trong phạm vi trạm được giao. Máy chủ kiểm tra quyền cho từng yêu cầu, không dựa riêng vào việc giao diện có nút thao tác.
 
@@ -665,9 +1053,52 @@ Tài xế chỉ xem và thao tác booking, phiếu hỗ trợ của mình. Owner
 Khi phát hiện truy cập vượt phạm vi, cần ghi nhận để kiểm tra phân công và quyền; không chia sẻ tài khoản chủ trạm cho nhân viên để vượt giới hạn.
 
 ## Căn cứ nghiệp vụ
-- ChargeOps Vault — Booking/README: Staff là assignment, không có role STAFF hoặc quyền chuyển tiền.
-- Booking/01-backend-design: mục 7, quyền Driver/Owner/Staff/Admin và giới hạn trường tài chính.$document$,
-'bkg067-2026-10-08-r1','vi');
+- ChargeOps Vault — glossary-and-business-rules-ssot: supersession BR-ACC-01; Station/staff-operations-backend-rebaseline-2026-10-05: Staff role, invitation và assignment.
+- Booking/01-backend-design: mục 7, giới hạn quyền vận hành và trường tài chính.$document$,
+'bkg067-2026-11-17-r1','vi');
+-- English translation of station-staff-access-policy; same content revision as the Vietnamese source.
+INSERT INTO chargeops_legal_seed VALUES (
+'station-staff-access-policy-en',
+'OPERATIONAL_REGULATION',
+'OWNER',
+'Station Staff Assignment and Access Policy',
+'ChargeOps · Station Staff',
+'Distinguishes the STAFF account role from an active station assignment and defines operational and financial access boundaries.',
+$document$# Station Staff Assignment and Access Policy
+
+> Scope: These rules follow the current ChargeOps role and station-assignment model. They do not confirm that every described screen or financial workflow is available in every runtime.
+
+## 1. What Staff access means
+
+**STAFF** is a distinct account role created through an invitation flow. An **ACTIVE** assignment grants operational access only to the assigned station; the **STAFF** role alone does not grant access to every station. An existing **DRIVER** account may be promoted to **STAFF** through the compatible assignment flow.
+
+A staff member may act only within the assigned station. The server checks authorization for each request; access is not granted merely because an action appears in the interface.
+
+## 2. Station operations
+
+Staff may access operational information, bookings, and support tickets needed to monitor the assigned station and investigate incidents. Incident findings should identify the relevant station and booking and include supporting evidence.
+
+When an assignment is no longer **ACTIVE**, permissions from that assignment no longer apply to new requests. An assignment at one station does not grant access to another station.
+
+## 3. Financial data boundaries
+
+In the station-operations scope, Staff responses do not include amounts, station revenue, payment information, or bank-account fields. Staff cannot manage licenses, execute refunds or payouts, or confirm that a transfer occurred.
+
+A technical finding about a station incident is evidence. It does not replace an authorized responsibility decision or financial action. A ticket handled by Staff does not mean the Driver has received a refund.
+
+## 4. Distinguishing account roles and actors
+
+Drivers view and manage their own bookings and support tickets. Owners manage finances for their stations, may accept ordinary responsibility, and may retry a Simulator refund when the system permits; none of these actions proves a bank transfer. Admins review financial policy only in a specific escalated case. Staff are limited to station operations and technical evidence; they do not decide financial responsibility or issue refunds.
+
+If access appears to exceed the assigned scope, review the assignment and authorization. Do not share an Owner account with Staff to bypass access boundaries.
+
+## Business references
+- ChargeOps Vault: glossary-and-business-rules-ssot, BR-ACC-01 supersession and BR-ACC-04/05.
+- ChargeOps Vault: Station/staff-operations-backend-rebaseline-2026-10-05.vi.
+- ChargeOps Vault: Booking/01-backend-design, section 7.$document$,
+'bkg067-2026-11-17-r1','en'
+);
+
 -- Source: docs/ChargeOps/Connector/chargepoint-connector-invariants-t17.md | Sections 1-3
 -- Source: docs/ChargeOps/Charge Point/api_design_document_chargepoint_connector_admin_apis.md | Sections 1-2
 -- Source: docs/ChargeOps/Booking/01-backend-design.md | Section 7
@@ -707,6 +1138,55 @@ Công suất danh định, trạng thái logic và dữ liệu phiên mô phỏn
 - Charge Point/api_design_document_chargepoint_connector_admin_apis: mục 1–2, phân cấp, trạng thái, cấp thiết bị.
 - Booking/01-backend-design: mục 7, bảo trì và bảo vệ booking đã bán.$document$,
 '4.9.0','vi');
+
+-- English translation of station-equipment-operation-policy; same content revision as the Vietnamese source.
+INSERT INTO chargeops_legal_seed VALUES (
+'station-equipment-operation-policy-en',
+'OPERATIONAL_REGULATION',
+'OWNER',
+'Station Equipment Operation and Maintenance Policy',
+'ChargeOps · Station equipment',
+'Equipment hierarchy, connector power and type constraints, status distinctions, maintenance, and limits of simulated readings.',
+$document$# Station Equipment Operation and Maintenance Policy
+
+> Scope: These rules summarize ChargeOps equipment constraints in the Vault and the booking design for maintenance. Logical or simulated status is not a safety certification or a measurement of actual power delivery. This document does not confirm that every described screen or workflow is deployed.
+
+## 1. Equipment hierarchy and identifiers
+
+A station contains charge points, and each charge point contains its own connectors. Charge point and connector codes identify equipment within the management scope. Owners maintain equipment details and provide the QR code for the correct connector; do not swap codes in a way that could make a Driver identify the wrong location.
+
+Station approval, license validity, and equipment activation are separate steps. Having a license does not mean every charge point or connector is ready to serve Drivers.
+
+## 2. Hardware configuration
+
+Under T17, a connector's declared power must be between **3 and 360 kW**. If a charge point's maximum power is declared, it must be between **3 and 720 kW** and must not be lower than the declared power of any connector attached to that charge point. This rule compares each connector with the charge point; it does not imply a total across all connectors where the domain model has not defined one.
+
+In the project model, TYPE2 corresponds to AC; CCS2, CHAdeMO, and GB/T correspond to DC. Connector type, current, and power must be consistent. Hardware fields that are immutable under the equipment lifecycle cannot be changed like a display name.
+
+## 3. Distinguishing equipment states
+
+Provisioning or activation status is different from operational status. A charge point has an operational status of **AVAILABLE**, **OFFLINE**, or **MAINTENANCE**. A connector has a runtime status of **AVAILABLE**, **IN_USE**, or **OFFLINE**. Do not use **FAULTED** or **MAINTENANCE** as connector runtime values when the enum does not support them.
+
+An expired license does not automatically set a connector to **OFFLINE** or a charge point to **MAINTENANCE**. A connector marked **AVAILABLE** does not replace the station approval and license requirements.
+
+## 4. Maintenance and incidents
+
+Schedule, price, or routine maintenance changes must account for bookings already sold and preserve prices already committed to those bookings. An emergency incident is handled separately, with a reason, history, and a list of affected bookings; it must not be forced through a routine maintenance operation that is blocked.
+
+If a station cannot serve a Driver, coordinate verification and booking handling; do not assume the Driver is automatically moved to another connector. A station failure confirmed under the MVP may qualify for a full package-price refund, including a failure during a session.
+
+## 5. Limits of the data
+
+Declared power, logical equipment status, and simulated session data do not prove how much electricity a Driver actually received. Do not present them as equipment safety certification or a performance guarantee.
+
+## Business references
+- ChargeOps Vault: Connector/chargepoint-connector-invariants-t17, sections 1–3, connector power limits and connector compatibility.
+- ChargeOps Vault: Charge Point/api_design_document_chargepoint_connector_admin_apis, sections 1–2, equipment hierarchy, status, and provisioning.
+- ChargeOps Vault: Booking/01-backend-design, section 7, maintenance and protection of sold bookings.
+$document$,
+'4.9.0',
+'en'
+);
 
 -- Source: docs/ChargeOps/Booking/01-backend-design.md | Sections 2, 6, 7
 -- Source: docs/ChargeOps/Booking/34-owner-simulator-finance-policy-and-root-refactor.vi.md
