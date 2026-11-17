@@ -8,6 +8,16 @@ echo Starting ChargeOps public backend services...
 if not exist ".env" (echo [ERROR] Backend .env is missing.& exit /b 1)
 if not exist ".env.demo" (echo [ERROR] Backend .env.demo is missing.& exit /b 1)
 if not exist ".env.cloudflared" (echo [ERROR] .env.cloudflared is missing. Configure the existing Cloudflare Tunnel token first.& exit /b 1)
+
+REM Demo MCP exposes read-only Owner tools; OAuth and the OWNER role remain required.
+REM MCP is on by default. Set CHARGEOPS_MCP_ENABLED=false in .env.demo for rollback.
+set "CHARGEOPS_MCP_ENABLED="
+findstr /I /R /C:"^[ ]*CHARGEOPS_MCP_ENABLED[ ]*=[ ]*false[ ]*$" .env.demo >nul
+if errorlevel 1 set "CHARGEOPS_MCP_ENABLED=true"
+set "CHARGEOPS_MCP_RESOURCE_URL=https://api.chargeops.online/mcp"
+set "CHARGEOPS_MCP_READ_SCOPE=chargeops:mcp:read"
+set "ABUSE_MCP_READ_PER_MINUTE=30"
+
 where docker >nul 2>&1 || (echo [ERROR] Docker Desktop is unavailable.& exit /b 1)
 
 findstr /R /C:"^[ ]*CLOUDFLARE_TUNNEL_TOKEN=[^ ]" .env.cloudflared >nul
@@ -40,5 +50,7 @@ echo Driver:           https://driver.chargeops.online
 echo Keycloak:         https://auth.chargeops.online/realms/chargeops/account/
 echo Grafana:          https://grafana.chargeops.online/
 echo Backend API:      https://api.chargeops.online/api/v1
+echo Owner MCP:        https://api.chargeops.online/mcp ^(OAuth + Owner role required^)
+echo Owner setup:      https://console.chargeops.online/owner/agents
 echo Booking notifications use Hostinger SMTP through Kafka. Mailpit is not part of this stack.
 echo To stop Docker and the Tunnel, choose option 4 in START-CHARGEOPS.bat.
