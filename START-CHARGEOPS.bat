@@ -9,7 +9,7 @@ echo ==========================================
 echo             CHARGEOPS LAUNCHER
 echo ==========================================
 echo 1. Start local development
-echo 2. Start public demo ^(domain + Cloudflare Tunnel^)
+echo 2. Start public demo ^(domain + Cloudflare Tunnel + Owner MCP^)
 echo 3. Stop local Docker services
 echo 4. Stop public demo and Tunnel
 echo 5. Exit
