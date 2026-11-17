@@ -14,6 +14,7 @@ import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.time.temporal.ChronoUnit;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
@@ -58,6 +59,19 @@ public class BookingTimePolicy {
             Instant startAt, int durationMin, int stationMinDurationMin,
             StationOperatingSchedule schedule, Instant now
     ) {
+        return validate(
+                startAt,
+                durationMin,
+                stationMinDurationMin,
+                schedule == null ? List.of() : List.of(schedule),
+                now
+        );
+    }
+
+    public Instant validate(
+            Instant startAt, int durationMin, int stationMinDurationMin,
+            List<StationOperatingSchedule> scheduleVersions, Instant now
+    ) {
         Objects.requireNonNull(now, "Server time is required");
         int grid = config.getOperatingGridMinutes();
         Instant earliest = ceilToGrid(now, config.getMinimumAdvanceMinutes(), grid);
@@ -86,18 +100,53 @@ public class BookingTimePolicy {
         }
 
         Instant endAt = startAt.plus(Duration.ofMinutes(durationMin));
-        if (schedule == null || !schedule.isActive(now)) {
+        if (scheduleVersions == null || scheduleVersions.isEmpty()
+                || scheduleVersions.stream()
+                        .noneMatch(schedule -> schedule != null && schedule.isActive(startAt))) {
             throw invalid("startAt", "OPERATING_SCHEDULE_NOT_CONFIGURED", earliest);
         }
-        // Do not extend a known expiring schedule beyond its effective interval.
-        if (!schedule.isActive(startAt)
-                || (schedule.getEffectiveTo() != null && schedule.getEffectiveTo().isBefore(endAt))) {
-            throw invalid("startAt", "OUTSIDE_OPERATING_HOURS", earliest);
-        }
-        if (!operatingHoursResolver.coversInterval(schedule, startAt, endAt)) {
+        if (!scheduleVersionsCoverInterval(scheduleVersions, startAt, endAt)) {
             throw invalid("startAt", "OUTSIDE_OPERATING_HOURS", earliest);
         }
         return endAt;
+    }
+
+    private boolean scheduleVersionsCoverInterval(
+            List<StationOperatingSchedule> schedules,
+            Instant startAt,
+            Instant endAt
+    ) {
+        Instant coveredUntil = startAt;
+        for (StationOperatingSchedule schedule : schedules) {
+            if (schedule == null || schedule.getCancelledAt() != null
+                    || schedule.getEffectiveFrom() == null
+                    || schedule.getEffectiveFrom().isAfter(coveredUntil)) {
+                return false;
+            }
+            Instant segmentStart = coveredUntil.isAfter(schedule.getEffectiveFrom())
+                    ? coveredUntil
+                    : schedule.getEffectiveFrom();
+            Instant segmentEnd = schedule.getEffectiveTo() == null
+                    || endAt.isBefore(schedule.getEffectiveTo())
+                    ? endAt
+                    : schedule.getEffectiveTo();
+            if (!segmentStart.isBefore(segmentEnd)) {
+                continue;
+            }
+            if (!schedule.isActive(segmentStart)
+                    || !operatingHoursResolver.coversInterval(
+                            schedule,
+                            segmentStart,
+                            segmentEnd
+                    )) {
+                return false;
+            }
+            coveredUntil = segmentEnd;
+            if (!coveredUntil.isBefore(endAt)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private Instant ceilToGrid(Instant now, int leadMinutes, int gridMinutes) {

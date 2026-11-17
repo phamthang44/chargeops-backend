@@ -193,6 +193,7 @@ class StationPricingPolicyImplTest {
         Instant endAt = Instant.parse("2026-09-01T09:00:00Z");
         StationOperatingSchedule schedule = mock(StationOperatingSchedule.class);
         BookingTimeRangeProjection booking = mock(BookingTimeRangeProjection.class);
+        when(schedule.getEffectiveFrom()).thenReturn(now);
         when(booking.getStartAt()).thenReturn(startAt);
         when(booking.getEndAt()).thenReturn(endAt);
 
@@ -215,6 +216,7 @@ class StationPricingPolicyImplTest {
         Instant endAt = Instant.parse("2026-09-01T22:00:00Z");
         StationOperatingSchedule schedule = mock(StationOperatingSchedule.class);
         BookingTimeRangeProjection booking = mock(BookingTimeRangeProjection.class);
+        when(schedule.getEffectiveFrom()).thenReturn(now);
         when(booking.getStartAt()).thenReturn(startAt);
         when(booking.getEndAt()).thenReturn(endAt);
 

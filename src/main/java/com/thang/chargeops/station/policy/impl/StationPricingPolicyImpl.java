@@ -176,6 +176,7 @@ public class StationPricingPolicyImpl implements StationPricingPolicy {
         if (newSchedule == null || newSchedule.isOpen24Hours()) {
             return;
         }
+        Instant effectiveFrom = newSchedule.getEffectiveFrom();
 
         List<BookingTimeRangeProjection> busyRanges = bookingRepository
                 .findActiveBlockingRangesByStationId(
@@ -185,7 +186,17 @@ public class StationPricingPolicyImpl implements StationPricingPolicy {
                 );
 
         for (BookingTimeRangeProjection booking : busyRanges) {
-            if (!operatingHoursResolver.coversInterval(newSchedule, booking.getStartAt(), booking.getEndAt())) {
+            if (!booking.getEndAt().isAfter(effectiveFrom)) {
+                continue;
+            }
+            Instant protectedStart = booking.getStartAt().isBefore(effectiveFrom)
+                    ? effectiveFrom
+                    : booking.getStartAt();
+            if (!operatingHoursResolver.coversInterval(
+                    newSchedule,
+                    protectedStart,
+                    booking.getEndAt()
+            )) {
                 throw new StationPricingDomainException(
                         StationPricingViolation.SCHEDULE_CONFLICT_WITH_BOOKINGS,
                         "New operating schedule conflicts with active or confirmed bookings"

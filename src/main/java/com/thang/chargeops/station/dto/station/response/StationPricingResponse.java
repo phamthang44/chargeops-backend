@@ -33,8 +33,29 @@ public record StationPricingResponse(
         Instant scheduleEffectiveFrom,
         Instant scheduleEffectiveTo,
         String scheduleStatus,
-        Long version
+        Long version,
+        ConfigurationVersionResponse pendingConfiguration
 ) {
+    public StationPricingResponse(
+            UUID stationId,
+            int minBookingDurationMin,
+            int durationStepMinutes,
+            int maxDurationMinutes,
+            BigDecimal basePriceVnd,
+            boolean open24Hours,
+            List<OperatingHourResponse> hours,
+            List<TouRuleResponse> touRules,
+            AvailabilityPolicyResponse availability,
+            Instant scheduleEffectiveFrom,
+            Instant scheduleEffectiveTo,
+            String scheduleStatus,
+            Long version
+    ) {
+        this(stationId, minBookingDurationMin, durationStepMinutes, maxDurationMinutes,
+                basePriceVnd, open24Hours, hours, touRules, availability,
+                scheduleEffectiveFrom, scheduleEffectiveTo, scheduleStatus, version, null);
+    }
+
     // Giờ hoạt động từng ngày
     public record OperatingHourResponse(
             StationDayOfWeek day,  // MONDAY, TUESDAY... hoặc T2..CN
@@ -52,6 +73,19 @@ public record StationPricingResponse(
             LocalTime startTime,           // "17:00"
             LocalTime endTime,             // "21:00"
             BigDecimal rateVnd             // 4200.00
+    ) {}
+
+    public record ConfigurationVersionResponse(
+            UUID scheduleId,
+            int minBookingDurationMin,
+            BigDecimal basePriceVnd,
+            boolean open24Hours,
+            List<OperatingHourResponse> hours,
+            List<TouRuleResponse> touRules,
+            Instant effectiveFrom,
+            Instant effectiveTo,
+            String status,
+            Instant changedAt
     ) {}
 
     // Quy chuẩn SLA vận hành

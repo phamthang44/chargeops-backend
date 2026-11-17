@@ -7,8 +7,10 @@ import com.thang.chargeops.exception.AppException;
 import com.thang.chargeops.exception.errorcode.BookingErrorCode;
 import com.thang.chargeops.station.entity.Station;
 import com.thang.chargeops.station.entity.StationBookingSetting;
+import com.thang.chargeops.station.entity.StationOperatingSchedule;
 import com.thang.chargeops.station.entity.TouRate;
 import com.thang.chargeops.station.repository.StationBookingSettingsRepository;
+import com.thang.chargeops.station.repository.StationOperatingScheduleRepository;
 import com.thang.chargeops.station.repository.StationRepository;
 import com.thang.chargeops.station.repository.TouRateRepository;
 import com.thang.chargeops.station.service.impl.StationPricingServiceImpl;
@@ -42,6 +44,8 @@ class StationPricingServiceImplTest {
     @Mock
     private StationBookingSettingsRepository settingsRepository;
     @Mock
+    private StationOperatingScheduleRepository scheduleRepository;
+    @Mock
     private TouRateRepository touRateRepository;
 
     private StationPricingServiceImpl service;
@@ -51,6 +55,7 @@ class StationPricingServiceImplTest {
         service = new StationPricingServiceImpl(
                 stationRepository,
                 settingsRepository,
+                scheduleRepository,
                 touRateRepository
         );
     }
@@ -154,6 +159,59 @@ class StationPricingServiceImplTest {
                 .isEqualTo(localInstant(date, LocalTime.of(21, 0)));
         assertThat(result.get(2).rateVndPerKwh())
                 .isEqualByComparingTo("3400.00");
+    }
+
+    @Test
+    void splitsPriceAtNextMondayAndUsesTheNewCommercialVersion() {
+        UUID stationId = UUID.randomUUID();
+        UUID activeId = UUID.randomUUID();
+        UUID pendingId = UUID.randomUUID();
+        Station station = new Station();
+        Instant boundary = Instant.parse("2026-08-30T17:00:00Z");
+        Instant rangeStart = Instant.parse("2026-08-30T16:00:00Z"); // Sunday 23:00 VN
+        Instant rangeEnd = Instant.parse("2026-08-30T19:00:00Z"); // Monday 02:00 VN
+        StationOperatingSchedule active = StationOperatingSchedule.create(
+                station,
+                true,
+                Instant.parse("2026-08-23T17:00:00Z"),
+                30,
+                new BigDecimal("3200.00")
+        );
+        active.setId(activeId);
+        active.setEffectiveTo(boundary);
+        StationOperatingSchedule pending = StationOperatingSchedule.create(
+                station,
+                true,
+                boundary,
+                60,
+                new BigDecimal("3600.00")
+        );
+        pending.setId(pendingId);
+
+        when(stationRepository.findById(stationId)).thenReturn(Optional.of(station));
+        when(scheduleRepository.findEffectiveVersionsOverlapping(
+                stationId,
+                rangeStart,
+                rangeEnd
+        )).thenReturn(List.of(active, pending));
+        when(touRateRepository.findByScheduleIdInOrderByDayTypeAscStartTimeAsc(
+                List.of(activeId, pendingId)
+        )).thenReturn(List.of());
+
+        List<StationPriceRange> result = service.resolvePriceRanges(
+                stationId,
+                NOW,
+                rangeStart,
+                rangeEnd
+        );
+
+        assertThat(result).hasSize(2);
+        assertThat(result.get(0).startAt()).isEqualTo(rangeStart);
+        assertThat(result.get(0).endAt()).isEqualTo(boundary);
+        assertThat(result.get(0).rateVndPerKwh()).isEqualByComparingTo("3200.00");
+        assertThat(result.get(1).startAt()).isEqualTo(boundary);
+        assertThat(result.get(1).endAt()).isEqualTo(rangeEnd);
+        assertThat(result.get(1).rateVndPerKwh()).isEqualByComparingTo("3600.00");
     }
 
     @Test

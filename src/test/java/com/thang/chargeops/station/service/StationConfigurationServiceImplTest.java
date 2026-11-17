@@ -43,9 +43,11 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -96,6 +98,7 @@ class StationConfigurationServiceImplTest {
         UUID stationId = UUID.randomUUID();
         UUID ownerId = UUID.randomUUID();
         Station station = new Station();
+        station.setId(stationId);
         Instant previousEffectiveFrom = Instant.parse("2026-08-01T00:00:00Z");
         StationOperatingSchedule previousSchedule =
                 StationOperatingSchedule.create(
@@ -143,10 +146,23 @@ class StationConfigurationServiceImplTest {
         when(currentProfileProvider.requireProfileId()).thenReturn(ownerId);
         when(settingsRepository.findByStationId(stationId))
                 .thenReturn(Optional.empty());
+        AtomicReference<StationOperatingSchedule> persistedCurrent = new AtomicReference<>();
         when(scheduleRepository.findActiveByStationId(stationId, NOW))
-                .thenReturn(Optional.of(previousSchedule));
+                .thenAnswer(invocation -> Optional.ofNullable(
+                        persistedCurrent.get() != null
+                                ? persistedCurrent.get()
+                                : previousSchedule
+                ));
         when(touRateRepository.findActiveByStationId(stationId, NOW))
                 .thenReturn(List.of(previousRate));
+        when(scheduleRepository.saveAndFlush(any(StationOperatingSchedule.class)))
+                .thenAnswer(invocation -> {
+                    StationOperatingSchedule saved = invocation.getArgument(0);
+                    saved.setId(UUID.randomUUID());
+                    saved.setCreatedAt(NOW);
+                    persistedCurrent.set(saved);
+                    return saved;
+                });
 
         StationPricingResponse response = service.updateConfiguration(
                 stationId,
@@ -158,7 +174,7 @@ class StationConfigurationServiceImplTest {
         ArgumentCaptor<StationOperatingSchedule> scheduleCaptor =
                 ArgumentCaptor.forClass(StationOperatingSchedule.class);
         verify(settingsRepository).save(settingsCaptor.capture());
-        verify(scheduleRepository).save(scheduleCaptor.capture());
+        verify(scheduleRepository).saveAndFlush(scheduleCaptor.capture());
         verify(scheduleRepository).flush();
         verify(pricingPolicy).validateStationOwnershipAndStatus(
                 station,
@@ -174,12 +190,233 @@ class StationConfigurationServiceImplTest {
         assertThat(scheduleCaptor.getValue().getEffectiveFrom()).isEqualTo(NOW);
         assertThat(scheduleCaptor.getValue().getPeriods())
                 .hasSize(StationDayOfWeek.values().length);
-        assertThat(response.touRules()).singleElement()
-                .satisfies(rule -> {
-                    assertThat(rule.name()).isEqualTo("New off peak");
-                    assertThat(rule.rateVnd())
-                            .isEqualByComparingTo("2800.00");
+        assertThat(response.scheduleEffectiveFrom()).isEqualTo(NOW);
+        assertThat(response.scheduleEffectiveTo()).isNull();
+        assertThat(response.scheduleStatus()).isEqualTo("ACTIVE");
+    }
+
+    @Test
+    void defersAnExistingCommercialEditUntilNextMondayAndReturnsItAsPending() {
+        UUID stationId = UUID.randomUUID();
+        UUID ownerId = UUID.randomUUID();
+        Station station = new Station();
+        station.setId(stationId);
+        StationBookingSetting settings = StationBookingSetting.builder()
+                .station(station)
+                .minDurationMinutes(30)
+                .basePriceVnd(new BigDecimal("3200.00"))
+                .version(0L)
+                .build();
+        StationOperatingSchedule active = StationOperatingSchedule.create(
+                station,
+                true,
+                Instant.parse("2026-08-23T17:00:00Z"),
+                30,
+                new BigDecimal("3200.00")
+        );
+        active.setId(UUID.randomUUID());
+        AtomicReference<StationOperatingSchedule> pendingRef = new AtomicReference<>();
+        Instant expectedBoundary = Instant.parse("2026-08-30T17:00:00Z");
+        UpdateStationPricingRequest request = new UpdateStationPricingRequest(
+                60,
+                new BigDecimal("3600.00"),
+                false,
+                Arrays.stream(StationDayOfWeek.values())
+                        .map(day -> new UpdateStationPricingRequest.OperatingHourRequest(
+                                day,
+                                LocalTime.of(6, 0),
+                                LocalTime.of(23, 0),
+                                true
+                        ))
+                        .toList(),
+                List.of(),
+                1L
+        );
+
+        when(stationRepository.findByIdForPricingUpdate(stationId))
+                .thenReturn(Optional.of(station));
+        when(currentProfileProvider.requireProfileId()).thenReturn(ownerId);
+        when(settingsRepository.findByStationId(stationId))
+                .thenReturn(Optional.of(settings));
+        when(scheduleRepository.findActiveByStationId(stationId, NOW))
+                .thenReturn(Optional.of(active));
+        when(scheduleRepository.findPendingByStationId(stationId, NOW))
+                .thenAnswer(invocation -> pendingRef.get() == null
+                        ? List.of()
+                        : List.of(pendingRef.get()));
+        when(touRateRepository.findByScheduleIdOrderByDayTypeAscStartTimeAsc(any(UUID.class)))
+                .thenReturn(List.of());
+        when(touRateRepository.findActiveByStationId(stationId, NOW))
+                .thenReturn(List.of());
+        when(scheduleRepository.saveAndFlush(any(StationOperatingSchedule.class)))
+                .thenAnswer(invocation -> {
+                    StationOperatingSchedule saved = invocation.getArgument(0);
+                    saved.setId(UUID.randomUUID());
+                    saved.setCreatedAt(NOW);
+                    pendingRef.set(saved);
+                    return saved;
                 });
+
+        StationPricingResponse response = service.updateConfiguration(stationId, request);
+
+        assertThat(active.getEffectiveTo()).isEqualTo(expectedBoundary);
+        assertThat(pendingRef.get().getEffectiveFrom()).isEqualTo(expectedBoundary);
+        assertThat(pendingRef.get().getEffectiveTo()).isNull();
+        assertThat(response.scheduleEffectiveFrom()).isEqualTo(active.getEffectiveFrom());
+        assertThat(response.scheduleEffectiveTo()).isEqualTo(expectedBoundary);
+        assertThat(response.basePriceVnd()).isEqualByComparingTo("3200.00");
+        assertThat(response.pendingConfiguration()).isNotNull();
+        assertThat(response.pendingConfiguration().effectiveFrom()).isEqualTo(expectedBoundary);
+        assertThat(response.pendingConfiguration().changedAt()).isEqualTo(NOW);
+        assertThat(response.pendingConfiguration().status()).isEqualTo("PENDING");
+        assertThat(response.pendingConfiguration().basePriceVnd())
+                .isEqualByComparingTo("3600.00");
+        assertThat(response.pendingConfiguration().minBookingDurationMin()).isEqualTo(60);
+    }
+
+    @Test
+    void restoringCurrentVersionCancelsPendingAndRestoresLegacySettingsValues() {
+        UUID stationId = UUID.randomUUID();
+        UUID ownerId = UUID.randomUUID();
+        Station station = new Station();
+        station.setId(stationId);
+        StationBookingSetting settings = StationBookingSetting.builder()
+                .station(station)
+                .minDurationMinutes(60)
+                .basePriceVnd(new BigDecimal("3600.00"))
+                .version(1L)
+                .build();
+        Instant activeFrom = Instant.parse("2026-08-23T17:00:00Z");
+        Instant boundary = Instant.parse("2026-08-30T17:00:00Z");
+        StationOperatingSchedule active = StationOperatingSchedule.create(
+                station,
+                true,
+                activeFrom,
+                30,
+                new BigDecimal("3200.00")
+        );
+        active.setId(UUID.randomUUID());
+        active.setEffectiveTo(boundary);
+        StationOperatingSchedule pending = StationOperatingSchedule.create(
+                station,
+                true,
+                boundary,
+                60,
+                new BigDecimal("3600.00")
+        );
+        pending.setId(UUID.randomUUID());
+        UpdateStationPricingRequest request = new UpdateStationPricingRequest(
+                30,
+                new BigDecimal("3200.00"),
+                true,
+                List.of(),
+                List.of(),
+                2L
+        );
+
+        when(stationRepository.findByIdForPricingUpdate(stationId))
+                .thenReturn(Optional.of(station));
+        when(currentProfileProvider.requireProfileId()).thenReturn(ownerId);
+        when(settingsRepository.findByStationId(stationId))
+                .thenReturn(Optional.of(settings));
+        when(scheduleRepository.findActiveByStationId(stationId, NOW))
+                .thenReturn(Optional.of(active));
+        when(scheduleRepository.findPendingByStationId(stationId, NOW))
+                .thenAnswer(invocation -> pending.getCancelledAt() == null
+                        ? List.of(pending)
+                        : List.of());
+        when(touRateRepository.findByScheduleIdOrderByDayTypeAscStartTimeAsc(active.getId()))
+                .thenReturn(List.of());
+        when(touRateRepository.findByScheduleIdOrderByDayTypeAscStartTimeAsc(pending.getId()))
+                .thenReturn(List.of());
+
+        StationPricingResponse response = service.updateConfiguration(stationId, request);
+
+        assertThat(pending.getCancelledAt()).isEqualTo(NOW);
+        assertThat(pending.statusAt(NOW)).isEqualTo("CANCELLED");
+        assertThat(active.getEffectiveTo()).isNull();
+        assertThat(settings.getMinDurationMinutes()).isEqualTo(30);
+        assertThat(settings.getBasePriceVnd()).isEqualByComparingTo("3200.00");
+        assertThat(response.pendingConfiguration()).isNull();
+        assertThat(response.scheduleEffectiveTo()).isNull();
+        assertThat(response.basePriceVnd()).isEqualByComparingTo("3200.00");
+    }
+
+    @Test
+    void replacingPendingVersionCancelsOldEntryAndKeepsTheSameBoundary() {
+        UUID stationId = UUID.randomUUID();
+        UUID ownerId = UUID.randomUUID();
+        Station station = new Station();
+        station.setId(stationId);
+        StationBookingSetting settings = StationBookingSetting.builder()
+                .station(station)
+                .minDurationMinutes(60)
+                .basePriceVnd(new BigDecimal("3600.00"))
+                .version(1L)
+                .build();
+        Instant boundary = Instant.parse("2026-08-30T17:00:00Z");
+        StationOperatingSchedule active = StationOperatingSchedule.create(
+                station,
+                true,
+                Instant.parse("2026-08-23T17:00:00Z"),
+                30,
+                new BigDecimal("3200.00")
+        );
+        active.setId(UUID.randomUUID());
+        active.setEffectiveTo(boundary);
+        StationOperatingSchedule oldPending = StationOperatingSchedule.create(
+                station,
+                true,
+                boundary,
+                60,
+                new BigDecimal("3600.00")
+        );
+        oldPending.setId(UUID.randomUUID());
+        AtomicReference<StationOperatingSchedule> pendingRef =
+                new AtomicReference<>(oldPending);
+        UpdateStationPricingRequest request = new UpdateStationPricingRequest(
+                60,
+                new BigDecimal("3900.00"),
+                true,
+                List.of(),
+                List.of(),
+                2L
+        );
+
+        when(stationRepository.findByIdForPricingUpdate(stationId))
+                .thenReturn(Optional.of(station));
+        when(currentProfileProvider.requireProfileId()).thenReturn(ownerId);
+        when(settingsRepository.findByStationId(stationId))
+                .thenReturn(Optional.of(settings));
+        when(scheduleRepository.findActiveByStationId(stationId, NOW))
+                .thenReturn(Optional.of(active));
+        when(scheduleRepository.findPendingByStationId(stationId, NOW))
+                .thenAnswer(invocation -> pendingRef.get().getCancelledAt() == null
+                        ? List.of(pendingRef.get())
+                        : List.of());
+        when(touRateRepository.findByScheduleIdOrderByDayTypeAscStartTimeAsc(any(UUID.class)))
+                .thenReturn(List.of());
+        when(touRateRepository.findActiveByStationId(stationId, NOW))
+                .thenReturn(List.of());
+        when(scheduleRepository.saveAndFlush(any(StationOperatingSchedule.class)))
+                .thenAnswer(invocation -> {
+                    StationOperatingSchedule saved = invocation.getArgument(0);
+                    saved.setId(UUID.randomUUID());
+                    saved.setCreatedAt(NOW);
+                    pendingRef.set(saved);
+                    return saved;
+                });
+
+        StationPricingResponse response = service.updateConfiguration(stationId, request);
+
+        assertThat(oldPending.getCancelledAt()).isEqualTo(NOW);
+        assertThat(oldPending.statusAt(NOW)).isEqualTo("CANCELLED");
+        assertThat(active.getEffectiveTo()).isEqualTo(boundary);
+        assertThat(pendingRef.get()).isNotSameAs(oldPending);
+        assertThat(pendingRef.get().getEffectiveFrom()).isEqualTo(boundary);
+        assertThat(response.pendingConfiguration().scheduleId()).isEqualTo(pendingRef.get().getId());
+        assertThat(response.pendingConfiguration().basePriceVnd())
+                .isEqualByComparingTo("3900.00");
     }
 
     @Test
@@ -225,11 +462,13 @@ class StationConfigurationServiceImplTest {
         Instant activeFrom = NOW.minusSeconds(3600);
         StationOperatingSchedule activeSchedule =
                 StationOperatingSchedule.create(station, true, activeFrom);
+        activeSchedule.setId(UUID.randomUUID());
         activeSchedule.setCreatedBy(profileId);
 
         Instant expiredFrom = NOW.minusSeconds(86400);
         StationOperatingSchedule expiredSchedule =
                 StationOperatingSchedule.create(station, false, expiredFrom);
+        expiredSchedule.setId(UUID.randomUUID());
         expiredSchedule.setEffectiveTo(activeFrom);
         expiredSchedule.setCreatedBy(profileId);
 
@@ -241,7 +480,7 @@ class StationConfigurationServiceImplTest {
         when(stationRepository.findById(stationId))
                 .thenReturn(Optional.of(station));
         when(currentProfileProvider.requireProfileId()).thenReturn(ownerId);
-        when(scheduleRepository.findByStationIdOrderByEffectiveFromDesc(stationId))
+        when(scheduleRepository.findByStationIdOrderByEffectiveFromDescCreatedAtDesc(stationId))
                 .thenReturn(List.of(activeSchedule, expiredSchedule));
         when(userProfileService.getUserProfileById(profileId))
                 .thenReturn(profile);
@@ -328,6 +567,7 @@ class StationConfigurationServiceImplTest {
         UUID stationId = UUID.randomUUID();
         UUID ownerId = UUID.randomUUID();
         Station station = new Station();
+        station.setId(stationId);
         StationBookingSetting existing = StationBookingSetting.builder()
                 .station(station)
                 .minDurationMinutes(30)
@@ -348,8 +588,17 @@ class StationConfigurationServiceImplTest {
         when(currentProfileProvider.requireProfileId()).thenReturn(ownerId);
         when(settingsRepository.findByStationId(stationId))
                 .thenReturn(Optional.of(existing));
+        AtomicReference<StationOperatingSchedule> persistedCurrent = new AtomicReference<>();
         when(scheduleRepository.findActiveByStationId(stationId, NOW))
-                .thenReturn(Optional.empty());
+                .thenAnswer(invocation -> Optional.ofNullable(persistedCurrent.get()));
+        when(scheduleRepository.saveAndFlush(any(StationOperatingSchedule.class)))
+                .thenAnswer(invocation -> {
+                    StationOperatingSchedule saved = invocation.getArgument(0);
+                    saved.setId(UUID.randomUUID());
+                    saved.setCreatedAt(NOW);
+                    persistedCurrent.set(saved);
+                    return saved;
+                });
         when(touRateRepository.findActiveByStationId(stationId, NOW))
                 .thenReturn(List.of());
 
@@ -374,9 +623,6 @@ class StationConfigurationServiceImplTest {
                 .thenReturn(Optional.empty());
         when(scheduleRepository.findActiveByStationId(stationId, NOW))
                 .thenReturn(Optional.empty());
-        when(touRateRepository.findActiveByStationId(stationId, NOW))
-                .thenReturn(List.of());
-
         StationPricingResponse response = service.getConfiguration(stationId);
 
         assertThat(response.scheduleStatus()).isEqualTo("UNCONFIGURED");

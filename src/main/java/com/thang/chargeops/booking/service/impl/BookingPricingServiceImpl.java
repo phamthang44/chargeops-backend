@@ -26,8 +26,8 @@ import com.thang.chargeops.station.repository.ConnectorRepository;
 import com.thang.chargeops.station.repository.StationBookingSettingsRepository;
 import com.thang.chargeops.station.entity.StationBookingSetting;
 import com.thang.chargeops.station.entity.StationOperatingSchedule;
-import com.thang.chargeops.station.service.support.StationOperatingHoursResolver;
 import com.thang.chargeops.station.service.StationPricingService;
+import com.thang.chargeops.station.service.support.StationWeeklyConfigurationResolver;
 import com.thang.chargeops.station.service.model.StationPriceRange;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -63,7 +63,7 @@ public class BookingPricingServiceImpl implements BookingPricingService {
     private final Clock applicationClock;
     private final BookingTimePolicy bookingTimePolicy;
     private final StationBookingSettingsRepository bookingSettingsRepository;
-    private final StationOperatingHoursResolver operatingHoursResolver;
+    private final StationWeeklyConfigurationResolver weeklyConfigurationResolver;
     private final CurrentProfileProvider currentProfileProvider;
 
     @Override
@@ -114,12 +114,20 @@ public class BookingPricingServiceImpl implements BookingPricingService {
         );
 
         UUID stationId = connector.getChargePoint().getStation().getId();
-        int stationMinDuration = bookingSettingsRepository.findByStationId(stationId)
-                .map(StationBookingSetting::getMinDurationMinutes)
-                .orElse(bookingPolicyConfig.getMinDurationMinutes());
-        StationOperatingSchedule schedule = operatingHoursResolver.findActiveSchedule(stationId, decisionAt);
+        StationOperatingSchedule scheduleAtStart = weeklyConfigurationResolver
+                .findAt(stationId, startAt)
+                .orElse(null);
+        int stationMinDuration = scheduleAtStart != null
+                && scheduleAtStart.getMinDurationMinutes() != null
+                ? scheduleAtStart.getMinDurationMinutes()
+                : bookingSettingsRepository.findByStationId(stationId)
+                        .map(StationBookingSetting::getMinDurationMinutes)
+                        .orElse(bookingPolicyConfig.getMinDurationMinutes());
+        Instant requestedEndAt = startAt.plusSeconds(durationMin * 60L);
+        List<StationOperatingSchedule> schedules = weeklyConfigurationResolver
+                .findOverlapping(stationId, startAt, requestedEndAt);
         Instant endAt = bookingTimePolicy.validate(
-                startAt, durationMin, stationMinDuration, schedule, decisionAt);
+                startAt, durationMin, stationMinDuration, schedules, decisionAt);
 
         if (bookingRepository.existsOverlappingBooking(connector.getId(), startAt, endAt, decisionAt)) {
             throw new AppException(

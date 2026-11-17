@@ -14,11 +14,12 @@ import java.util.UUID;
 @Repository
 public interface StationOperatingScheduleRepository extends JpaRepository<StationOperatingSchedule, UUID> {
 
-    List<StationOperatingSchedule> findByStationIdOrderByEffectiveFromDesc(UUID stationId);
+    List<StationOperatingSchedule> findByStationIdOrderByEffectiveFromDescCreatedAtDesc(UUID stationId);
 
     @Query("""
         SELECT s FROM StationOperatingSchedule s
         WHERE s.station.id = :stationId
+          AND s.cancelledAt IS NULL
           AND s.effectiveFrom <= :now
           AND (s.effectiveTo IS NULL OR s.effectiveTo > :now)
         ORDER BY s.effectiveFrom DESC
@@ -31,7 +32,35 @@ public interface StationOperatingScheduleRepository extends JpaRepository<Statio
     @Query("""
         SELECT DISTINCT s FROM StationOperatingSchedule s
         LEFT JOIN FETCH s.periods
+        WHERE s.station.id = :stationId
+          AND s.cancelledAt IS NULL
+          AND s.effectiveFrom < :rangeEnd
+          AND (s.effectiveTo IS NULL OR s.effectiveTo > :rangeStart)
+        ORDER BY s.effectiveFrom ASC
+    """)
+    List<StationOperatingSchedule> findEffectiveVersionsOverlapping(
+            @Param("stationId") UUID stationId,
+            @Param("rangeStart") Instant rangeStart,
+            @Param("rangeEnd") Instant rangeEnd
+    );
+
+    @Query("""
+        SELECT s FROM StationOperatingSchedule s
+        WHERE s.station.id = :stationId
+          AND s.cancelledAt IS NULL
+          AND s.effectiveFrom > :now
+        ORDER BY s.effectiveFrom ASC
+    """)
+    List<StationOperatingSchedule> findPendingByStationId(
+            @Param("stationId") UUID stationId,
+            @Param("now") Instant now
+    );
+
+    @Query("""
+        SELECT DISTINCT s FROM StationOperatingSchedule s
+        LEFT JOIN FETCH s.periods
         WHERE s.station.id IN :stationIds
+          AND s.cancelledAt IS NULL
           AND s.effectiveFrom <= :now
           AND (s.effectiveTo IS NULL OR s.effectiveTo > :now)
     """)

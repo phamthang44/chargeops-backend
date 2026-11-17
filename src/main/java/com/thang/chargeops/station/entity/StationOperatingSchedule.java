@@ -7,10 +7,12 @@ import com.thang.chargeops.station.exception.violation.StationPricingViolation;
 import jakarta.persistence.*;
 import lombok.*;
 
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 
 @Builder
 @NoArgsConstructor
@@ -36,6 +38,18 @@ public class StationOperatingSchedule extends AuditableEntity {
     @Column(name = "effective_to")
     private Instant effectiveTo;
 
+    @Column(name = "min_duration_minutes")
+    private Integer minDurationMinutes;
+
+    @Column(name = "base_price_vnd", precision = 15, scale = 2)
+    private BigDecimal basePriceVnd;
+
+    @Column(name = "cancelled_at")
+    private Instant cancelledAt;
+
+    @Column(name = "cancelled_by_profile_id")
+    private UUID cancelledByProfileId;
+
     @Builder.Default
     @OneToMany(mappedBy = "schedule", cascade = {CascadeType.PERSIST, CascadeType.MERGE}, orphanRemoval = true)
     @OrderBy("dayOfWeek ASC, openTime ASC")
@@ -45,6 +59,16 @@ public class StationOperatingSchedule extends AuditableEntity {
             Station station,
             boolean open24Hours,
             Instant effectiveFrom
+    ) {
+        return create(station, open24Hours, effectiveFrom, null, null);
+    }
+
+    public static StationOperatingSchedule create(
+            Station station,
+            boolean open24Hours,
+            Instant effectiveFrom,
+            Integer minDurationMinutes,
+            BigDecimal basePriceVnd
     ) {
         if (station == null) {
             throw new IllegalArgumentException("Operating schedule requires a station");
@@ -57,6 +81,8 @@ public class StationOperatingSchedule extends AuditableEntity {
                 .station(station)
                 .open24Hours(open24Hours)
                 .effectiveFrom(effectiveFrom)
+                .minDurationMinutes(minDurationMinutes)
+                .basePriceVnd(basePriceVnd)
                 .build();
     }
 
@@ -116,18 +142,51 @@ public class StationOperatingSchedule extends AuditableEntity {
     }
 
     public boolean isFuture(Instant now) {
-        return effectiveFrom != null && effectiveFrom.isAfter(now);
+        return cancelledAt == null && effectiveFrom != null && effectiveFrom.isAfter(now);
     }
 
     public boolean isActive(Instant now) {
-        if (effectiveFrom == null || effectiveFrom.isAfter(now)) {
+        if (cancelledAt != null || effectiveFrom == null || effectiveFrom.isAfter(now)) {
             return false;
         }
         return effectiveTo == null || effectiveTo.isAfter(now);
     }
 
     public boolean isHistorical(Instant now) {
-        return effectiveTo != null && !effectiveTo.isAfter(now);
+        return cancelledAt != null || (effectiveTo != null && !effectiveTo.isAfter(now));
+    }
+
+    public String statusAt(Instant now) {
+        if (cancelledAt != null) {
+            return "CANCELLED";
+        }
+        if (isActive(now)) {
+            return "ACTIVE";
+        }
+        return isFuture(now) ? "PENDING" : "EXPIRED";
+    }
+
+    public void cancelAt(Instant at, UUID actorProfileId) {
+        if (at == null || effectiveFrom == null || !effectiveFrom.isAfter(at)
+                || cancelledAt != null) {
+            throw new StationPricingDomainException(
+                    StationPricingViolation.CONFIGURATION_CONFLICT,
+                    "Only an unapplied pending schedule can be cancelled"
+            );
+        }
+        cancelledAt = at;
+        cancelledByProfileId = actorProfileId;
+    }
+
+    public void resumeIndefinitelyAt(Instant expectedEffectiveTo) {
+        if (expectedEffectiveTo == null || effectiveTo == null
+                || !effectiveTo.equals(expectedEffectiveTo)) {
+            throw new StationPricingDomainException(
+                    StationPricingViolation.CONFIGURATION_CONFLICT,
+                    "Schedule end does not match the pending version boundary"
+            );
+        }
+        effectiveTo = null;
     }
 
     public void expireAt(Instant at) {

@@ -7,8 +7,10 @@ import com.thang.chargeops.exception.errorcode.BookingErrorCode;
 import com.thang.chargeops.exception.errorcode.StationErrorCode;
 import com.thang.chargeops.station.entity.Station;
 import com.thang.chargeops.station.entity.StationBookingSetting;
+import com.thang.chargeops.station.entity.StationOperatingSchedule;
 import com.thang.chargeops.station.entity.TouRate;
 import com.thang.chargeops.station.repository.StationBookingSettingsRepository;
+import com.thang.chargeops.station.repository.StationOperatingScheduleRepository;
 import com.thang.chargeops.station.repository.StationRepository;
 import com.thang.chargeops.station.repository.TouRateRepository;
 import com.thang.chargeops.station.service.StationPricingService;
@@ -23,10 +25,13 @@ import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.NavigableSet;
 import java.util.TreeSet;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -34,31 +39,23 @@ public class StationPricingServiceImpl implements StationPricingService {
 
     private final StationRepository stationRepository;
     private final StationBookingSettingsRepository stationBookingSettingsRepository;
+    private final StationOperatingScheduleRepository scheduleRepository;
     private final TouRateRepository touRateRepository;
 
     @Override
     @Transactional(readOnly = true)
     public BigDecimal resolvePriceAt(UUID stationId, Instant targetTime) {
         requireStation(stationId);
-        BigDecimal basePrice = stationBookingSettingsRepository
-                .findByStationId(stationId)
-                .map(StationBookingSetting::getBasePriceVnd)
-                .orElseThrow(() -> new AppException(
-                        BookingErrorCode.PRICING_NOT_CONFIGURED,
-                        stationId
-                ));
-
-        if (basePrice.compareTo(BigDecimal.ZERO) <= 0) {
-            throw new AppException(
-                    BookingErrorCode.PRICING_NOT_CONFIGURED,
-                    stationId
-            );
-        }
+        StationOperatingSchedule schedule = scheduleRepository
+                .findActiveByStationId(stationId, targetTime)
+                .orElse(null);
+        BigDecimal basePrice = requireBasePrice(stationId, schedule);
+        List<TouRate> rates = ratesForSchedule(stationId, schedule, targetTime);
 
         ZonedDateTime local = targetTime.atZone(
                 ZoneId.of(SystemConstant.SYSTEM_REGION_TIMEZONE)
         );
-        return touRateRepository.findActiveByStationId(stationId, targetTime)
+        return rates
                 .stream()
                 .filter(rate -> rate.appliesAt(
                         local.getDayOfWeek(),
@@ -85,42 +82,72 @@ public class StationPricingServiceImpl implements StationPricingService {
         }
 
         requireStation(stationId);
-        BigDecimal basePrice = stationBookingSettingsRepository
-                .findByStationId(stationId)
-                .map(StationBookingSetting::getBasePriceVnd)
-                .orElseThrow(() -> new AppException(
-                        BookingErrorCode.PRICING_NOT_CONFIGURED,
-                        stationId
-                ));
-
-        if (basePrice.compareTo(BigDecimal.ZERO) <= 0) {
-            throw new AppException(
-                    BookingErrorCode.PRICING_NOT_CONFIGURED,
-                    stationId
-            );
-        }
-        List<TouRate> rates = touRateRepository.findActiveByStationId(
-                stationId,
-                effectiveAt
-        );
-
         ZoneId systemZoneId = ZoneId.of(
                 SystemConstant.SYSTEM_REGION_TIMEZONE
         );
+        List<StationOperatingSchedule> schedules = scheduleRepository
+                .findEffectiveVersionsOverlapping(stationId, rangeStart, rangeEnd);
+
+        if (schedules.isEmpty()) {
+            BigDecimal basePrice = requireBasePrice(stationId, null);
+            List<TouRate> rates = touRateRepository.findActiveByStationId(
+                    stationId,
+                    effectiveAt
+            );
+            return buildPriceRanges(rates, basePrice, rangeStart, rangeEnd, systemZoneId);
+        }
+
+        List<UUID> scheduleIds = schedules.stream()
+                .map(StationOperatingSchedule::getId)
+                .filter(id -> id != null)
+                .toList();
+        Map<UUID, List<TouRate>> ratesBySchedule = scheduleIds.isEmpty()
+                ? new HashMap<>()
+                : touRateRepository.findByScheduleIdInOrderByDayTypeAscStartTimeAsc(scheduleIds)
+                        .stream()
+                        .collect(Collectors.groupingBy(TouRate::getScheduleId));
+        List<TouRate> allRates = new ArrayList<>();
+        for (StationOperatingSchedule schedule : schedules) {
+            List<TouRate> rates = ratesBySchedule.getOrDefault(schedule.getId(), List.of());
+            if (schedule.getBasePriceVnd() == null || schedule.getMinDurationMinutes() == null) {
+                Instant ratesAt = schedule.getEffectiveFrom().isAfter(rangeStart)
+                        ? schedule.getEffectiveFrom()
+                        : rangeStart;
+                rates = touRateRepository.findActiveByStationId(stationId, ratesAt);
+                ratesBySchedule.put(schedule.getId(), rates);
+            }
+            allRates.addAll(rates);
+            ratesBySchedule.putIfAbsent(schedule.getId(), rates);
+        }
+
         NavigableSet<Instant> boundaries = priceBoundaries(
-                rates,
+                allRates,
                 rangeStart,
                 rangeEnd,
                 systemZoneId
         );
+        for (StationOperatingSchedule schedule : schedules) {
+            addBoundaryWithinRange(boundaries, schedule.getEffectiveFrom(), rangeStart, rangeEnd);
+            if (schedule.getEffectiveTo() != null) {
+                addBoundaryWithinRange(boundaries, schedule.getEffectiveTo(), rangeStart, rangeEnd);
+            }
+        }
         List<Instant> orderedBoundaries = List.copyOf(boundaries);
         List<StationPriceRange> ranges = new ArrayList<>();
 
         for (int index = 0; index < orderedBoundaries.size() - 1; index++) {
             Instant startAt = orderedBoundaries.get(index);
             Instant endAt = orderedBoundaries.get(index + 1);
+            StationOperatingSchedule schedule = scheduleAt(schedules, startAt);
+            if (schedule == null) {
+                throw new AppException(
+                        BookingErrorCode.PRICING_NOT_CONFIGURED,
+                        stationId
+                );
+            }
+            BigDecimal basePrice = requireBasePrice(stationId, schedule);
             ResolvedPrice price = resolvePrice(
-                    rates,
+                    ratesBySchedule.getOrDefault(schedule.getId(), List.of()),
                     basePrice,
                     startAt,
                     systemZoneId
@@ -128,6 +155,71 @@ public class StationPricingServiceImpl implements StationPricingService {
             appendOrMergePriceRange(ranges, startAt, endAt, price);
         }
         return List.copyOf(ranges);
+    }
+
+    private List<StationPriceRange> buildPriceRanges(
+            List<TouRate> rates,
+            BigDecimal basePrice,
+            Instant rangeStart,
+            Instant rangeEnd,
+            ZoneId zoneId
+    ) {
+        NavigableSet<Instant> boundaries = priceBoundaries(rates, rangeStart, rangeEnd, zoneId);
+        List<Instant> orderedBoundaries = List.copyOf(boundaries);
+        List<StationPriceRange> ranges = new ArrayList<>();
+        for (int index = 0; index < orderedBoundaries.size() - 1; index++) {
+            Instant startAt = orderedBoundaries.get(index);
+            Instant endAt = orderedBoundaries.get(index + 1);
+            appendOrMergePriceRange(
+                    ranges,
+                    startAt,
+                    endAt,
+                    resolvePrice(rates, basePrice, startAt, zoneId)
+            );
+        }
+        return List.copyOf(ranges);
+    }
+
+    private StationOperatingSchedule scheduleAt(
+            List<StationOperatingSchedule> schedules,
+            Instant at
+    ) {
+        return schedules.stream()
+                .filter(schedule -> !schedule.getEffectiveFrom().isAfter(at)
+                        && (schedule.getEffectiveTo() == null
+                                || schedule.getEffectiveTo().isAfter(at)))
+                .max(java.util.Comparator.comparing(StationOperatingSchedule::getEffectiveFrom))
+                .orElse(null);
+    }
+
+    private BigDecimal requireBasePrice(UUID stationId, StationOperatingSchedule schedule) {
+        BigDecimal basePrice = schedule != null && schedule.getBasePriceVnd() != null
+                ? schedule.getBasePriceVnd()
+                : stationBookingSettingsRepository.findByStationId(stationId)
+                        .map(StationBookingSetting::getBasePriceVnd)
+                        .orElseThrow(() -> new AppException(
+                                BookingErrorCode.PRICING_NOT_CONFIGURED,
+                                stationId
+                        ));
+        if (basePrice == null || basePrice.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new AppException(BookingErrorCode.PRICING_NOT_CONFIGURED, stationId);
+        }
+        return basePrice;
+    }
+
+    private List<TouRate> ratesForSchedule(
+            UUID stationId,
+            StationOperatingSchedule schedule,
+            Instant at
+    ) {
+        if (schedule != null
+                && schedule.getBasePriceVnd() != null
+                && schedule.getMinDurationMinutes() != null) {
+            return touRateRepository.findByScheduleIdOrderByDayTypeAscStartTimeAsc(
+                    schedule.getId()
+            );
+        }
+        return touRateRepository.findActiveByStationId(stationId, at);
     }
 
     private NavigableSet<Instant> priceBoundaries(
