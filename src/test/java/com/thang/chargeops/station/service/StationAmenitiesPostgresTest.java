@@ -141,10 +141,11 @@ class StationAmenitiesPostgresTest {
         flywayAt68.migrate();
         assertThat(flywayAt68.info().current().getVersion().getVersion()).isEqualTo("68");
 
-        Flyway.configure()
+        Flyway flywayAt69 = Flyway.configure()
                 .dataSource(upgradeUrl, POSTGRES.getUsername(), POSTGRES.getPassword())
-                .load()
-                .migrate();
+                .target(MigrationVersion.fromVersion("69"))
+                .load();
+        flywayAt69.migrate();
         try (var connection = java.sql.DriverManager.getConnection(
                 upgradeUrl, POSTGRES.getUsername(), POSTGRES.getPassword());
              var statement = connection.createStatement();
